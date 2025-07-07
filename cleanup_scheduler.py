@@ -21,7 +21,7 @@ OUTPUT_FOLDER = os.environ.get('OUTPUT_FOLDER', 'output')
 FILE_RETENTION_HOURS = int(os.environ.get('FILE_RETENTION_HOURS', '24'))
 
 # Get celery app instance
-celery = make_celery(__name__)
+celery = make_celery()
 
 @celery.task(name='cleanup.cleanup_old_files')
 def cleanup_old_files():
