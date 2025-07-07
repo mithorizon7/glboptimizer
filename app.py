@@ -189,10 +189,10 @@ def upload_file():
         
         # Start modular optimization pipeline - now that we have unified Celery instance
         try:
-            # Use the registered task directly with .delay() method
-            from pipeline_tasks import start_optimization_pipeline
-            celery_task = start_optimization_pipeline.delay(
-                task_id, input_path, output_path
+            # Use the shared Celery instance to call the task
+            celery_task = celery.send_task(
+                'pipeline_tasks.start_optimization_pipeline',
+                args=[task_id, input_path, output_path]
             )
             
             logger.info(f"Started modular optimization pipeline for task {celery_task.id}")
@@ -201,11 +201,11 @@ def upload_file():
             logger.error(f"Failed to start optimization pipeline: {e}")
             # Fallback to legacy single task
             try:
-                # Use the registered task directly with .delay() method
-                from tasks import optimize_glb_file
-                celery_task = optimize_glb_file.delay(
-                    input_path, output_path, original_name, 
-                    quality_level, enable_lod, enable_simplification
+                # Use the shared Celery instance to call the task
+                celery_task = celery.send_task(
+                    'tasks.optimize_glb_file',
+                    args=[input_path, output_path, original_name, 
+                          quality_level, enable_lod, enable_simplification]
                 )
                 logger.info(f"Using legacy optimization task for {celery_task.id}")
             except Exception as e2:
