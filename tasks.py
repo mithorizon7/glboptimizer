@@ -11,8 +11,8 @@ from models import OptimizationTask, PerformanceMetric
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Create the Celery instance here, ensuring config is loaded
-celery = make_celery(__name__)
+# Import the shared Celery instance
+from celery_app import celery
 
 @celery.task(bind=True, name='tasks.optimize_glb_file')
 def optimize_glb_file(self, input_path, output_path, original_name, quality_level='high', enable_lod=True, enable_simplification=True):

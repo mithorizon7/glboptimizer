@@ -1,0 +1,126 @@
+You've pinpointed the exact root of the problem. Your diagnosis is correct: the application is creating multiple, separate Celery instances across different modules (app-3.py, tasks.py, pipeline_tasks.py), which prevents them from communicating correctly.
+
+To fix this, you need to ensure every part of your application uses the exact same Celery instance. The best practice is to create a single, shared instance in celery_app.py and import that instance everywhere else it's needed.
+
+Here are the precise changes to fix this issue across the entire project.
+
+1. Create a Single, Shared Celery Instance
+
+First, modify celery_app.py to create and export a single, globally accessible Celery application instance.
+
+File to Edit: celery_app.py
+
+Change From:
+
+Python
+#
+# OLD CODE in celery_app.py
+#
+def make_celery(app_name=__name__):
+    # ... (factory function definition)
+    return celery
+
+# DO NOT create the instance here anymore.
+# celery = make_celery()
+Change To:
+
+Python
+#
+# NEW, CORRECTED CODE for celery_app.py
+#
+import os
+from celery import Celery
+from dotenv import load_dotenv
+
+load_dotenv()
+
+def make_celery(app_name=__name__):
+    redis_url = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
+    return Celery(
+        app_name,
+        broker=redis_url,
+        backend=redis_url,
+        include=['tasks', 'cleanup_scheduler', 'pipeline_tasks'] # Ensure all task modules are included
+    )
+
+# Create the single, shared instance here
+celery = make_celery()
+2. Update All Modules to Use the Shared Instance
+
+Now, update your application and task modules to import and use this single celery instance.
+
+App Module (app-3.py)
+
+Action: Import the celery instance directly instead of using the factory.
+
+Change From:
+
+Python
+# OLD
+from celery_app import make_celery
+celery = make_celery(__name__)
+To This:
+
+Python
+# NEW
+from celery_app import celery
+Legacy Tasks Module (tasks.py)
+
+Action: Do the same for your original tasks file.
+
+Change From:
+
+Python
+# OLD
+from celery_app import make_celery
+celery = make_celery()
+To This:
+
+Python
+# NEW
+from celery_app import celery
+Pipeline Tasks Module (pipeline_tasks.py)
+
+Action: Apply the fix to the modular pipeline tasks as well.
+
+Change From:
+
+Python
+# OLD
+from celery_app import make_celery
+celery_app = make_celery('glb_pipeline')
+To This:
+
+Python
+# NEW
+from celery_app import celery as celery_app
+(Using as celery_app keeps the rest of your code in this file consistent without needing further changes.)
+
+Cleanup Scheduler (cleanup_scheduler.py)
+
+Action: Finally, update the cleanup scheduler.
+
+Change From:
+
+Python
+# OLD
+from celery_app import make_celery
+celery = make_celery()
+To This:
+
+Python
+# NEW
+from celery_app import celery
+Why This Fix Works
+
+By making these changes, you establish celery_app.py as the single source of truth for your Celery application. Every other module now imports the exact same object.
+
+This guarantees that:
+
+The Flask app, when you call .delay(), is sending tasks to the correct queue.
+
+The Celery workers are registered with the same application and are listening to the correct queue.
+
+The @celery.task decorator in all your files is decorating the same, shared instance.
+
+Your application is now unified. This will resolve the intermittent failures and ensure that your background tasks are reliably executed.

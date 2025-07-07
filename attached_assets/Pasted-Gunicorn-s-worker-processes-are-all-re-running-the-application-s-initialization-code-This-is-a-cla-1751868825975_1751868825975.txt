@@ -1,0 +1,155 @@
+Gunicorn's worker processes are all re-running the application's initialization code.
+
+This is a classic challenge when moving from a development server to a production WSGI server like Gunicorn. Here is the standard, industry-wide solution to fix this permanently.
+
+The Core Issue and The Solution
+
+The problem is that code written at the top level of app.py (or main.py) gets executed every single time that file is imported. Since Gunicorn spawns multiple worker processes, and each worker imports your application file, the initialization code (init_database(), service startups, etc.) runs multiple times, causing conflicts.
+
+The solution is to restructure your application using the Application Factory pattern. This pattern delays the creation of the Flask application object until it's explicitly requested, giving you precise control over when the initialization code runs.
+
+Step-by-Step Fix
+
+Here are the exact changes to implement the Application Factory pattern and solve the multiple initialization problem.
+
+Step 1: Create a WSGI Entry Point (wsgi.py)
+
+Your developer was on the right track by creating wsgi.py. This file will be the single, clean entry point for Gunicorn. It should create the Flask application by calling the factory function.
+
+File to Create/Edit: wsgi.py
+
+Python
+# wsgi.py
+"""
+Production WSGI entry point for Gunicorn.
+This file creates the Flask application object using the factory pattern.
+"""
+from main import create_app
+
+# Gunicorn will look for this 'application' object by default.
+application = create_app()
+Step 2: Create the Application Factory in main.py
+
+Refactor main.py so that it no longer runs initialization code on import. Instead, it will provide a create_app function that builds the app object. The one-time service initializations will be moved to the if __name__ == '__main__': block, so they only run when you execute python main.py directly for development.
+
+File to Edit: main.py
+
+Python
+# main.py
+
+import os
+import subprocess
+import time
+import logging
+import atexit
+from flask import Flask
+from werkzeug.middleware.proxy_fix import ProxyFix
+
+# --- Keep all imports at the top ---
+from config import get_config
+from database import init_database
+from celery_app import celery
+# Import your routes/blueprints here if you separate them
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+# Keep track of subprocesses to terminate them on exit
+processes = []
+
+def cleanup_processes():
+    # ... (this function remains the same)
+    logger.info("Shutting down background processes...")
+    for p in processes:
+        if p.poll() is None:
+            p.terminate()
+            p.wait()
+    logger.info("Cleanup complete.")
+
+atexit.register(cleanup_processes)
+
+# --- THE APPLICATION FACTORY ---
+def create_app():
+    """
+    Creates and configures the Flask application object.
+    This is the factory that Gunicorn will use via wsgi.py.
+    """
+    app = Flask(__name__)
+    
+    # Load configuration
+    config = get_config()
+    app.config.from_object(config)
+    app.secret_key = config.SECRET_KEY
+    
+    # Apply middleware
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
+
+    # Import and register your routes here (from app.py or your blueprint files)
+    # For example, if your routes are in app.py:
+    with app.app_context():
+        from app import add_security_headers, index, upload_file, get_progress, download_file, cleanup_task, get_original_file, download_error_logs, admin_analytics, admin_stats
+        # You would ideally use Flask Blueprints here for a cleaner structure
+        app.after_request(add_security_headers)
+        app.add_url_rule('/', view_func=index)
+        app.add_url_rule('/upload', view_func=upload_file, methods=['POST'])
+        # ... add all other routes here ...
+        
+    logger.info("Flask application created.")
+    return app
+
+# --- ONE-TIME SERVICE INITIALIZATION ---
+def initialize_services():
+    """
+    This function runs the one-time setup for all services.
+    It should only be called once by the main process.
+    """
+    logger.info("Initializing services...")
+    os.environ['REDIS_URL'] = 'redis://localhost:6379/0'
+    os.environ['CELERY_BROKER_URL'] = 'redis://localhost:6379/0'
+    os.environ['CELERY_RESULT_BACKEND'] = 'redis://localhost:6379/0'
+
+    # 1. Ensure Redis is running
+    # ... (your ensure_redis_running() logic) ...
+    
+    # 2. Initialize database
+    try:
+        init_database()
+        logger.info("Database initialized successfully")
+    except Exception as e:
+        logger.error(f"Database initialization failed: {e}")
+
+    # 3. Start Celery worker
+    # ... (your start_celery_worker() logic) ...
+
+# --- DEVELOPMENT SERVER ENTRY POINT ---
+if __name__ == '__main__':
+    # This block only runs when you execute "python main.py"
+    # It will NOT run when Gunicorn imports the file.
+    
+    # Run the one-time service initializations
+    initialize_services()
+    
+    # Create the app using the factory
+    app = create_app()
+
+    # Give services time to start
+    time.sleep(2)
+    
+    # Start the Flask development server
+    logger.info("Starting Flask development server...")
+    app.run(host='0.0.0.0', port=5000, debug=True)
+
+Step 3: Update the Gunicorn Command
+
+Now, tell Gunicorn to use your new wsgi.py entry point.
+
+Action: In your Replit deployment environment or .replit file, change the Gunicorn command.
+
+Change From:
+gunicorn --bind 0.0.0.0:5000 main:app
+
+To This:
+gunicorn --bind 0.0.0.0:5000 wsgi:application
+
+By following this pattern, the one-time service initializations are completely separate from the application object's creation. gunicorn will call wsgi.py, which in turn calls create_app() for each worker, but initialize_services() will never be called by the workers, solving the multiple initialization problem for good.

@@ -29,8 +29,8 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-# Initialize Celery app
-celery = make_celery(__name__)
+# Import the shared Celery instance
+from celery_app import celery
 
 # Import tasks to ensure they're registered with Celery
 try:
@@ -200,13 +200,13 @@ def upload_file():
             'name': original_name
         }
         
-        # Start modular optimization pipeline - use simple direct import approach
+        # Start modular optimization pipeline - now that we have unified Celery instance
         try:
-            # Import tasks to register them with Celery
-            import pipeline_tasks
-            # Use the registered task
-            celery_task = celery.send_task('pipeline.start_optimization', 
-                args=[task_id, input_path, output_path])
+            # Use the registered task directly with .delay() method
+            from pipeline_tasks import start_optimization_pipeline
+            celery_task = start_optimization_pipeline.delay(
+                task_id, input_path, output_path
+            )
             
             logger.info(f"Started modular optimization pipeline for task {celery_task.id}")
             
@@ -214,10 +214,12 @@ def upload_file():
             logger.error(f"Failed to start optimization pipeline: {e}")
             # Fallback to legacy single task
             try:
-                # Import to register tasks and use send_task
-                import tasks
-                celery_task = celery.send_task('tasks.optimize_glb_file', 
-                    args=[input_path, output_path, original_name, quality_level, enable_lod, enable_simplification])
+                # Use the registered task directly with .delay() method
+                from tasks import optimize_glb_file
+                celery_task = optimize_glb_file.delay(
+                    input_path, output_path, original_name, 
+                    quality_level, enable_lod, enable_simplification
+                )
                 logger.info(f"Using legacy optimization task for {celery_task.id}")
             except Exception as e2:
                 logger.error(f"Fallback task also failed: {e2}")

@@ -14,7 +14,8 @@ from sqlalchemy import text
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
-celery_app = make_celery(__name__)
+# Import the shared Celery instance
+from celery_app import celery as celery_app
 
 class PipelineStage:
     """

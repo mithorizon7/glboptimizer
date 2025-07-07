@@ -15,7 +15,7 @@ def make_celery(app_name=__name__):
         app_name,
         broker=redis_url,
         backend=redis_url,
-        include=['tasks', 'cleanup_scheduler']
+        include=['tasks', 'cleanup_scheduler', 'pipeline_tasks']  # Include all task modules
     )
     
     # Configure Celery settings
@@ -61,5 +61,14 @@ def make_celery(app_name=__name__):
     
     return celery
 
-# Create the default instance for worker commands
-celery = make_celery(__name__)
+# Create the single, shared instance here
+celery = make_celery()
+
+# Force task discovery by importing task modules
+try:
+    import tasks  # This registers tasks.optimize_glb_file
+    import cleanup_scheduler  # This registers cleanup tasks
+    import pipeline_tasks  # This registers pipeline tasks
+except ImportError as e:
+    import logging
+    logging.warning(f"Failed to import some task modules: {e}")
