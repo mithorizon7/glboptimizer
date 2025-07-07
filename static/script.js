@@ -783,8 +783,3 @@ class ModelViewer3D {
 document.addEventListener('DOMContentLoaded', () => {
     new GLBOptimizer();
 });
-
-// Initialize the optimizer when the page loads
-document.addEventListener('DOMContentLoaded', () => {
-    new GLBOptimizer();
-});

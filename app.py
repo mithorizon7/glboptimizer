@@ -16,19 +16,12 @@ load_dotenv()
 # Get configuration
 config = get_config()
 
-# Configure logging
+# Configure logging - Use console only in development to avoid file path issues
 log_level = getattr(logging, config.LOG_LEVEL, logging.INFO)
-if config.LOG_TO_FILE:
-    logging.basicConfig(
-        level=log_level,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler(config.LOG_FILE_PATH),
-            logging.StreamHandler()
-        ]
-    )
-else:
-    logging.basicConfig(level=log_level)
+logging.basicConfig(
+    level=log_level,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 
 logger = logging.getLogger(__name__)
 
@@ -260,30 +253,28 @@ def cleanup_task(task_id):
         # Get task result from Celery
         celery_task = celery.AsyncResult(task_id)
         
-        if celery_task.state == 'SUCCESS':
-            result = celery_task.result
-            output_file = result.get('output_file')
-            
-            # Remove output file
-            if output_file:
-                output_path = os.path.join(app.config['OUTPUT_FOLDER'], output_file)
-                try:
-                    os.remove(output_path)
-                    logging.info(f"Cleaned up output file: {output_path}")
-                except Exception as e:
-                    logging.warning(f"Failed to remove output file {output_path}: {str(e)}")
+        # Clean up both files using direct path construction (no directory scanning needed)
+        # This is more efficient than the previous approach of scanning directories
+        original_filename = f"{task_id}.glb"
+        original_path = os.path.join(app.config['UPLOAD_FOLDER'], original_filename)
         
-        # Remove original file (kept for 3D viewer comparison)
-        upload_dir = app.config['UPLOAD_FOLDER']
-        for filename in os.listdir(upload_dir):
-            if filename.startswith(f"{task_id}_"):
-                original_path = os.path.join(upload_dir, filename)
-                try:
-                    os.remove(original_path)
-                    logging.info(f"Cleaned up original file: {original_path}")
-                except Exception as e:
-                    logging.warning(f"Failed to remove original file {original_path}: {str(e)}")
-                break
+        if os.path.exists(original_path):
+            try:
+                os.remove(original_path)
+                logging.info(f"Cleaned up original file: {original_path}")
+            except Exception as e:
+                logging.warning(f"Failed to remove original file {original_path}: {str(e)}")
+        
+        # Also remove the optimized file using direct path construction
+        optimized_filename = f"{task_id}_optimized.glb"
+        optimized_path = os.path.join(app.config['OUTPUT_FOLDER'], optimized_filename)
+        
+        if os.path.exists(optimized_path):
+            try:
+                os.remove(optimized_path)
+                logging.info(f"Cleaned up optimized file: {optimized_path}")
+            except Exception as e:
+                logging.warning(f"Failed to remove optimized file {optimized_path}: {str(e)}")
         
         # Revoke/forget the task in Celery
         celery_task.forget()

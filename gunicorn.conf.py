@@ -37,8 +37,8 @@ user = os.environ.get('GUNICORN_USER', 'www-data')
 group = os.environ.get('GUNICORN_GROUP', 'www-data')
 
 # Logging
-accesslog = os.environ.get('GUNICORN_ACCESS_LOG', '/var/log/glb-optimizer/access.log')
-errorlog = os.environ.get('GUNICORN_ERROR_LOG', '/var/log/glb-optimizer/error.log')
+accesslog = os.environ.get('GUNICORN_ACCESS_LOG', 'access.log')
+errorlog = os.environ.get('GUNICORN_ERROR_LOG', 'error.log')
 loglevel = os.environ.get('GUNICORN_LOG_LEVEL', 'info')
 access_log_format = '%(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s" %(D)s'
 

@@ -110,6 +110,7 @@ class DevelopmentConfig(Config):
     LOG_LEVEL = 'DEBUG'
     FILE_RETENTION_HOURS = 1  # Shorter retention for development
     CLEANUP_ENABLED = False  # Disable automatic cleanup in development
+    LOG_TO_FILE = False  # Disable file logging in development to avoid path issues
 
 class ProductionConfig(Config):
     """Production-specific configuration with enhanced security"""
