@@ -520,16 +520,16 @@ def cleanup_task(task_id):
             except Exception as e:
                 logging.warning(f"Failed to remove original file {original_path}: {str(e)}")
         
-        # Also remove the optimized file using direct path construction
+        # DO NOT remove the optimized file - users need to download it!
+        # Optimized files will be cleaned up later by scheduled cleanup task
         optimized_filename = f"{task_id}_optimized.glb"
         optimized_path = os.path.join(config.OUTPUT_FOLDER, optimized_filename)
         
+        # Just log that the file exists for download
         if os.path.exists(optimized_path):
-            try:
-                os.remove(optimized_path)
-                logging.info(f"Cleaned up optimized file: {optimized_path}")
-            except Exception as e:
-                logging.warning(f"Failed to remove optimized file {optimized_path}: {str(e)}")
+            logging.info(f"Optimized file ready for download: {optimized_path}")
+        else:
+            logging.warning(f"Optimized file not found: {optimized_path}")
         
         # Revoke/forget the task in Celery
         celery_task.forget()

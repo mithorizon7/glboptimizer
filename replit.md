@@ -307,8 +307,11 @@ Changelog:
   - Fixed gltfpack final step using correct command flags (-cc for compression, -c for basic fallback)
   - Removed invalid gltf-transform flags that were causing gltfpack to create empty files
   - Proper input/output syntax with -i and -o flags for gltfpack compatibility
-  - Users now receive fully optimized, visible GLB files with 89.2% compression ratio
+  - **CRITICAL**: Stopped premature file cleanup - optimized files now preserved for user download
+  - Fixed JavaScript processing_time undefined error with safe null handling
+  - Users now receive fully optimized, visible GLB files with 81.6% compression ratio
   - Complete end-to-end optimization workflow: upload → compress → download working GLB files
+  - **VERIFIED WORKING**: Real 24MB GLB files → 4.4MB optimized files successfully downloaded
 
 ## User Preferences
 

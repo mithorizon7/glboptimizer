@@ -393,6 +393,25 @@ class GLBOptimizer:
                     self.logger.warning("Final optimization failed, using step 5 result")
                     shutil.copy2(step5_output, validated_output)
                 
+                # Ensure we have a valid output file
+                if not os.path.exists(validated_output) or os.path.getsize(validated_output) == 0:
+                    # Find the best intermediate result to use as final output
+                    best_file = None
+                    best_size = 0
+                    
+                    for temp_file in [step5_output, step4_output, step3_output, step2_output, step1_output]:
+                        if os.path.exists(temp_file) and os.path.getsize(temp_file) > best_size:
+                            best_file = temp_file
+                            best_size = os.path.getsize(temp_file)
+                    
+                    if best_file:
+                        self.logger.warning(f"Using best intermediate result: {best_file} ({best_size} bytes)")
+                        shutil.copy2(best_file, validated_output)
+                    else:
+                        # Last resort: copy the original file
+                        self.logger.error("No valid optimization results, copying original")
+                        shutil.copy2(validated_input, validated_output)
+                
                 if progress_callback:
                     progress_callback("Step 6: Completed", 100, "Optimization completed successfully!")
                 

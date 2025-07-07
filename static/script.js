@@ -401,7 +401,7 @@ class GLBOptimizer {
         this.resultOriginalSize.textContent = this.formatFileSize(progress.original_size);
         this.resultOptimizedSize.textContent = this.formatFileSize(progress.optimized_size);
         this.resultCompression.textContent = `${progress.compression_ratio.toFixed(1)}%`;
-        this.resultTime.textContent = `${progress.processing_time.toFixed(1)}s`;
+        this.resultTime.textContent = `${(progress.processing_time || 0).toFixed ? (progress.processing_time || 0).toFixed(1) : (progress.processing_time || 'N/A')}s`;
         
         // Add performance metrics if available
         if (progress.performance_metrics) {
