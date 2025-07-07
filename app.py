@@ -56,6 +56,76 @@ def get_db():
     """Get database session"""
     return SessionLocal()
 
+def process_file_synchronously(file_path, output_path, task_id, quality_level, enable_lod, enable_simplification):
+    """Synchronous file processing when Celery is unavailable"""
+    try:
+        from optimizer import GLBOptimizer
+        import time
+        
+        # Update task to processing
+        db = get_db()
+        
+        # Create task record
+        optimization_task = OptimizationTask(
+            id=task_id,
+            original_filename=os.path.basename(file_path),
+            secure_filename=f"{task_id}.glb",
+            original_size=os.path.getsize(file_path),
+            quality_level=quality_level,
+            enable_lod=enable_lod,
+            enable_simplification=enable_simplification,
+            status='processing',
+            progress=10,
+            current_step='Starting optimization',
+            started_at=datetime.now(timezone.utc)
+        )
+        db.add(optimization_task)
+        db.commit()
+        
+        # Run optimization
+        optimizer = GLBOptimizer()
+        start_time = time.time()
+        
+        # Get original file size
+        original_size = os.path.getsize(file_path)
+        
+        result = optimizer.optimize_glb(
+            input_path=file_path,
+            output_path=output_path,
+            quality_level=quality_level,
+            enable_lod=enable_lod,
+            enable_simplification=enable_simplification,
+            progress_callback=lambda p, s: None  # Skip progress updates for sync mode
+        )
+        
+        processing_time = time.time() - start_time
+        compressed_size = os.path.getsize(output_path) if os.path.exists(output_path) else 0
+        compression_ratio = (1 - compressed_size / original_size) * 100 if original_size > 0 else 0
+        
+        # Update task to completed
+        optimization_task.status = 'completed'
+        optimization_task.progress = 100
+        optimization_task.current_step = 'Optimization complete!'
+        optimization_task.completed_at = datetime.now(timezone.utc)
+        optimization_task.original_size = original_size
+        optimization_task.compressed_size = compressed_size
+        optimization_task.compression_ratio = compression_ratio
+        optimization_task.processing_time = processing_time
+        db.commit()
+        
+        logger.info(f"Synchronous optimization completed: {original_size} -> {compressed_size} bytes ({compression_ratio:.1f}% reduction)")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Synchronous optimization failed: {e}")
+        try:
+            optimization_task.status = 'failed'
+            optimization_task.error_message = str(e)
+            db.commit()
+        except:
+            pass
+        return False
+
 def get_or_create_user_session():
     """Get or create user session for tracking"""
     try:
@@ -201,43 +271,43 @@ def upload_file():
             'name': original_name
         }
         
-        # Start modular optimization pipeline - now that we have unified Celery instance
+        # Check if Celery is available, otherwise use synchronous processing
+        if celery is None:
+            logger.info("Celery unavailable - using synchronous processing")
+            success = process_file_synchronously(input_path, output_path, task_id, quality_level, enable_lod, enable_simplification)
+            if success:
+                return jsonify({'task_id': task_id, 'status': 'completed', 'fallback_mode': True})
+            else:
+                return jsonify({'error': 'Optimization failed'}), 500
+        
+        # Try to use Celery for async processing
         try:
             # Use the shared Celery instance to call the task
             celery_task = celery.send_task(
                 'pipeline_tasks.start_optimization_pipeline',
                 args=[task_id, input_path, output_path]
             )
-            
             logger.info(f"Started modular optimization pipeline for task {celery_task.id}")
             
         except Exception as e:
             logger.error(f"Failed to start optimization pipeline: {e}")
-            # Fallback to legacy single task
-            try:
-                # Use the shared Celery instance to call the task
-                celery_task = celery.send_task(
-                    'tasks.optimize_glb_file',
-                    args=[input_path, output_path, original_name, 
-                          quality_level, enable_lod, enable_simplification]
-                )
-                logger.info(f"Using legacy optimization task for {celery_task.id}")
-            except Exception as e2:
-                logger.error(f"Fallback task also failed: {e2}")
-                # Final fallback - create mock task ID
-                task_id = f'sync_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
-                logger.info(f"Using synchronous processing with ID: {task_id}")
-                return task_id
+            # Fallback to synchronous processing
+            logger.info("Falling back to synchronous processing")
+            success = process_file_synchronously(input_path, output_path, task_id, quality_level, enable_lod, enable_simplification)
+            if success:
+                return jsonify({'task_id': task_id, 'status': 'completed', 'fallback_mode': True})
+            else:
+                return jsonify({'error': 'Optimization failed'}), 500
         
-        # Create database record for tracking (simplified for stability)
+        # Create database record for tracking
         try:
             db = get_db()
             try:
-                task_id = getattr(celery_task, 'id', f'sync_{datetime.now().strftime("%Y%m%d_%H%M%S")}')
+                final_task_id = getattr(celery_task, 'id', task_id)
                 optimization_task = OptimizationTask(
-                    id=task_id,
+                    id=final_task_id,
                     original_filename=original_filename,
-                    secure_filename=f"{task_id}.glb",
+                    secure_filename=f"{final_task_id}.glb",
                     original_size=original_size,
                     quality_level=quality_level,
                     enable_lod=enable_lod,
@@ -246,7 +316,7 @@ def upload_file():
                 )
                 db.add(optimization_task)
                 db.commit()
-                logger.info(f"Created database record for task {getattr(celery_task, 'id', 'unknown')}")
+                logger.info(f"Created database record for task {final_task_id}")
             finally:
                 db.close()
         except Exception as e:
