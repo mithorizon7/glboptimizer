@@ -32,13 +32,15 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-# Import the shared Celery instance
+# Import the proper Celery instance with Redis support
 try:
-    from celery_app import celery
+    from celery_redis_proper import celery, broker_type
+    logger.info(f"Celery loaded with {broker_type} broker")
 except Exception as e:
     # Fallback mode - disable Celery entirely
     celery = None
-    logging.warning(f"Celery unavailable: {e}. Running in fallback mode.")
+    broker_type = 'none'
+    logger.warning(f"Celery unavailable: {e}. Running in fallback mode.")
 
 # Import tasks to ensure they're registered with Celery
 try:
@@ -89,7 +91,7 @@ def process_file_synchronously(file_path, output_path, task_id, quality_level, e
         # Get original file size
         original_size = os.path.getsize(file_path)
         
-        result = optimizer.optimize_glb(
+        result = optimizer.optimize(
             input_path=file_path,
             output_path=output_path,
             quality_level=quality_level,
