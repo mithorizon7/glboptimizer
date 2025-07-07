@@ -61,8 +61,6 @@ def make_celery(app_name=__name__):
     
     return celery
 
-# Create Celery instance
-celery = make_celery()
-
-if __name__ == '__main__':
-    celery.start()
+# DO NOT create the instance here anymore.
+# celery = make_celery()
+# It will be created in the entrypoint scripts (main.py, tasks.py, etc.)

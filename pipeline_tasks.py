@@ -11,14 +11,14 @@ from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 from celery import Celery
 from celery.utils.log import get_task_logger
+from celery_app import make_celery
 
 from database import SessionLocal
 from models import OptimizationTask
 from optimizer import GLBOptimizer
 
-# Configure Celery
-celery_app = Celery('glb_pipeline')
-celery_app.config_from_object('celery_app')
+# Configure Celery using the factory pattern
+celery_app = make_celery('glb_pipeline')
 
 logger = get_task_logger(__name__)
 

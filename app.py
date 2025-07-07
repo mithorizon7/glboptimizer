@@ -7,7 +7,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 import uuid
 from datetime import datetime, timezone
 from config import get_config
-from celery_app import celery
+# from celery_app import celery  # Removed - using factory pattern now
 # Import the task function to ensure it's registered
 import tasks
 from database import SessionLocal, init_database

@@ -3,25 +3,26 @@ import os
 import subprocess
 import time
 import logging
-
-# Set environment variables BEFORE any imports to ensure they're available
-os.environ['REDIS_URL'] = 'redis://localhost:6379/0'
-os.environ['CELERY_BROKER_URL'] = 'redis://localhost:6379/0'
-os.environ['CELERY_RESULT_BACKEND'] = 'redis://localhost:6379/0'
-os.environ['FLASK_SECRET_KEY'] = 'dev_secret_key_change_in_production'
-
-# Load environment from .env file if it exists
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except ImportError:
-    pass
-
-from app import app
+import atexit
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+# Keep track of subprocesses to terminate them on exit
+processes = []
+
+def cleanup_processes():
+    """Ensure all background processes are terminated when the app exits."""
+    logger.info("Shutting down background processes...")
+    for p in processes:
+        if p.poll() is None:  # if the process is still running
+            p.terminate()
+            p.wait()
+    logger.info("Cleanup complete.")
+
+# Register the cleanup function to run on exit
+atexit.register(cleanup_processes)
 
 def ensure_redis_running():
     """Ensure Redis is running, start it if needed"""
