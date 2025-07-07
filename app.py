@@ -71,9 +71,19 @@ def upload_file():
         if not allowed_file(file.filename):
             return jsonify({'error': 'Invalid file type. Only GLB files are allowed.'}), 400
         
-        # Check file size
+        # Check file size before reading content
         if hasattr(file, 'content_length') and file.content_length > config.MAX_CONTENT_LENGTH:
             return jsonify({'error': f'File too large. Maximum size is {config.MAX_CONTENT_LENGTH // (1024*1024)}MB.'}), 400
+        
+        # Additional security: Basic file content validation for GLB files
+        # Reset file pointer to beginning for content check
+        file.seek(0)
+        file_header = file.read(12)  # Read first 12 bytes for GLB magic header
+        file.seek(0)  # Reset for actual save
+        
+        # GLB files must start with "glTF" magic number (0x46546C67) followed by version
+        if len(file_header) < 4 or file_header[:4] != b'glTF':
+            return jsonify({'error': 'Invalid GLB file format. File does not contain valid GLB header.'}), 400
         
         # Generate unique task ID
         task_id = str(uuid.uuid4())
