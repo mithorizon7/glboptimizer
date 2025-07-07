@@ -41,22 +41,8 @@ except ImportError as e:
     logger.warning(f"Failed to import tasks: {e}")
     logger.info("Application will continue without background processing")
 
-app = Flask(__name__)
-app.secret_key = config.SECRET_KEY
-app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
-
-# Initialize database only if not already done
-def init_app_database():
-    """Initialize database safely"""
-    try:
-        init_database()
-        logger.info("Database initialized successfully")
-    except Exception as e:
-        logger.error(f"Failed to initialize database: {e}")
-
-# Only initialize if we're the main process (not a gunicorn worker)
-if os.environ.get('GUNICORN_PROCESS') != 'worker':
-    init_app_database()
+# Note: Flask app creation is now handled by the factory pattern in main.py
+# This file now contains only the route functions and utilities
 
 def get_db():
     """Get database session"""
@@ -88,11 +74,7 @@ def get_or_create_user_session():
         logger.error(f"Failed to get/create user session: {e}")
         return None
 
-# Apply configuration
-app.config['MAX_CONTENT_LENGTH'] = config.MAX_CONTENT_LENGTH
-
-# Security headers middleware
-@app.after_request
+# Security headers middleware - now applied by factory pattern
 def add_security_headers(response):
     """Add security headers to all responses"""
     if os.environ.get('SECURITY_HEADERS_ENABLED', 'true').lower() in ['true', '1', 'yes']:
@@ -140,11 +122,11 @@ logger.info(f"GLB Optimizer starting with config: {config.get_config_summary()}"
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in config.ALLOWED_EXTENSIONS
 
-@app.route('/')
+
 def index():
     return render_template('index.html')
 
-@app.route('/upload', methods=['POST'])
+
 def upload_file():
     try:
         if 'file' not in request.files:
@@ -268,7 +250,7 @@ def upload_file():
 
 
 
-@app.route('/progress/<task_id>')
+
 def get_progress(task_id):
     try:
         # Get task result from Celery
@@ -315,7 +297,7 @@ def get_progress(task_id):
     except Exception as e:
         return jsonify({'error': f'Failed to get task status: {str(e)}'}), 500
 
-@app.route('/download/<task_id>')
+
 def download_file(task_id):
     try:
         # Get task result from Celery
@@ -334,7 +316,7 @@ def download_file(task_id):
         if not output_file:
             return jsonify({'error': 'Output file not available'}), 404
         
-        file_path = os.path.join(app.config['OUTPUT_FOLDER'], output_file)
+        file_path = os.path.join(config.OUTPUT_FOLDER, output_file)
         if not os.path.exists(file_path):
             return jsonify({'error': 'Output file not found'}), 404
         
@@ -348,7 +330,7 @@ def download_file(task_id):
     except Exception as e:
         return jsonify({'error': f'Download failed: {str(e)}'}), 500
 
-@app.route('/cleanup/<task_id>', methods=['POST'])
+
 def cleanup_task(task_id):
     """Clean up task files and result data"""
     try:
@@ -358,7 +340,7 @@ def cleanup_task(task_id):
         # Clean up both files using direct path construction (no directory scanning needed)
         # This is more efficient than the previous approach of scanning directories
         original_filename = f"{task_id}.glb"
-        original_path = os.path.join(app.config['UPLOAD_FOLDER'], original_filename)
+        original_path = os.path.join(config.UPLOAD_FOLDER, original_filename)
         
         if os.path.exists(original_path):
             try:
@@ -369,7 +351,7 @@ def cleanup_task(task_id):
         
         # Also remove the optimized file using direct path construction
         optimized_filename = f"{task_id}_optimized.glb"
-        optimized_path = os.path.join(app.config['OUTPUT_FOLDER'], optimized_filename)
+        optimized_path = os.path.join(config.OUTPUT_FOLDER, optimized_filename)
         
         if os.path.exists(optimized_path):
             try:
@@ -387,14 +369,14 @@ def cleanup_task(task_id):
         logging.error(f"Cleanup failed for task {task_id}: {str(e)}")
         return jsonify({'error': f'Cleanup failed: {str(e)}'}), 500
 
-@app.route('/original/<task_id>')
+
 def get_original_file(task_id):
     """Serve the original GLB file for 3D comparison viewer"""
     try:
         # Look for the original file in uploads directory
         # Original files are temporarily kept until task completion for comparison
         original_file_path = None
-        upload_dir = app.config['UPLOAD_FOLDER']
+        upload_dir = config.UPLOAD_FOLDER
         
         # Find the original file by task_id prefix
         for filename in os.listdir(upload_dir):
@@ -419,7 +401,7 @@ def get_original_file(task_id):
     except Exception as e:
         return jsonify({'error': f'Failed to serve original file: {str(e)}'}), 500
 
-@app.route('/download-logs/<task_id>')
+
 def download_error_logs(task_id):
     """Download detailed error logs for optimization tasks"""
     try:
@@ -475,7 +457,7 @@ Task is still in progress or in an unknown state.
         return jsonify({'error': f'Log download failed: {str(e)}'}), 500
 
 
-@app.route('/admin/analytics')
+
 def admin_analytics():
     """Admin analytics dashboard showing database insights"""
     try:
@@ -486,7 +468,7 @@ def admin_analytics():
         return jsonify({'error': 'Failed to generate analytics'}), 500
 
 
-@app.route('/admin/stats')
+
 def admin_stats():
     """Quick database statistics endpoint"""
     try:
@@ -508,4 +490,5 @@ def admin_stats():
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    # Note: App is now created via factory pattern in main.py
+    pass
