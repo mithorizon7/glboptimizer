@@ -126,7 +126,18 @@ class GLBOptimizer {
         
         // 3D Viewer controls
         this.syncCamerasBtn.addEventListener('click', () => {
-            this.viewer3D.syncCameras();
+            // Toggle camera sync state
+            if (this.viewer3D.isSynced) {
+                this.viewer3D.unsyncCameras();
+                this.syncCamerasBtn.innerHTML = '<i class="fas fa-link me-1"></i>Sync Cameras';
+                this.syncCamerasBtn.classList.remove('btn-success');
+                this.syncCamerasBtn.classList.add('btn-outline-secondary');
+            } else {
+                this.viewer3D.syncCameras();
+                this.syncCamerasBtn.innerHTML = '<i class="fas fa-unlink me-1"></i>Unsync Cameras';
+                this.syncCamerasBtn.classList.remove('btn-outline-secondary');
+                this.syncCamerasBtn.classList.add('btn-success');
+            }
         });
         
         this.resetCamerasBtn.addEventListener('click', () => {
@@ -453,6 +464,16 @@ class GLBOptimizer {
                 originalUrl,
                 optimizedUrl
             );
+            
+            // Enable camera syncing by default for better comparison experience
+            setTimeout(() => {
+                this.viewer3D.syncCameras();
+                // Update button state to reflect default syncing
+                this.syncCamerasBtn.innerHTML = '<i class="fas fa-unlink me-1"></i>Unsync Cameras';
+                this.syncCamerasBtn.classList.remove('btn-outline-secondary');
+                this.syncCamerasBtn.classList.add('btn-success');
+            }, 1000); // Give viewers time to initialize
+            
         } catch (error) {
             console.error('Failed to initialize 3D viewer:', error);
             // Show fallback message
@@ -487,6 +508,7 @@ class ModelViewer3D {
         this.optimizedControls = null;
         this.loader = new GLTFLoader();
         this.cameraSynced = false;
+        this.isSynced = false;
     }
     
     initializeViewers(originalContainer, optimizedContainer, originalUrl, optimizedUrl) {
@@ -694,31 +716,37 @@ class ModelViewer3D {
     }
     
     syncCameras() {
-        if (!this.originalCamera || !this.optimizedCamera) return;
+        if (!this.originalCamera || !this.optimizedCamera || this.isSynced) return;
         
-        this.cameraSynced = !this.cameraSynced;
+        this.cameraSynced = true;
+        this.isSynced = true;
         
-        if (this.cameraSynced) {
-            // Sync optimized camera to original
-            this.optimizedCamera.position.copy(this.originalCamera.position);
-            this.optimizedCamera.rotation.copy(this.originalCamera.rotation);
-            this.optimizedControls.target.copy(this.originalControls.target);
-            this.optimizedControls.update();
-            
-            // Add sync indicators
-            document.querySelector('#original-viewer').closest('.card').classList.add('camera-synced');
-            document.querySelector('#optimized-viewer').closest('.card').classList.add('camera-synced');
-            
-            // Sync on camera changes
-            this.originalControls.addEventListener('change', this.onCameraChange.bind(this));
-        } else {
-            // Remove sync
-            this.originalControls.removeEventListener('change', this.onCameraChange.bind(this));
-            
-            // Remove sync indicators
-            document.querySelector('#original-viewer').closest('.card').classList.remove('camera-synced');
-            document.querySelector('#optimized-viewer').closest('.card').classList.remove('camera-synced');
-        }
+        // Sync optimized camera to original
+        this.optimizedCamera.position.copy(this.originalCamera.position);
+        this.optimizedCamera.rotation.copy(this.originalCamera.rotation);
+        this.optimizedControls.target.copy(this.originalControls.target);
+        this.optimizedControls.update();
+        
+        // Add sync indicators
+        document.querySelector('#original-viewer').closest('.card').classList.add('camera-synced');
+        document.querySelector('#optimized-viewer').closest('.card').classList.add('camera-synced');
+        
+        // Sync on camera changes
+        this.originalControls.addEventListener('change', this.onCameraChange.bind(this));
+    }
+    
+    unsyncCameras() {
+        if (!this.isSynced) return;
+        
+        this.cameraSynced = false;
+        this.isSynced = false;
+        
+        // Remove sync
+        this.originalControls.removeEventListener('change', this.onCameraChange.bind(this));
+        
+        // Remove sync indicators
+        document.querySelector('#original-viewer').closest('.card').classList.remove('camera-synced');
+        document.querySelector('#optimized-viewer').closest('.card').classList.remove('camera-synced');
     }
     
     onCameraChange() {
@@ -738,10 +766,16 @@ class ModelViewer3D {
             this.optimizedControls.reset();
         }
         
-        // Remove sync
-        this.cameraSynced = false;
-        document.querySelector('#original-viewer').closest('.card').classList.remove('camera-synced');
-        document.querySelector('#optimized-viewer').closest('.card').classList.remove('camera-synced');
+        // Unsync cameras and update state
+        this.unsyncCameras();
+        
+        // Reset sync button to default state
+        const syncBtn = document.getElementById('sync-cameras-btn');
+        if (syncBtn) {
+            syncBtn.innerHTML = '<i class="fas fa-link me-1"></i>Sync Cameras';
+            syncBtn.classList.remove('btn-success');
+            syncBtn.classList.add('btn-outline-secondary');
+        }
     }
 }
 

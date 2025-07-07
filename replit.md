@@ -143,6 +143,12 @@ Changelog:
   - Added manual cleanup capabilities for emergency use
   - Enhanced logging configuration with file output options
   - Created startup script with automatic cleanup scheduling
+- July 07, 2025. Enhanced 3D viewer user experience with default camera syncing:
+  - Enabled camera syncing by default for intuitive model comparison
+  - Refactored sync/unsync functionality with proper state management
+  - Updated button behavior to toggle between sync and unsync states
+  - Added visual feedback and tooltips for better user guidance
+  - Improved out-of-the-box experience for comparing models from same angle
 
 ## User Preferences
 
