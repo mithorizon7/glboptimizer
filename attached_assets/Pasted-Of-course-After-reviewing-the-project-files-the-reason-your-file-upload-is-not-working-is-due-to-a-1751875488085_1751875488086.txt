@@ -1,0 +1,98 @@
+Of course. After reviewing the project files, the reason your file upload is not working is due to a specific bug in the client-side JavaScript.
+
+The Problem
+
+The core issue is in your static/script.js file. When you select a file, the handleFileSelect function runs and completely replaces the content of the "drop zone" with new HTML.
+
+This process destroys the original <input type="file" ...> element that is essential for the file dialog to work.
+
+After the first file is selected, the file input is gone. Clicking "Choose File" or the drop zone again does nothing because the JavaScript that is supposed to trigger the hidden input element can no longer find it.
+
+How to Fix It
+
+The solution is to modify your HTML and JavaScript so that the file input element is never destroyed. You'll create a new container for the text and button, and the JavaScript will only update that container.
+
+Step 1: Update index.html
+
+In your templates/index.html file, wrap the text and button inside the drop zone in a new div with an id like drop-zone-content.
+
+File to Edit: templates/index.html
+
+Change This:
+
+HTML
+<div id="drop-zone" class="drop-zone text-center p-5 mb-4">
+    <i class="fas fa-cloud-upload-alt fa-3x mb-3 text-muted"></i>
+    <h5>Drag & drop your GLB file here</h5>
+    <p class="text-muted">or click to select a file</p>
+    <input type="file" id="file-input" accept=".glb" style="display: none;">
+    <button type="button" class="btn btn-outline-secondary" onclick="document.getElementById('file-input').click()">
+        <i class="fas fa-folder-open me-2"></i>
+        Choose File
+    </button>
+</div>
+To This:
+
+HTML
+<div id="drop-zone" class="drop-zone text-center p-5 mb-4">
+    <div id="drop-zone-content">
+        <i class="fas fa-cloud-upload-alt fa-3x mb-3 text-muted"></i>
+        <h5>Drag & drop your GLB file here</h5>
+        <p class="text-muted">or click to select a file</p>
+        <button type="button" class="btn btn-outline-secondary" onclick="document.getElementById('file-input').click()">
+            <i class="fas fa-folder-open me-2"></i>
+            Choose File
+        </button>
+    </div>
+    <input type="file" id="file-input" accept=".glb" style="display: none;">
+</div>
+Step 2: Update script.js
+
+Now, modify your JavaScript to target the new drop-zone-content div instead of the entire drop-zone.
+
+File to Edit: static/script.js
+
+In the handleFileSelect function, change this.dropZone.innerHTML to document.getElementById('drop-zone-content').innerHTML.
+
+Change This:
+
+JavaScript
+this.dropZone.innerHTML = `
+    <i class="fas fa-file-archive fa-3x mb-3 text-success"></i>
+    ...
+`;
+To This:
+
+JavaScript
+document.getElementById('drop-zone-content').innerHTML = `
+    <i class="fas fa-file-archive fa-3x mb-3 text-success"></i>
+    <h5>${file.name}</h5>
+    <p class="text-muted">${this.formatFileSize(file.size)}</p>
+    <button type="button" class="btn btn-outline-secondary" onclick="document.getElementById('file-input').click()">
+        <i class="fas fa-exchange-alt me-2"></i>
+        Change File
+    </button>
+`;
+In the resetUI function, make the same change.
+
+Change This:
+
+JavaScript
+this.dropZone.innerHTML = `
+    <i class="fas fa-cloud-upload-alt fa-3x mb-3 text-muted"></i>
+    ...
+`;
+To This:
+
+JavaScript
+document.getElementById('drop-zone-content').innerHTML = `
+    <i class="fas fa-cloud-upload-alt fa-3x mb-3 text-muted"></i>
+    <h5>Drag & drop your GLB file here</h5>
+    <p class="text-muted">or click to select a file</p>
+    <button type="button" class="btn btn-outline-secondary" onclick="document.getElementById('file-input').click()">
+        <i class="fas fa-folder-open me-2"></i>
+        Choose File
+    </button>
+`;
+After making these changes, your file upload functionality will work correctly and consistently because the essential file input element will no longer be removed from the page.
+

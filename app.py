@@ -93,12 +93,12 @@ def add_security_headers(response):
         # Control referrer information
         response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
         
-        # Content Security Policy (restrictive for uploads)
+        # Content Security Policy (allowing required external resources)
         response.headers['Content-Security-Policy'] = (
             "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline' cdnjs.cloudflare.com cdn.jsdelivr.net; "
-            "style-src 'self' 'unsafe-inline' cdnjs.cloudflare.com cdn.jsdelivr.net cdn.replit.com; "
-            "font-src 'self' cdnjs.cloudflare.com; "
+            "script-src 'self' 'unsafe-inline' cdnjs.cloudflare.com cdn.jsdelivr.net unpkg.com; "
+            "style-src 'self' 'unsafe-inline' cdnjs.cloudflare.com cdn.jsdelivr.net cdn.replit.com fonts.googleapis.com; "
+            "font-src 'self' cdnjs.cloudflare.com fonts.gstatic.com; "
             "img-src 'self' data:; "
             "object-src 'none'; "
             "base-uri 'self'"

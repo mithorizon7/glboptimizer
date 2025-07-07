@@ -177,14 +177,16 @@ class GLBOptimizer {
         // Enable upload button
         this.uploadBtn.disabled = false;
         
-        // Update drop zone to show selected file without destroying the input
-        const icon = this.dropZone.querySelector('i');
-        const heading = this.dropZone.querySelector('h5');
-        const paragraph = this.dropZone.querySelector('p');
-        
-        if (icon) icon.className = 'fas fa-file-archive fa-3x mb-3 text-success';
-        if (heading) heading.textContent = file.name;
-        if (paragraph) paragraph.textContent = this.formatFileSize(file.size);
+        // Update drop zone content to show selected file
+        document.getElementById('drop-zone-content').innerHTML = `
+            <i class="fas fa-file-archive fa-3x mb-3 text-success"></i>
+            <h5>${file.name}</h5>
+            <p class="text-muted">${this.formatFileSize(file.size)}</p>
+            <button type="button" class="btn btn-outline-secondary" onclick="document.getElementById('file-input').click()">
+                <i class="fas fa-exchange-alt me-2"></i>
+                Change File
+            </button>
+        `;
     }
     
     async startOptimization() {
@@ -418,14 +420,16 @@ class GLBOptimizer {
         this.optimizationSettings.style.display = 'none';
         this.uploadBtn.disabled = true;
         
-        // Reset drop zone to initial state without destroying the input
-        const icon = this.dropZone.querySelector('i');
-        const heading = this.dropZone.querySelector('h5');
-        const paragraph = this.dropZone.querySelector('p');
-        
-        if (icon) icon.className = 'fas fa-cloud-upload-alt fa-3x mb-3 text-muted';
-        if (heading) heading.textContent = 'Drag & drop your GLB file here';
-        if (paragraph) paragraph.textContent = 'or click to select a file';
+        // Reset drop zone content to initial state
+        document.getElementById('drop-zone-content').innerHTML = `
+            <i class="fas fa-cloud-upload-alt fa-3x mb-3 text-muted"></i>
+            <h5>Drag & drop your GLB file here</h5>
+            <p class="text-muted">or click to select a file</p>
+            <button type="button" class="btn btn-outline-secondary" onclick="document.getElementById('file-input').click()">
+                <i class="fas fa-folder-open me-2"></i>
+                Choose File
+            </button>
+        `;
         
         // Reset progress
         this.progressBar.style.width = '0%';
