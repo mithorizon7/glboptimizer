@@ -16,12 +16,16 @@ This is a web-based GLB (3D model) file optimization tool that implements indust
 - **User Experience**: Single-page application with section-based navigation (upload → progress → results)
 
 ### Backend Architecture
-- **Framework**: Flask (Python web framework)
-- **Structure**: Modular design with separated concerns
+- **Framework**: Flask (Python web framework) with Celery task queue
+- **Task Queue**: Redis + Celery for scalable background processing
+- **Structure**: Production-ready modular design with separated concerns
   - `app.py`: Main Flask application with routing and file handling
   - `optimizer.py`: Core optimization logic using external tools
-  - `main.py`: Application entry point
-- **File Processing**: Asynchronous optimization with progress tracking
+  - `celery_app.py`: Celery configuration and task queue setup
+  - `tasks.py`: Celery background tasks for optimization processing
+  - `main.py`: Application entry point with Redis/Celery auto-start
+- **File Processing**: Production-grade asynchronous optimization with Celery workers
+- **Scalability**: Controlled concurrency (1 optimization at a time) with proper resource management
 - **Security**: File type validation, secure filename handling, file size limits (100MB)
 
 ## Key Components
@@ -47,16 +51,17 @@ This is a web-based GLB (3D model) file optimization tool that implements indust
   6. **Final Assembly**: Package optimized components
 
 ### Progress Tracking System
-- **Problem**: Long-running optimization processes need user feedback
-- **Solution**: Real-time progress updates with detailed step information
-- **Implementation**: Thread-safe progress dictionary with polling mechanism
+- **Problem**: Long-running optimization processes need user feedback and scalable task management
+- **Solution**: Real-time progress updates with Celery task state management
+- **Implementation**: Redis-backed Celery task queue with proper state tracking and result storage
 
 ## Data Flow
 
 1. **Upload Phase**: User selects GLB file → Frontend validates → Backend receives and stores
-2. **Processing Phase**: Optimization starts in background thread → Progress updates sent to frontend
-3. **Results Phase**: Optimized file generated → Statistics calculated → Download link provided
-4. **Cleanup Phase**: Temporary files removed → User can start new optimization
+2. **Queue Phase**: Optimization task queued in Redis → Celery worker picks up task
+3. **Processing Phase**: Background worker processes optimization → Real-time progress updates via Celery state
+4. **Results Phase**: Optimized file generated → Statistics calculated → Download link provided
+5. **Cleanup Phase**: Temporary files removed → Task results cleaned from Redis
 
 ## External Dependencies
 
@@ -107,6 +112,13 @@ Changelog:
   - Added user-configurable optimization settings (quality levels)
   - Improved error handling and graceful degradation
   - Updated UI with optimization settings panel
+- July 07, 2025. Major architecture upgrade for production scalability:
+  - Replaced threading with Redis + Celery task queue system
+  - Implemented proper background task management with controlled concurrency
+  - Added production-ready startup scripts and process management
+  - Enhanced error handling and resource cleanup
+  - Added comprehensive logging and monitoring capabilities
+  - Now supports multiple concurrent users with proper resource isolation
 
 ## User Preferences
 
