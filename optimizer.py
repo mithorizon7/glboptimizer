@@ -572,72 +572,92 @@ class GLBOptimizer:
             return {'success': False, 'error': f'Draco compression failed: {str(e)}'}
     
     def _run_advanced_geometry_compression(self, input_path, output_path, progress_callback=None):
-        """Advanced geometry compression with intelligent method selection"""
+        """Advanced geometry compression with intelligent method selection and adaptive strategy"""
         import os
         import tempfile
+        import json
         
-        # Create temporary files for testing both methods
+        # First, analyze the model to determine optimal compression strategy
+        if progress_callback:
+            progress_callback("Step 2: Geometry Compression", 40, "Analyzing model complexity...")
+        
+        model_analysis = self._analyze_model_complexity(input_path)
+        
+        # Create temporary files for testing selected methods based on analysis
         temp_dir = os.path.dirname(output_path)
         meshopt_output = os.path.join(temp_dir, "test_meshopt.glb")
         draco_output = os.path.join(temp_dir, "test_draco.glb")
+        hybrid_output = os.path.join(temp_dir, "test_hybrid.glb")
         
-        meshopt_result = None
-        draco_result = None
-        meshopt_size = float('inf')
-        draco_size = float('inf')
+        results = {}
+        file_sizes = {}
         
-        # Try Meshopt compression first (generally faster and more compatible)
-        if progress_callback:
-            progress_callback("Step 2: Geometry Compression", 42, "Testing Meshopt compression...")
+        # Select compression methods based on model characteristics
+        methods_to_test = self._select_compression_methods(model_analysis)
         
-        meshopt_result = self._run_gltfpack_geometry(input_path, meshopt_output)
-        if meshopt_result['success'] and os.path.exists(meshopt_output):
-            meshopt_size = os.path.getsize(meshopt_output)
-            self.logger.info(f"Meshopt compression achieved {meshopt_size} bytes")
+        # Test selected compression methods based on model analysis
+        progress_step = 41
         
-        # Try Draco compression for comparison (often achieves better compression for complex geometry)
-        if progress_callback:
-            progress_callback("Step 2: Geometry Compression", 45, "Testing Draco compression...")
+        for method in methods_to_test:
+            if progress_callback:
+                method_name = method.replace('_', ' ').title()
+                progress_callback("Step 2: Geometry Compression", progress_step, f"Testing {method_name} compression...")
+            
+            if method == 'meshopt':
+                results['meshopt'] = self._run_gltfpack_geometry(input_path, meshopt_output)
+                if results['meshopt']['success'] and os.path.exists(meshopt_output):
+                    file_sizes['meshopt'] = os.path.getsize(meshopt_output)
+                    self.logger.info(f"Enhanced Meshopt: {file_sizes['meshopt']} bytes")
+            
+            elif method == 'draco':
+                results['draco'] = self._run_draco_compression(input_path, draco_output)
+                if results['draco']['success'] and os.path.exists(draco_output):
+                    file_sizes['draco'] = os.path.getsize(draco_output)
+                    self.logger.info(f"Advanced Draco: {file_sizes['draco']} bytes")
+            
+            elif method == 'hybrid':
+                results['hybrid'] = self._run_gltf_transform_optimize(input_path, hybrid_output)
+                if results['hybrid']['success'] and os.path.exists(hybrid_output):
+                    file_sizes['hybrid'] = os.path.getsize(hybrid_output)
+                    self.logger.info(f"Hybrid optimization: {file_sizes['hybrid']} bytes")
+            
+            progress_step += 2
         
-        draco_result = self._run_draco_compression(input_path, draco_output)
-        if draco_result['success'] and os.path.exists(draco_output):
-            draco_size = os.path.getsize(draco_output)
-            self.logger.info(f"Draco compression achieved {draco_size} bytes")
+        # Find the best compression method based on file size and success
+        successful_methods = {method: size for method, size in file_sizes.items() 
+                            if results[method]['success']}
         
-        # Select the best compression method based on results
-        selected_method = None
-        selected_file = None
-        
-        if meshopt_result['success'] and draco_result['success']:
-            # Both methods succeeded - choose the one with better compression
-            compression_threshold = 0.95  # Draco must be at least 5% smaller to be worth the compatibility trade-off
-            if draco_size < meshopt_size * compression_threshold:
-                selected_method = "Draco"
-                selected_file = draco_output
-                self.logger.info(f"Selected Draco: {draco_size} bytes vs Meshopt: {meshopt_size} bytes")
-            else:
-                selected_method = "Meshopt"
-                selected_file = meshopt_output
-                self.logger.info(f"Selected Meshopt: {meshopt_size} bytes vs Draco: {draco_size} bytes")
-        elif meshopt_result['success']:
-            selected_method = "Meshopt"
-            selected_file = meshopt_output
-            self.logger.info("Selected Meshopt (Draco failed)")
-        elif draco_result['success']:
-            selected_method = "Draco"
-            selected_file = draco_output
-            self.logger.info("Selected Draco (Meshopt failed)")
-        else:
-            # Both failed - return the meshopt error as it's more likely to be informative
-            self.logger.error("Both Meshopt and Draco compression failed")
+        if not successful_methods:
+            self.logger.error("All compression methods failed")
             # Cleanup temp files
-            for temp_file in [meshopt_output, draco_output]:
+            for temp_file in [meshopt_output, draco_output, hybrid_output]:
                 try:
                     if os.path.exists(temp_file):
                         os.remove(temp_file)
                 except:
                     pass
-            return meshopt_result
+            return results.get('meshopt', {'success': False, 'error': 'All compression methods failed'})
+        
+        # Select the method with the smallest file size
+        best_method = min(successful_methods.items(), key=lambda x: x[1])
+        selected_method = best_method[0]
+        selected_size = best_method[1]
+        
+        # Map method names to file paths
+        method_files = {
+            'meshopt': meshopt_output,
+            'draco': draco_output,
+            'hybrid': hybrid_output
+        }
+        selected_file = method_files[selected_method]
+        
+        # Log compression comparison
+        compression_info = []
+        for method, size in successful_methods.items():
+            status = "SELECTED" if method == selected_method else ""
+            compression_info.append(f"{method.title()}: {size} bytes {status}")
+        
+        self.logger.info(f"Compression results: {', '.join(compression_info)}")
         
         # Copy the best result to the final output
         if progress_callback:
@@ -673,6 +693,135 @@ class GLBOptimizer:
         except Exception as e:
             self.logger.error(f"Failed to finalize compression: {str(e)}")
             return {'success': False, 'error': f'Failed to finalize compression: {str(e)}'}
+    
+    def _run_gltf_transform_optimize(self, input_path, output_path):
+        """Hybrid optimization using gltf-transform's comprehensive optimize command"""
+        # Quality-based optimization settings
+        quality_settings = {
+            'high': {
+                'compress': 'meshopt',  # Use meshopt for better compatibility
+                'instance': True,       # Instance repeated geometry
+                'simplify': '0.8',      # Light simplification
+                'weld': '0.0001'        # Precise vertex welding
+            },
+            'balanced': {
+                'compress': 'draco',    # Use Draco for better compression
+                'instance': True,
+                'simplify': '0.6',      # Moderate simplification  
+                'weld': '0.001'         # Moderate vertex welding
+            },
+            'maximum_compression': {
+                'compress': 'draco',    # Use Draco for maximum compression
+                'instance': True,
+                'simplify': '0.4',      # Aggressive simplification
+                'weld': '0.01',         # Aggressive vertex welding
+                'quantize': '16'        # Quantize positions
+            }
+        }
+        
+        settings = quality_settings.get(self.quality_level, quality_settings['balanced'])
+        
+        try:
+            # Build gltf-transform optimize command
+            cmd = [
+                'npx', 'gltf-transform', 'optimize',
+                input_path, output_path,
+                '--compress', settings['compress']
+            ]
+            
+            # Add conditional parameters
+            if settings.get('instance'):
+                cmd.append('--instance')
+            
+            if settings.get('simplify'):
+                cmd.extend(['--simplify', settings['simplify']])
+            
+            if settings.get('weld'):
+                cmd.extend(['--weld', settings['weld']])
+            
+            if settings.get('quantize'):
+                cmd.extend(['--quantize', settings['quantize']])
+            
+            # Add additional optimization flags
+            cmd.extend([
+                '--join',       # Join compatible primitives
+                '--palette',    # Optimize texture palettes
+                '--sparse'      # Use sparse accessors when beneficial
+            ])
+            
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+            
+            if result.returncode != 0:
+                self.logger.error(f"gltf-transform optimize failed: {result.stderr}")
+                return {
+                    'success': False,
+                    'error': f'Hybrid optimization failed: {result.stderr}'
+                }
+            
+            return {'success': True}
+            
+        except subprocess.TimeoutExpired:
+            return {'success': False, 'error': 'Hybrid optimization timed out'}
+        except Exception as e:
+            return {'success': False, 'error': f'Hybrid optimization failed: {str(e)}'}
+    
+    def _analyze_model_complexity(self, input_path):
+        """Analyze model characteristics to determine optimal compression strategy"""
+        try:
+            # Use gltf-transform inspect to analyze the model
+            cmd = ['npx', 'gltf-transform', 'inspect', input_path, '--format', 'json']
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+            
+            if result.returncode == 0:
+                import json
+                try:
+                    analysis = json.loads(result.stdout)
+                    return {
+                        'vertices': analysis.get('scenes', [{}])[0].get('vertices', 0),
+                        'primitives': analysis.get('scenes', [{}])[0].get('primitives', 0),
+                        'materials': len(analysis.get('materials', [])),
+                        'textures': len(analysis.get('textures', [])),
+                        'animations': len(analysis.get('animations', [])),
+                        'complexity': 'unknown'
+                    }
+                except json.JSONDecodeError:
+                    pass
+            
+            # Fallback: simple file size-based analysis
+            file_size = os.path.getsize(input_path)
+            return {
+                'file_size': file_size,
+                'complexity': 'high' if file_size > 10_000_000 else 'medium' if file_size > 1_000_000 else 'low'
+            }
+            
+        except Exception as e:
+            self.logger.warning(f"Model analysis failed: {str(e)}")
+            return {'complexity': 'unknown'}
+    
+    def _select_compression_methods(self, analysis):
+        """Select optimal compression methods based on model analysis"""
+        methods = []
+        complexity = analysis.get('complexity', 'unknown')
+        vertex_count = analysis.get('vertices', 0)
+        
+        # Always test meshopt as baseline
+        methods.append('meshopt')
+        
+        # For high-complexity or high-vertex models, Draco often performs better
+        if (complexity in ['high', 'unknown'] or 
+            vertex_count > 50000 or 
+            self.quality_level == 'maximum_compression'):
+            methods.append('draco')
+        
+        # Test hybrid approach for complex models or when maximum compression is needed
+        if (complexity == 'high' or 
+            vertex_count > 100000 or 
+            analysis.get('file_size', 0) > 5_000_000 or
+            self.quality_level in ['balanced', 'maximum_compression']):
+            methods.append('hybrid')
+        
+        self.logger.info(f"Selected compression methods based on analysis: {methods}")
+        return methods
     
     def _run_gltf_transform_textures(self, input_path, output_path):
         """Step 4: Compress textures with KTX2/BasisU (high quality settings)"""
