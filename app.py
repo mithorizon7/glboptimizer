@@ -238,5 +238,60 @@ def get_original_file(task_id):
     except Exception as e:
         return jsonify({'error': f'Failed to serve original file: {str(e)}'}), 500
 
+@app.route('/download-logs/<task_id>')
+def download_error_logs(task_id):
+    """Download detailed error logs for optimization tasks"""
+    try:
+        import time
+        from io import BytesIO
+        
+        # Get task result from Celery
+        celery_task = celery.AsyncResult(task_id)
+        
+        if celery_task.state == 'FAILURE':
+            error_info = celery_task.info
+            log_content = f"""GLB Optimization Error Report
+Generated: {time.strftime('%Y-%m-%d %H:%M:%S')}
+Task ID: {task_id}
+Status: FAILED
+
+Error Details:
+{error_info.get('detailed_error', 'No detailed error information available') if isinstance(error_info, dict) else str(error_info)}
+
+User Message:
+{error_info.get('error', 'No user message available') if isinstance(error_info, dict) else 'See error details above'}
+"""
+        elif celery_task.state == 'SUCCESS':
+            log_content = f"""GLB Optimization Log
+Generated: {time.strftime('%Y-%m-%d %H:%M:%S')}
+Task ID: {task_id}
+Status: SUCCESS
+
+No errors occurred during optimization.
+"""
+        else:
+            log_content = f"""GLB Optimization Log
+Generated: {time.strftime('%Y-%m-%d %H:%M:%S')}
+Task ID: {task_id}
+Status: {celery_task.state}
+
+Task is still in progress or in an unknown state.
+"""
+        
+        # Convert to BytesIO for proper file serving
+        log_bytes = BytesIO(log_content.encode('utf-8'))
+        log_bytes.seek(0)
+        
+        return send_file(
+            log_bytes,
+            as_attachment=True,
+            download_name=f"glb_optimization_log_{task_id}.txt",
+            mimetype='text/plain'
+        )
+    
+    except Exception as e:
+        logging.error(f"Log download failed for task {task_id}: {str(e)}")
+        return jsonify({'error': f'Log download failed: {str(e)}'}), 500
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)

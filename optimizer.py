@@ -4,6 +4,8 @@ import tempfile
 import time
 import logging
 import shutil
+import json
+from typing import Dict, Any, Optional
 
 class GLBOptimizer:
     def __init__(self, quality_level='high'):
@@ -13,6 +15,209 @@ class GLBOptimizer:
         """
         self.logger = logging.getLogger(__name__)
         self.quality_level = quality_level
+        self.detailed_logs = []  # Store detailed error logs for user download
+        
+    def _run_subprocess(self, cmd: list, step_name: str, description: str) -> Dict[str, Any]:
+        """
+        Run subprocess with comprehensive error handling and logging
+        """
+        try:
+            self.logger.info(f"Running {step_name}: {' '.join(cmd)}")
+            
+            # Run subprocess with full output capture
+            result = subprocess.run(
+                cmd, 
+                capture_output=True, 
+                text=True, 
+                timeout=300,  # 5 minute timeout
+                cwd=os.getcwd()
+            )
+            
+            # Log all output for debugging
+            if result.stdout:
+                self.logger.debug(f"{step_name} stdout: {result.stdout}")
+                
+            if result.stderr:
+                self.logger.debug(f"{step_name} stderr: {result.stderr}")
+                
+            if result.returncode == 0:
+                return {
+                    'success': True,
+                    'stdout': result.stdout,
+                    'stderr': result.stderr,
+                    'step': step_name
+                }
+            else:
+                error_details = self._analyze_error(result.stderr, result.stdout, step_name)
+                detailed_log = {
+                    'step': step_name,
+                    'description': description,
+                    'command': ' '.join(cmd),
+                    'exit_code': result.returncode,
+                    'stdout': result.stdout,
+                    'stderr': result.stderr,
+                    'analysis': error_details,
+                    'timestamp': time.strftime('%Y-%m-%d %H:%M:%S')
+                }
+                self.detailed_logs.append(detailed_log)
+                
+                return {
+                    'success': False,
+                    'error': error_details['user_message'],
+                    'detailed_error': error_details['technical_details'],
+                    'step': step_name,
+                    'logs': detailed_log
+                }
+                
+        except subprocess.TimeoutExpired:
+            error_msg = f"{step_name} timed out after 5 minutes"
+            self.logger.error(error_msg)
+            return {
+                'success': False,
+                'error': f"{description} took too long and was stopped. This usually indicates a very complex model or insufficient system resources.",
+                'detailed_error': error_msg,
+                'step': step_name
+            }
+            
+        except FileNotFoundError:
+            error_msg = f"Required tool not found for {step_name}"
+            self.logger.error(error_msg)
+            return {
+                'success': False,
+                'error': f"Required optimization tool is not installed. Please contact support.",
+                'detailed_error': error_msg,
+                'step': step_name
+            }
+            
+        except Exception as e:
+            error_msg = f"Unexpected error in {step_name}: {str(e)}"
+            self.logger.error(error_msg)
+            return {
+                'success': False,
+                'error': f"An unexpected error occurred during {description.lower()}.",
+                'detailed_error': error_msg,
+                'step': step_name
+            }
+    
+    def _analyze_error(self, stderr: str, stdout: str, step_name: str) -> Dict[str, str]:
+        """
+        Analyze error output and provide user-friendly explanations
+        """
+        combined_output = (stderr + stdout).lower()
+        
+        # Common error patterns and user-friendly explanations
+        error_patterns = {
+            'out of memory': {
+                'user_message': 'The model is too large for available memory. Try using "Maximum Compression" quality level or reduce the model complexity.',
+                'category': 'Resource Limitation'
+            },
+            'unsupported format': {
+                'user_message': 'The GLB file contains unsupported features or corrupted data. Please verify the file is a valid GLB.',
+                'category': 'File Format Error'
+            },
+            'texture compression failed': {
+                'user_message': 'Texture optimization failed, possibly due to unsupported image formats. The model may contain non-standard textures.',
+                'category': 'Texture Processing Error'
+            },
+            'mesh optimization failed': {
+                'user_message': 'Geometry optimization failed. The model may have invalid mesh data or unsupported mesh features.',
+                'category': 'Geometry Processing Error'
+            },
+            'animation compression failed': {
+                'user_message': 'Animation optimization failed. The model may contain complex or corrupted animation data.',
+                'category': 'Animation Processing Error'
+            },
+            'draco': {
+                'user_message': 'Draco compression failed. Trying alternative compression method.',
+                'category': 'Compression Error'
+            },
+            'ktx2': {
+                'user_message': 'Advanced texture compression failed. Falling back to standard compression.',
+                'category': 'Texture Compression Error'
+            },
+            'basis': {
+                'user_message': 'Basis Universal texture compression failed. Using fallback compression.',
+                'category': 'Texture Compression Error'
+            },
+            'file not found': {
+                'user_message': 'Required file was not found during processing. This may indicate file corruption.',
+                'category': 'File System Error'
+            },
+            'permission denied': {
+                'user_message': 'File access permission denied. Please try uploading the file again.',
+                'category': 'File System Error'
+            },
+            'invalid gltf': {
+                'user_message': 'The GLB file is corrupted or invalid. Please verify the file is properly exported.',
+                'category': 'File Format Error'
+            },
+            'node.js': {
+                'user_message': 'JavaScript optimization tool error. This is usually a temporary issue.',
+                'category': 'Tool Error'
+            }
+        }
+        
+        # Find matching error pattern
+        for pattern, info in error_patterns.items():
+            if pattern in combined_output:
+                return {
+                    'user_message': info['user_message'],
+                    'category': info['category'],
+                    'technical_details': f"{step_name} failed: {stderr[:500]}..." if len(stderr) > 500 else stderr
+                }
+        
+        # Generic error handling
+        if stderr:
+            return {
+                'user_message': f'Optimization step "{step_name}" failed. This may be due to complex model features or file corruption.',
+                'category': 'Processing Error',
+                'technical_details': f"{step_name} error: {stderr[:500]}..." if len(stderr) > 500 else stderr
+            }
+        
+        return {
+            'user_message': f'Optimization step "{step_name}" failed for an unknown reason.',
+            'category': 'Unknown Error',
+            'technical_details': f"No error details available for {step_name}"
+        }
+    
+    def get_detailed_logs(self) -> str:
+        """
+        Get formatted detailed logs for user download
+        """
+        if not self.detailed_logs:
+            return "No detailed error logs available."
+            
+        log_content = []
+        log_content.append("GLB Optimization Error Report")
+        log_content.append("=" * 40)
+        log_content.append(f"Generated: {time.strftime('%Y-%m-%d %H:%M:%S')}")
+        log_content.append("")
+        
+        for i, log in enumerate(self.detailed_logs, 1):
+            log_content.append(f"Error #{i}: {log['step']}")
+            log_content.append("-" * 30)
+            log_content.append(f"Description: {log['description']}")
+            log_content.append(f"Command: {log['command']}")
+            log_content.append(f"Exit Code: {log['exit_code']}")
+            log_content.append(f"Timestamp: {log['timestamp']}")
+            log_content.append("")
+            log_content.append("Error Analysis:")
+            log_content.append(f"  Category: {log['analysis']['category']}")
+            log_content.append(f"  User Message: {log['analysis']['user_message']}")
+            log_content.append("")
+            log_content.append("Technical Details:")
+            if log['stdout']:
+                log_content.append("STDOUT:")
+                log_content.append(log['stdout'])
+                log_content.append("")
+            if log['stderr']:
+                log_content.append("STDERR:")
+                log_content.append(log['stderr'])
+                log_content.append("")
+            log_content.append("=" * 40)
+            log_content.append("")
+            
+        return "\n".join(log_content)
     
     def optimize(self, input_path, output_path, progress_callback=None):
         """
@@ -101,23 +306,8 @@ class GLBOptimizer:
     
     def _run_gltf_transform_prune(self, input_path, output_path):
         """Step 1: Prune unused data"""
-        try:
-            cmd = ['npx', 'gltf-transform', 'prune', input_path, output_path]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
-            
-            if result.returncode != 0:
-                self.logger.error(f"gltf-transform prune failed: {result.stderr}")
-                return {
-                    'success': False,
-                    'error': f'Pruning failed: {result.stderr}'
-                }
-            
-            return {'success': True}
-        
-        except subprocess.TimeoutExpired:
-            return {'success': False, 'error': 'Pruning operation timed out'}
-        except Exception as e:
-            return {'success': False, 'error': f'Pruning failed: {str(e)}'}
+        cmd = ['npx', 'gltf-transform', 'prune', input_path, output_path]
+        return self._run_subprocess(cmd, "Prune Unused Data", "Removing unused data and orphaned nodes")
     
     def _run_gltf_transform_weld(self, input_path, output_path):
         """Step 2: Weld vertices and join meshes"""
@@ -157,44 +347,31 @@ class GLBOptimizer:
     
     def _run_gltfpack_geometry(self, input_path, output_path):
         """Step 3: Compress geometry with meshopt and optional simplification"""
-        try:
-            # Try with light simplification first (recommended in workflow)
-            # Using 0.7 as suggested in the "zero-to-hero" pipeline
-            cmd = [
+        # Try with light simplification first (recommended in workflow)
+        cmd = [
+            'gltfpack',
+            '-i', input_path,
+            '-o', output_path,
+            '--meshopt',
+            '--quantize',
+            '--simplify', '0.7'  # 70% triangle count (light simplification)
+        ]
+        result = self._run_subprocess(cmd, "Geometry Compression", "Compressing geometry with meshopt and simplification")
+        
+        if not result['success']:
+            self.logger.warning(f"Geometry compression with simplification failed, trying without: {result.get('error', 'Unknown error')}")
+            # Fallback without simplification
+            cmd_fallback = [
                 'gltfpack',
                 '-i', input_path,
                 '-o', output_path,
                 '--meshopt',
-                '--quantize',
-                '--simplify', '0.7'  # 70% triangle count (light simplification)
+                '--quantize'
             ]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
-            
-            if result.returncode != 0:
-                self.logger.warning(f"Geometry compression with simplification failed, trying without: {result.stderr}")
-                # Fallback without simplification
-                cmd_fallback = [
-                    'gltfpack',
-                    '-i', input_path,
-                    '-o', output_path,
-                    '--meshopt',
-                    '--quantize'
-                ]
-                result = subprocess.run(cmd_fallback, capture_output=True, text=True, timeout=600)
-                
-                if result.returncode != 0:
-                    self.logger.error(f"Basic geometry compression failed: {result.stderr}")
-                    return {
-                        'success': False,
-                        'error': f'Geometry compression failed: {result.stderr}'
-                    }
-            
-            return {'success': True}
+            fallback_result = self._run_subprocess(cmd_fallback, "Geometry Compression (Fallback)", "Compressing geometry without simplification")
+            return fallback_result
         
-        except subprocess.TimeoutExpired:
-            return {'success': False, 'error': 'Geometry compression timed out'}
-        except Exception as e:
-            return {'success': False, 'error': f'Geometry compression failed: {str(e)}'}
+        return result
     
     def _run_draco_compression(self, input_path, output_path):
         """Alternative geometry compression using Draco (fallback option)"""
