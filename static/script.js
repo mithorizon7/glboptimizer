@@ -74,12 +74,21 @@ class GLBOptimizer {
     }
     
     setupEventListeners() {
+        // Debug: Check if elements exist
+        console.log('File input element:', this.fileInput);
+        console.log('Drop zone element:', this.dropZone);
+        
         // File input change
-        this.fileInput.addEventListener('change', (e) => {
-            if (e.target.files.length > 0) {
-                this.handleFileSelect(e.target.files[0]);
-            }
-        });
+        if (this.fileInput) {
+            this.fileInput.addEventListener('change', (e) => {
+                console.log('File input change event fired', e.target.files);
+                if (e.target.files.length > 0) {
+                    this.handleFileSelect(e.target.files[0]);
+                }
+            });
+        } else {
+            console.error('File input element not found!');
+        }
         
         // Drag and drop
         this.dropZone.addEventListener('click', () => {
@@ -146,9 +155,20 @@ class GLBOptimizer {
         });
         
         // Change file button
-        this.changeFileBtn.addEventListener('click', () => {
-            this.fileInput.click();
-        });
+        if (this.changeFileBtn) {
+            this.changeFileBtn.addEventListener('click', () => {
+                console.log('Change file button clicked');
+                this.fileInput.click();
+            });
+        }
+        
+        // Test the file input click programmatically
+        window.testFileInput = () => {
+            console.log('Testing file input click...');
+            if (this.fileInput) {
+                this.fileInput.click();
+            }
+        };
     }
     
     handleFileSelect(file) {
@@ -845,5 +865,11 @@ class ModelViewer3D {
 
 // Initialize the application when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-    new GLBOptimizer();
+    console.log('DOM loaded, initializing GLB Optimizer...');
+    try {
+        window.glbOptimizer = new GLBOptimizer();
+        console.log('GLB Optimizer initialized successfully');
+    } catch (error) {
+        console.error('Error initializing GLB Optimizer:', error);
+    }
 });
