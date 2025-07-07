@@ -1,5 +1,5 @@
 # This is the complete, corrected .replit file.
-# Copy and paste this entire content into your .replit file.
+# The command on line 22 has been updated to use `uv pip sync pyproject.toml`.
 
 modules = ["python-3.11", "nodejs-20", "python3", "postgresql-16"]
 
@@ -9,8 +9,7 @@ packages = ["openssl", "postgresql", "redis"]
 
 [deployment]
 deploymentTarget = "autoscale"
-# This command is used by the deployment system. It's also been corrected.
-run = ["sh", "-c", "uv pip install -e . && gunicorn --bind 0.0.0.0:5000 --reuse-port --reload wsgi:application"]
+run = ["sh", "-c", "uv pip sync pyproject.toml && gunicorn --bind 0.0.0.0:5000 --reuse-port --reload wsgi:application"]
 
 [workflows]
 runButton = "Project"
@@ -31,8 +30,8 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 # This is the critical line that has been fixed.
-# It now installs dependencies first, then runs gunicorn.
-args = "uv pip install -e . && gunicorn --bind 0.0.0.0:5000 --reuse-port --reload wsgi:application"
+# It now tells `uv pip sync` to use the pyproject.toml file.
+args = "uv pip sync pyproject.toml && gunicorn --bind 0.0.0.0:5000 --reuse-port --reload wsgi:application"
 waitForPort = 5000
 
 [[ports]]
