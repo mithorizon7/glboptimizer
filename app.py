@@ -183,22 +183,40 @@ def upload_file():
             'name': original_name
         }
         
-        # Start Celery task for optimization
+        # Start modular optimization pipeline
         try:
-            from tasks import optimize_glb_file
-            celery_task = optimize_glb_file.delay(
-                input_path,
-                output_path,
-                original_name,
-                quality_level,
-                enable_lod,
-                enable_simplification
+            from pipeline_tasks import start_optimization_pipeline
+            
+            # Use the new modular pipeline
+            pipeline_task_id = start_optimization_pipeline(
+                task_id=task_id,
+                input_path=input_path,
+                output_path=output_path
             )
+            
+            # Create a mock task object for compatibility
+            celery_task = type('PipelineTask', (), {'id': task_id})()
+            logger.info(f"Started modular optimization pipeline for task {task_id}")
+            
         except Exception as e:
-            logger.error(f"Failed to start Celery task: {e}")
-            # Fallback to synchronous processing
-            celery_task = type('MockTask', (), {'id': f'sync_{datetime.now().strftime("%Y%m%d_%H%M%S")}'})()
-            logger.info(f"Using synchronous processing for task {celery_task.id}")
+            logger.error(f"Failed to start optimization pipeline: {e}")
+            # Fallback to legacy single task
+            try:
+                from tasks import optimize_glb_file
+                celery_task = optimize_glb_file.delay(
+                    input_path,
+                    output_path,
+                    original_name,
+                    quality_level,
+                    enable_lod,
+                    enable_simplification
+                )
+                logger.info(f"Using legacy optimization task for {celery_task.id}")
+            except Exception as e2:
+                logger.error(f"Fallback task also failed: {e2}")
+                # Final fallback to mock task
+                celery_task = type('MockTask', (), {'id': f'sync_{datetime.now().strftime("%Y%m%d_%H%M%S")}'})()
+                logger.info(f"Using mock task for {celery_task.id}")
         
         # Create database record for tracking (simplified for stability)
         try:

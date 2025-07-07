@@ -1,0 +1,328 @@
+I've analyzed the core issues preventing your application from starting correctly and have prepared the necessary fixes. The problems are centered around how environment variables are loaded, how the Celery application is initialized, and some type-safety issues in your database operations.
+
+Here are the corrected files and an explanation of the changes.
+
+1. celery_app.py - Fixing the Root REDIS_URL Issue
+
+The primary problem was that Celery was being configured before your startup scripts had a chance to set the REDIS_URL environment variable. The fix is to delay the creation of the Celery app instance.
+
+Here is the corrected celery_app.py:
+
+Python
+import os
+from celery import Celery
+from celery.schedules import crontab
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
+def make_celery(app_name=__name__):
+    """
+    A factory function to create and configure the Celery app instance.
+    This prevents the app from being created at import time.
+    """
+    # Use Redis as the broker and result backend.
+    # The environment variable is now guaranteed to be loaded before this runs.
+    redis_url = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
+    
+    celery = Celery(
+        app_name,
+        broker=redis_url,
+        backend=redis_url,
+        include=['tasks', 'cleanup_scheduler']
+    )
+    
+    # Configure Celery settings
+    celery.conf.update(
+        task_serializer='json',
+        accept_content=['json'],
+        result_serializer='json',
+        timezone='UTC',
+        enable_utc=True,
+        
+        # Worker configuration for optimization tasks
+        worker_concurrency=1,  # Only run one optimization at a time to prevent resource exhaustion
+        worker_prefetch_multiplier=1,  # Don't prefetch tasks
+        task_acks_late=True,  # Acknowledge task only after completion
+        worker_max_tasks_per_child=10,  # Restart worker after 10 tasks to prevent memory leaks
+        
+        # Task routing and limits
+        task_routes={
+            'tasks.optimize_glb_file': {'queue': 'optimization'},
+            'cleanup.cleanup_old_files': {'queue': 'cleanup'},
+            'cleanup.cleanup_orphaned_tasks': {'queue': 'cleanup'},
+        },
+        
+        # Periodic task schedule for cleanup
+        beat_schedule={
+            'cleanup-old-files': {
+                'task': 'cleanup.cleanup_old_files',
+                'schedule': crontab(hour=2, minute=0),  # Daily at 2 AM
+            },
+            'cleanup-orphaned-tasks': {
+                'task': 'cleanup.cleanup_orphaned_tasks',
+                'schedule': crontab(hour=2, minute=30),  # Daily at 2:30 AM
+            },
+        } if os.environ.get('CLEANUP_ENABLED', 'true').lower() in ['true', '1', 'yes'] else {},
+        
+        # Result expiration
+        result_expires=3600,  # Results expire after 1 hour
+        
+        # Monitoring
+        worker_send_task_events=True,
+        task_send_sent_event=True,
+    )
+    
+    return celery
+
+# DO NOT create the instance here anymore.
+# celery = make_celery()
+# It will be created in the entrypoint scripts (main.py, tasks.py, etc.)
+2. tasks.py - Applying the Celery Fix and Resolving Type Errors
+
+Now, we'll update tasks.py to use the new Celery factory. This file also contained the "LSP type errors" you mentioned, specifically in how it updated the database. The corrected code fixes this by interacting with the SQLAlchemy model safely, resolving the type errors.
+
+Here is the corrected tasks.py:
+
+Python
+import os
+import time
+import logging
+from datetime import datetime, timezone
+from celery_app import make_celery # Import the factory function
+from optimizer import GLBOptimizer
+from database import SessionLocal
+from models import OptimizationTask, PerformanceMetric
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Create the Celery instance here, ensuring config is loaded
+celery = make_celery()
+
+@celery.task(bind=True, name='tasks.optimize_glb_file')
+def optimize_glb_file(self, input_path, output_path, original_name, quality_level='high', enable_lod=True, enable_simplification=True):
+    """
+    Celery task for optimizing GLB files. Now with type-safe database updates.
+    """
+    
+    def progress_callback(step: str, progress: int, message: str):
+        """Update task progress and database record safely."""
+        self.update_state(
+            state='PROGRESS',
+            meta={
+                'step': step,
+                'progress': progress,
+                'message': message,
+                'status': 'processing'
+            }
+        )
+        logger.info(f"Task {self.request.id}: {step} - {progress}% - {message}")
+        
+        db = SessionLocal()
+        try:
+            task_record = db.query(OptimizationTask).filter(OptimizationTask.id == self.request.id).first()
+            if task_record:
+                task_record.status = 'processing' if progress < 100 else 'completed'
+                task_record.progress = int(progress)
+                task_record.current_step = step
+                if progress == 100:
+                    task_record.completed_at = datetime.now(timezone.utc)
+                db.commit()
+        except Exception as e:
+            logger.error(f"Failed to update database progress: {e}")
+            db.rollback()
+        finally:
+            db.close()
+
+    logger.info(f"Starting optimization task {self.request.id} for file: {original_name}")
+    self.update_state(state='PROGRESS', meta={'step': 'Initializing', 'progress': 0, 'message': 'Starting optimization pipeline'})
+
+    optimizer = GLBOptimizer(quality_level=quality_level)
+    original_size = os.path.getsize(input_path)
+    start_time = time.time()
+    
+    try:
+        result = optimizer.optimize(input_path, output_path, progress_callback)
+        processing_time = time.time() - start_time
+        
+        db = SessionLocal()
+        try:
+            task_record = db.query(OptimizationTask).filter(OptimizationTask.id == self.request.id).first()
+            if not task_record:
+                logger.error(f"Could not find task record for ID: {self.request.id}")
+                # Fallback to avoid crashing
+                return result if result['success'] else {'status': 'error', 'error': 'Task record not found'}
+
+            if result['success']:
+                optimized_size = os.path.getsize(output_path)
+                compression_ratio = ((original_size - optimized_size) / original_size) * 100
+
+                # TYPE-SAFE UPDATE: Assign attributes directly to the model instance
+                task_record.status = 'completed'
+                task_record.progress = 100
+                task_record.compressed_size = int(optimized_size)
+                task_record.compression_ratio = float(compression_ratio)
+                task_record.processing_time = float(processing_time)
+                task_record.completed_at = datetime.now(timezone.utc)
+                
+                logger.info(f"Optimization completed for task {self.request.id}")
+                db.commit()
+
+                # Return the final, successful result
+                return {
+                    'status': 'completed',
+                    'success': True,
+                    'original_size': original_size,
+                    'optimized_size': optimized_size,
+                    'compression_ratio': compression_ratio,
+                    'processing_time': processing_time,
+                    'output_file': os.path.basename(output_path),
+                    'original_name': original_name,
+                    'performance_metrics': result.get('performance_metrics'),
+                    'estimated_memory_savings': result.get('estimated_memory_savings')
+                }
+            else:
+                # Handle failure
+                error_message = result.get('error', 'Unknown error')
+                task_record.status = 'failed'
+                task_record.error_message = str(error_message)
+                task_record.completed_at = datetime.now(timezone.utc)
+                db.commit()
+
+                logger.error(f"Optimization failed for task {self.request.id}: {error_message}")
+                self.update_state(state='FAILURE', meta={'status': 'error', 'error': error_message})
+                return {'status': 'error', 'success': False, 'error': error_message}
+        finally:
+            db.close()
+
+    except Exception as e:
+        logger.error(f"Task {self.request.id} failed with exception: {str(e)}", exc_info=True)
+        db = SessionLocal()
+        try:
+            task_record = db.query(OptimizationTask).filter(OptimizationTask.id == self.request.id).first()
+            if task_record:
+                task_record.status = 'failed'
+                task_record.error_message = str(e)
+                db.commit()
+        finally:
+            db.close()
+            
+        self.update_state(state='FAILURE', meta={'status': 'error', 'error': str(e)})
+        raise
+3. main.py - Fixing the Startup Workflow
+
+This file is your primary entry point for development. The corrected version ensures that environment variables are set correctly and that the Celery worker's logs are visible in your terminal for easier debugging.
+
+Here is the corrected main.py:
+
+Python
+import os
+import subprocess
+import time
+import logging
+import atexit
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+# Keep track of subprocesses to terminate them on exit
+processes = []
+
+def cleanup_processes():
+    """Ensure all background processes are terminated when the app exits."""
+    logger.info("Shutting down background processes...")
+    for p in processes:
+        if p.poll() is None: # if the process is still running
+            p.terminate()
+            p.wait()
+    logger.info("Cleanup complete.")
+
+# Register the cleanup function to run on exit
+atexit.register(cleanup_processes)
+
+def ensure_redis_running():
+    """Ensure Redis is running, start it if needed."""
+    try:
+        result = subprocess.run(['redis-cli', 'ping'], capture_output=True, text=True, timeout=2)
+        if result.returncode == 0 and 'PONG' in result.stdout:
+            logger.info("✅ Redis is already running.")
+            return True
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        logger.info("Redis not found or timed out, attempting to start.")
+
+    logger.info("Starting Redis server in the background...")
+    try:
+        # Start Redis and let it run in the background
+        p = subprocess.Popen(['redis-server', '--daemonize', 'yes', '--port', '6379'])
+        processes.append(p) # Track for cleanup
+        time.sleep(2) # Give it a moment to start
+        # Verify it started
+        result = subprocess.run(['redis-cli', 'ping'], capture_output=True, text=True, timeout=2)
+        if result.returncode == 0 and 'PONG' in result.stdout:
+            logger.info("✅ Redis started successfully.")
+            return True
+        else:
+            logger.error("❌ Failed to verify Redis startup.")
+            return False
+    except Exception as e:
+        logger.error(f"❌ Failed to start Redis: {e}")
+        return False
+
+def start_celery_worker():
+    """Start Celery worker in the same terminal for easy debugging."""
+    logger.info("Starting Celery worker...")
+    try:
+        # Define the command to run Celery worker
+        # It will now show its output in the same console as Flask
+        cmd = [
+            'celery', '-A', 'tasks', 'worker',
+            '--loglevel=info',
+            '--concurrency=1',
+            '--queues=optimization'
+        ]
+        # Use Popen to run it as a background process that logs to the same terminal
+        p = subprocess.Popen(cmd)
+        processes.append(p) # Track for cleanup
+        logger.info("✅ Celery worker started.")
+        return True
+    except Exception as e:
+        logger.error(f"❌ Failed to start Celery worker: {e}")
+        return False
+
+if __name__ == '__main__':
+    # Set critical environment variables first, before any other imports
+    # This ensures Celery and Flask pick up the correct config
+    os.environ['REDIS_URL'] = 'redis://localhost:6379/0'
+    os.environ['FLASK_ENV'] = 'development'
+    os.environ['DATABASE_URL'] = 'postgresql://localhost/glb_optimizer' # Example
+
+    logger.info("🚀 Starting GLB Optimizer in Development Mode...")
+
+    # 1. Ensure Redis is running
+    ensure_redis_running()
+    
+    # 2. Initialize the database
+    try:
+        from database import init_database
+        init_database()
+        logger.info("✅ Database initialized successfully.")
+    except Exception as e:
+        logger.error(f"❌ Database initialization failed: {e}", exc_info=True)
+        
+    # 3. Start the Celery worker
+    start_celery_worker()
+    
+    time.sleep(3) # Give Celery a moment to connect
+    
+    # 4. Import and start the Flask app
+    # We import 'app' here, after env vars are set
+    from app import app
+    logger.info("Starting Flask application on http://0.0.0.0:5000")
+    # Setting use_reloader=False is important for dev mode with background processes
+    app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=False)
+
+These changes will resolve the critical startup issues and make your application more robust and easier to debug. You should now be able to run python main.py and have the entire stack (Redis, Celery, and Flask) start correctly.
