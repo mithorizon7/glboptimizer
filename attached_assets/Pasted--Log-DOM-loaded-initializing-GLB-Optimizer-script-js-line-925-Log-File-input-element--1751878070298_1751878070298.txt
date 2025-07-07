@@ -1,0 +1,70 @@
+[Log] DOM loaded, initializing GLB Optimizer... (script.js, line 925)
+[Log] File input element: –  (script.js, line 28)
+<input type="file" id="file-input" accept=".glb" style="display: none;">
+
+<input type="file" id="file-input" accept=".glb" style="display: none;">
+[Log] Drop zone element: –  (script.js, line 29)
+<div id="drop-zone" class="drop-zone text-center p-5 mb-4">…</div>
+
+<div id="drop-zone" class="drop-zone text-center p-5 mb-4">…</div>
+[Log] Upload button element: –  (script.js, line 30)
+<button id="upload-btn" class="btn btn-primary btn-lg" disabled>…</button>
+
+<button id="upload-btn" class="btn btn-primary btn-lg" disabled>…</button>
+[Log] Adding change event listener to file input (script.js, line 91)
+[Log] File input click test: – () => { (script.js, line 100)
+                console.log('Attempting to click file input...');
+                this.fileInput.click();
+            }
+[Log] GLB Optimizer initialized successfully (script.js, line 928)
+[Log] File input change event fired – FileList {0: File, length: 1, item: function} (script.js, line 93)
+FileList {0: File, length: 1, item: function}FileList
+[Log] handleFileSelect called with file: – "scout.glb" – 35759388 (script.js, line 202)
+[Log] File validation passed, setting selectedFile (script.js, line 217)
+[Log] Updating file details... (script.js, line 221)
+[Log] Showing optimization settings... (script.js, line 226)
+[Log] Enabling upload button... (script.js, line 230)
+[Log] Upload button clicked, starting optimization... (script.js, line 139)
+[Log] startOptimization called (script.js, line 249)
+[Log] selectedFile: – File {name: "scout.glb", lastModified: 1751831022000, webkitRelativePath: "", …} (script.js, line 250)
+File {name: "scout.glb", lastModified: 1751831022000, webkitRelativePath: "", size: 35759388, type: "", …}File
+[Log] Creating form data... (script.js, line 259)
+[Log] Form data created, sending request... (script.js, line 265)
+[Log] Sending fetch request to /upload... (script.js, line 269)
+[Log] Response received: – 200 – "OK" (script.js, line 275)
+[Log] Response data: – {message: "File uploaded successfully. Optimization queued.", original_size: 35759388, task_id: "71e247be-63f1-4dd5-b963-f3ec69eb8a3f"} (script.js, line 277)
+[Log] Task ID stored: – "71e247be-63f1-4dd5-b963-f3ec69eb8a3f" (script.js, line 286)
+[Log] Showing progress section... (script.js, line 290)
+[Log] showProgressSection called (script.js, line 302)
+[Log] Upload section: –  (script.js, line 303)
+<div class="row justify-content-center" id="upload-section" style="display: none;">…</div>
+
+<div class="row justify-content-center" id="upload-section" style="display: none;">…</div>
+[Log] Progress section: –  (script.js, line 304)
+<div class="row justify-content-center mt-4" id="progress-section" style="display: block;">…</div>
+
+<div class="row justify-content-center mt-4" id="progress-section" style="display: block;">…</div>
+[Log] Progress section display set to block (script.js, line 309)
+[Log] Starting progress polling... (script.js, line 292)
+[Log] startProgressPolling called with task ID: – "71e247be-63f1-4dd5-b963-f3ec69eb8a3f" (script.js, line 313)
+[Log] Polling progress for task: 71e247be-63f1-4dd5-b963-f3ec69eb8a3f (script.js, line 316)
+[Log] Progress response: – {completed: false, progress: 0, status: "pending", …} (script.js, line 319)
+{completed: false, progress: 0, status: "pending", step: "Task is queued..."}Object
+[Log] Polling progress for task: 71e247be-63f1-4dd5-b963-f3ec69eb8a3f (script.js, line 316)
+[Log] Progress response: – {completed: false, progress: 0, status: "pending", …} (script.js, line 319)
+{completed: false, progress: 0, status: "pending", step: "Task is queued..."}Object
+[Log] Polling progress for task: 71e247be-63f1-4dd5-b963-f3ec69eb8a3f (script.js, line 316)
+[Log] Progress response: – {completed: false, progress: 0, status: "pending", …} (script.js, line 319)
+{completed: false, progress: 0, status: "pending", step: "Task is queued..."}Object
+[Log] Polling progress for task: 71e247be-63f1-4dd5-b963-f3ec69eb8a3f (script.js, line 316)
+[Log] Progress response: – {completed: false, progress: 0, status: "pending", …} (script.js, line 319)
+{completed: false, progress: 0, status: "pending", step: "Task is queued..."}Object
+[Log] Polling progress for task: 71e247be-63f1-4dd5-b963-f3ec69eb8a3f (script.js, line 316)
+[Log] Progress response: – {completed: false, progress: 0, status: "pending", …} (script.js, line 319)
+{completed: false, progress: 0, status: "pending", step: "Task is queued..."}Object
+[Log] Polling progress for task: 71e247be-63f1-4dd5-b963-f3ec69eb8a3f (script.js, line 316)
+[Log] Progress response: – {completed: false, progress: 0, status: "pending", …} (script.js, line 319)
+{completed: false, progress: 0, status: "pending", step: "Task is queued..."}Object
+[Log] Polling progress for task: 71e247be-63f1-4dd5-b963-f3ec69eb8a3f (script.js, line 316)
+[Log] Progress response: – {completed: false, progress: 0, status: "pending", …} (script.js, line 319)
+{completed: false, progress: 0, status: "pending", step: "Task is queued..."}Object
