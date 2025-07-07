@@ -325,6 +325,12 @@ Changelog:
   - Achieved consistent 81.6% total compression ratio with WebP texture compression
   - System automatically adapts to environment capabilities while maintaining GLB compatibility
   - **VERIFIED WORKING**: Professional-grade optimization achieving 24MB → 4.4MB compression with working downloads and 3D preview
+- July 07, 2025. **KTX2/BASIS UNIVERSAL BREAKTHROUGH**: Successfully enabled advanced texture compression:
+  - Fixed ktx-tools package installation issue (ktx command now available at /nix/store/.../bin/ktx)
+  - KTX2 UASTC and ETC1S compression commands now functional and accessible
+  - System will automatically detect and use superior KTX2 compression when available
+  - Maintains seamless WebP fallback for maximum compatibility across environments
+  - Ready for next-generation texture compression with significant quality and size improvements
 
 ## User Preferences
 

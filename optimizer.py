@@ -930,9 +930,14 @@ class GLBOptimizer:
             # Check if KTX-Software is available by testing ktx command
             ktx_available = False
             try:
-                test_result = subprocess.run(['which', 'ktx'], capture_output=True, text=True)
+                test_result = subprocess.run(['which', 'ktx'], capture_output=True, text=True, timeout=10)
                 ktx_available = test_result.returncode == 0
-            except:
+                if ktx_available:
+                    self.logger.info(f"KTX-Software detected at: {test_result.stdout.strip()}")
+                else:
+                    self.logger.info("KTX-Software not found in PATH")
+            except Exception as e:
+                self.logger.info(f"KTX detection error: {e}")
                 pass
             
             if ktx_available:
