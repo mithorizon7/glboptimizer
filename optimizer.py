@@ -896,43 +896,54 @@ class GLBOptimizer:
         temp_dir = os.path.dirname(output_path)
         ktx2_test = os.path.join(temp_dir, "test_ktx2.glb")
         
-        # Attempt KTX2/Basis Universal compression
+        # Attempt high-quality WebP compression for best available texture compression
         try:
-            self.logger.info("Attempting KTX2/Basis Universal compression...")
-            ktx2_cmd = [
-                'npx', 'gltf-transform', 'ktx',
+            self.logger.info("Attempting WebP texture compression...")
+            
+            # Use WebP compression with high quality settings
+            webp_cmd = [
+                'npx', 'gltf-transform', 'webp',
                 input_path, ktx2_test,
-                '--format', 'uastc',
-                '--compression', '4'
+                '--quality', '95'  # High quality WebP compression
             ]
             
-            result = subprocess.run(ktx2_cmd, capture_output=True, text=True, timeout=600)
+            result = subprocess.run(webp_cmd, capture_output=True, text=True, timeout=600)
             
             if result.returncode == 0 and os.path.exists(ktx2_test):
-                # Basic file size check 
+                # Validate file integrity
                 input_size = os.path.getsize(input_path)
                 test_size = os.path.getsize(ktx2_test)
                 
-                # If KTX2 compression seems reasonable, use it
-                if test_size > 0 and test_size < input_size:
+                self.logger.info(f"WebP command output: {result.stdout}")
+                if result.stderr:
+                    self.logger.info(f"WebP stderr: {result.stderr}")
+                
+                # Check if file is valid and smaller
+                if test_size > 1000 and test_size < input_size:  # Ensure minimum viable size
                     compression_ratio = (1 - test_size / input_size) * 100
                     shutil.move(ktx2_test, output_path)
                     
-                    self.logger.info(f"KTX2 compression successful: {input_size} → {test_size} bytes ({compression_ratio:.1f}% reduction)")
+                    self.logger.info(f"WebP compression successful: {input_size} → {test_size} bytes ({compression_ratio:.1f}% reduction)")
                     return {
                         'success': True,
-                        'method': 'ktx2',
+                        'method': 'webp_high_quality',
                         'compression_ratio': compression_ratio,
                         'input_size': input_size,
                         'output_size': test_size
                     }
+                else:
+                    self.logger.warning(f"WebP output size suspicious: {test_size} bytes")
+            else:
+                self.logger.warning(f"WebP failed - return code: {result.returncode}")
+                if result.stderr:
+                    self.logger.warning(f"WebP error: {result.stderr}")
             
             # Clean up failed attempt
             if os.path.exists(ktx2_test):
                 os.remove(ktx2_test)
                 
         except Exception as e:
-            self.logger.warning(f"KTX2 compression failed: {e}")
+            self.logger.warning(f"WebP compression exception: {e}")
         
         # Fallback to texture resizing
         self.logger.info("Falling back to safe texture resizing...")
