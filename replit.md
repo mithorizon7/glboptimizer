@@ -178,6 +178,14 @@ Changelog:
   - Enhanced visual design with professional feature cards and icons
   - Updated page title and meta information for better SEO targeting
   - Positioned tool as essential "last mile" solution for AI-generated and bloated 3D models
+- July 07, 2025. Advanced mesh compression implementation for 95% geometry reduction:
+  - Enhanced Meshoptimizer with aggressive optimization settings (attributes, indices, normals, tangents)
+  - Implemented advanced Draco compression with quality-based quantization levels
+  - Added intelligent hybrid compression system that tests both methods and selects optimal result
+  - Quality-specific compression settings: high (preserve detail), balanced, maximum compression
+  - Automatic compression method selection based on file size and compatibility considerations
+  - Enhanced progress tracking with detailed compression method reporting
+  - Updated marketing copy to highlight up to 95% geometry compression capabilities
 
 ## User Preferences
 

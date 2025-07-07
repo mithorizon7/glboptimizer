@@ -356,19 +356,14 @@ class GLBOptimizer:
                 if not result['success']:
                     return result
                 
-                # Step 3: Compress geometry with meshopt (with Draco fallback)
+                # Step 3: Advanced geometry compression with intelligent method selection
                 if progress_callback:
-                    progress_callback("Step 2: Geometry Compression", 40, "Compressing geometry with meshopt...")
+                    progress_callback("Step 2: Geometry Compression", 40, "Analyzing model for optimal compression...")
                 
                 step3_output = os.path.join(temp_dir, "step3_compressed.glb")
-                result = self._run_gltfpack_geometry(step2_output, step3_output)
+                result = self._run_advanced_geometry_compression(step2_output, step3_output, progress_callback)
                 if not result['success']:
-                    # Try Draco compression as fallback (as mentioned in workflow)
-                    if progress_callback:
-                        progress_callback("Step 2: Geometry Compression", 45, "Trying Draco compression fallback...")
-                    result = self._run_draco_compression(step2_output, step3_output)
-                    if not result['success']:
-                        return result
+                    return result
                 
                 # Step 4: Compress textures with KTX2/BasisU
                 if progress_callback:
@@ -455,21 +450,45 @@ class GLBOptimizer:
             return {'success': False, 'error': f'Welding/joining failed: {str(e)}'}
     
     def _run_gltfpack_geometry(self, input_path, output_path):
-        """Step 3: Compress geometry with meshopt and optional simplification"""
-        # Try with light simplification first (recommended in workflow)
+        """Step 3: Advanced geometry compression with meshopt and aggressive optimization"""
+        # Quality-based simplification levels
+        simplify_ratio = {
+            'high': '0.8',  # 80% triangle count (preserve quality)
+            'balanced': '0.6',  # 60% triangle count (balance quality/size)
+            'maximum_compression': '0.4'  # 40% triangle count (maximum compression)
+        }.get(self.quality_level, '0.7')
+        
+        # Advanced meshopt compression with aggressive settings
         cmd = [
             'gltfpack',
             '-i', input_path,
             '-o', output_path,
-            '--meshopt',
-            '--quantize',
-            '--simplify', '0.7'  # 70% triangle count (light simplification)
+            '--meshopt',  # Enable meshopt compression
+            '--quantize',  # Quantize vertex attributes
+            '--simplify', simplify_ratio,  # Polygon simplification
+            '--simplify-error', '0.01',  # Low error threshold for quality
+            '--attributes',  # Optimize vertex attributes
+            '--indices',  # Optimize index buffers
+            '--normals',  # Optimize normal vectors
+            '--tangents',  # Optimize tangent vectors
+            '--join',  # Join compatible meshes
+            '--dedup',  # Remove duplicate vertices
+            '--reorder',  # Reorder primitives for GPU efficiency
+            '--sparse',  # Use sparse accessors when beneficial
         ]
-        result = self._run_subprocess(cmd, "Geometry Compression", "Compressing geometry with meshopt and simplification")
+        
+        # Add quality-specific options
+        if self.quality_level == 'maximum_compression':
+            cmd.extend([
+                '--simplify-aggressive',  # More aggressive simplification
+                '--simplify-lock-border',  # Preserve mesh borders
+            ])
+        
+        result = self._run_subprocess(cmd, "Advanced Geometry Compression", "Applying meshopt with aggressive optimization")
         
         if not result['success']:
-            self.logger.warning(f"Geometry compression with simplification failed, trying without: {result.get('error', 'Unknown error')}")
-            # Fallback without simplification
+            self.logger.warning(f"Advanced geometry compression failed, trying basic meshopt: {result.get('error', 'Unknown error')}")
+            # Fallback to basic meshopt compression
             cmd_fallback = [
                 'gltfpack',
                 '-i', input_path,
@@ -477,27 +496,73 @@ class GLBOptimizer:
                 '--meshopt',
                 '--quantize'
             ]
-            fallback_result = self._run_subprocess(cmd_fallback, "Geometry Compression (Fallback)", "Compressing geometry without simplification")
+            fallback_result = self._run_subprocess(cmd_fallback, "Basic Geometry Compression", "Applying basic meshopt compression")
             return fallback_result
         
         return result
     
     def _run_draco_compression(self, input_path, output_path):
-        """Alternative geometry compression using Draco (fallback option)"""
+        """Advanced Draco geometry compression for maximum compression"""
+        # Quality-based compression levels for Draco
+        compression_settings = {
+            'high': {
+                'position_bits': '12',  # High precision for positions
+                'normal_bits': '8',     # Good precision for normals
+                'color_bits': '8',      # Full color precision
+                'tex_coord_bits': '10', # High texture coordinate precision
+                'compression_level': '7' # Balanced compression
+            },
+            'balanced': {
+                'position_bits': '10',  # Reduced position precision
+                'normal_bits': '6',     # Lower normal precision
+                'color_bits': '6',      # Reduced color precision
+                'tex_coord_bits': '8',  # Lower texture precision
+                'compression_level': '8' # Higher compression
+            },
+            'maximum_compression': {
+                'position_bits': '8',   # Minimal position precision
+                'normal_bits': '4',     # Minimal normal precision
+                'color_bits': '4',      # Minimal color precision
+                'tex_coord_bits': '6',  # Minimal texture precision
+                'compression_level': '10' # Maximum compression
+            }
+        }
+        
+        settings = compression_settings.get(self.quality_level, compression_settings['balanced'])
+        
         try:
+            # Use gltf-transform with advanced Draco settings
             cmd = [
-                'npx', 'gltf-transform', 'compress-geometry',
-                '--method', 'edgebreaker',
+                'npx', 'gltf-transform', 'draco',
+                '--method', 'edgebreaker',  # Best compression method
+                '--encodeSpeed', '0',       # Favor compression over speed
+                '--decodeSpeed', '5',       # Balance decode speed
+                '--quantizePosition', settings['position_bits'],
+                '--quantizeNormal', settings['normal_bits'],
+                '--quantizeColor', settings['color_bits'],
+                '--quantizeTexcoord', settings['tex_coord_bits'],
+                '--compressionLevel', settings['compression_level'],
+                '--unifiedQuantization',    # Better compression
                 input_path, output_path
             ]
+            
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
             
             if result.returncode != 0:
-                self.logger.error(f"Draco compression failed: {result.stderr}")
-                return {
-                    'success': False,
-                    'error': f'Draco compression failed: {result.stderr}'
-                }
+                self.logger.error(f"Advanced Draco compression failed: {result.stderr}")
+                # Try basic Draco compression as fallback
+                cmd_fallback = [
+                    'npx', 'gltf-transform', 'draco',
+                    '--method', 'edgebreaker',
+                    input_path, output_path
+                ]
+                fallback_result = subprocess.run(cmd_fallback, capture_output=True, text=True, timeout=600)
+                
+                if fallback_result.returncode != 0:
+                    return {
+                        'success': False,
+                        'error': f'Draco compression failed: {fallback_result.stderr}'
+                    }
             
             return {'success': True}
         
@@ -505,6 +570,109 @@ class GLBOptimizer:
             return {'success': False, 'error': 'Draco compression timed out'}
         except Exception as e:
             return {'success': False, 'error': f'Draco compression failed: {str(e)}'}
+    
+    def _run_advanced_geometry_compression(self, input_path, output_path, progress_callback=None):
+        """Advanced geometry compression with intelligent method selection"""
+        import os
+        import tempfile
+        
+        # Create temporary files for testing both methods
+        temp_dir = os.path.dirname(output_path)
+        meshopt_output = os.path.join(temp_dir, "test_meshopt.glb")
+        draco_output = os.path.join(temp_dir, "test_draco.glb")
+        
+        meshopt_result = None
+        draco_result = None
+        meshopt_size = float('inf')
+        draco_size = float('inf')
+        
+        # Try Meshopt compression first (generally faster and more compatible)
+        if progress_callback:
+            progress_callback("Step 2: Geometry Compression", 42, "Testing Meshopt compression...")
+        
+        meshopt_result = self._run_gltfpack_geometry(input_path, meshopt_output)
+        if meshopt_result['success'] and os.path.exists(meshopt_output):
+            meshopt_size = os.path.getsize(meshopt_output)
+            self.logger.info(f"Meshopt compression achieved {meshopt_size} bytes")
+        
+        # Try Draco compression for comparison (often achieves better compression for complex geometry)
+        if progress_callback:
+            progress_callback("Step 2: Geometry Compression", 45, "Testing Draco compression...")
+        
+        draco_result = self._run_draco_compression(input_path, draco_output)
+        if draco_result['success'] and os.path.exists(draco_output):
+            draco_size = os.path.getsize(draco_output)
+            self.logger.info(f"Draco compression achieved {draco_size} bytes")
+        
+        # Select the best compression method based on results
+        selected_method = None
+        selected_file = None
+        
+        if meshopt_result['success'] and draco_result['success']:
+            # Both methods succeeded - choose the one with better compression
+            compression_threshold = 0.95  # Draco must be at least 5% smaller to be worth the compatibility trade-off
+            if draco_size < meshopt_size * compression_threshold:
+                selected_method = "Draco"
+                selected_file = draco_output
+                self.logger.info(f"Selected Draco: {draco_size} bytes vs Meshopt: {meshopt_size} bytes")
+            else:
+                selected_method = "Meshopt"
+                selected_file = meshopt_output
+                self.logger.info(f"Selected Meshopt: {meshopt_size} bytes vs Draco: {draco_size} bytes")
+        elif meshopt_result['success']:
+            selected_method = "Meshopt"
+            selected_file = meshopt_output
+            self.logger.info("Selected Meshopt (Draco failed)")
+        elif draco_result['success']:
+            selected_method = "Draco"
+            selected_file = draco_output
+            self.logger.info("Selected Draco (Meshopt failed)")
+        else:
+            # Both failed - return the meshopt error as it's more likely to be informative
+            self.logger.error("Both Meshopt and Draco compression failed")
+            # Cleanup temp files
+            for temp_file in [meshopt_output, draco_output]:
+                try:
+                    if os.path.exists(temp_file):
+                        os.remove(temp_file)
+                except:
+                    pass
+            return meshopt_result
+        
+        # Copy the best result to the final output
+        if progress_callback:
+            progress_callback("Step 2: Geometry Compression", 48, f"Finalizing {selected_method} compression...")
+        
+        try:
+            import shutil
+            shutil.copy2(selected_file, output_path)
+            
+            # Cleanup temp files
+            for temp_file in [meshopt_output, draco_output]:
+                try:
+                    if os.path.exists(temp_file):
+                        os.remove(temp_file)
+                except:
+                    pass
+            
+            # Calculate compression ratio for logging
+            input_size = os.path.getsize(input_path)
+            output_size = os.path.getsize(output_path)
+            compression_ratio = (1 - output_size / input_size) * 100
+            
+            self.logger.info(f"Geometry compression ({selected_method}): {input_size} → {output_size} bytes ({compression_ratio:.1f}% reduction)")
+            
+            return {
+                'success': True,
+                'method': selected_method,
+                'compression_ratio': compression_ratio,
+                'input_size': input_size,
+                'output_size': output_size
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Failed to finalize compression: {str(e)}")
+            return {'success': False, 'error': f'Failed to finalize compression: {str(e)}'}
     
     def _run_gltf_transform_textures(self, input_path, output_path):
         """Step 4: Compress textures with KTX2/BasisU (high quality settings)"""
