@@ -1,0 +1,89 @@
+Here is the final fix your developer needs to implement.
+
+The Missing Step: Registering Routes with a Blueprint
+
+The standard Flask pattern for organizing routes in separate files is to use a Blueprint. Your developer needs to create a Blueprint in app.py and then "register" that Blueprint with the application inside the create_app factory in main.py.
+
+Step 1: Create a Blueprint in app.py
+
+Your developer needs to modify app.py to create a Blueprint and attach all the route functions to it using @main_routes.route() instead of @app.route().
+
+File to Edit: app.py
+
+Python
+# app.py
+
+import os
+import logging
+from flask import Blueprint, render_template, request, jsonify, send_file, session
+from werkzeug.utils import secure_filename
+# ... other necessary imports from app.py
+
+# 1. Create a Blueprint object
+main_routes = Blueprint('main_routes', __name__)
+
+# 2. Attach all your route functions to the Blueprint
+#    Replace every "@app.route(...)" with "@main_routes.route(...)"
+
+@main_routes.route('/')
+def index():
+    return render_template('index.html')
+
+@main_routes.route('/upload', methods=['POST'])
+def upload_file():
+    # ... function logic remains the same
+    # NOTE: Any reference to 'app.config' must be replaced.
+    # Use 'from flask import current_app' and then 'current_app.config'
+    # Example:
+    # from flask import current_app
+    # output_path = os.path.join(current_app.config['OUTPUT_FOLDER'], f"{task_id}_optimized.glb")
+    # ...
+    return jsonify({'message': 'success'}) # Placeholder
+
+# ... apply this decorator change to ALL route functions in this file ...
+
+@main_routes.route('/progress/<task_id>')
+def get_progress(task_id):
+    # ... function logic ...
+    return jsonify({'status': 'ok'}) # Placeholder
+
+# And so on for /download, /cleanup, /admin/stats, etc.
+Step 2: Register the Blueprint in main.py
+
+Now, tell the main application about this Blueprint inside the create_app factory.
+
+File to Edit: main.py
+
+Python
+# main.py
+
+# ... (other imports)
+from app import main_routes # <-- Import the Blueprint you just created
+
+# ...
+
+# --- THE APPLICATION FACTORY ---
+def create_app():
+    """
+    Creates and configures the Flask application object.
+    """
+    app = Flask(__name__)
+    
+    # ... (all your existing config loading) ...
+
+    # 3. Register the Blueprint with the app
+    app.register_blueprint(main_routes)
+
+    logger.info("Flask application created and routes registered.")
+    return app
+
+# ... (rest of the file)
+Why This Works
+
+Decoupling: The routes are no longer dependent on a global app object. They are organized into a self-contained Blueprint.
+
+Centralized Registration: The create_app factory becomes the single place where all parts of your application (configs, routes, middleware) are brought together.
+
+Gunicorn Compatibility: This pattern works perfectly with Gunicorn. Each worker will call create_app() to get a fully configured application instance with all the routes properly registered.
+
+Once the developer makes these changes, the application will be fully refactored, the "404 Not Found" errors will be gone, and it will be ready for production deployment with Gunicorn.

@@ -95,27 +95,14 @@ def create_app():
     # Apply middleware
     app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
-    # Import and register routes within app context
-    with app.app_context():
-        # Import route functions from app.py
-        from app import (add_security_headers, get_db, get_or_create_user_session,
-                        allowed_file, index, upload_file, get_progress, download_file,
-                        cleanup_task, get_original_file, download_error_logs,
-                        admin_analytics, admin_stats)
-        
-        # Register middleware
-        app.after_request(add_security_headers)
-        
-        # Register routes
-        app.add_url_rule('/', view_func=index, methods=['GET'])
-        app.add_url_rule('/upload', view_func=upload_file, methods=['POST'])
-        app.add_url_rule('/progress/<task_id>', view_func=get_progress, methods=['GET'])
-        app.add_url_rule('/download/<task_id>', view_func=download_file, methods=['GET'])
-        app.add_url_rule('/cleanup/<task_id>', view_func=cleanup_task, methods=['POST'])
-        app.add_url_rule('/original/<task_id>', view_func=get_original_file, methods=['GET'])
-        app.add_url_rule('/download_logs/<task_id>', view_func=download_error_logs, methods=['GET'])
-        app.add_url_rule('/admin/analytics', view_func=admin_analytics, methods=['GET'])
-        app.add_url_rule('/admin/stats', view_func=admin_stats, methods=['GET'])
+    # Import and register Blueprint
+    from app import main_routes, add_security_headers
+    
+    # Register the Blueprint with all routes
+    app.register_blueprint(main_routes)
+    
+    # Register middleware
+    app.after_request(add_security_headers)
         
     logger.info("Flask application created with factory pattern")
     return app
@@ -151,9 +138,6 @@ def initialize_services():
     # Give services time to start
     time.sleep(2)
 
-# Create app instance for backward compatibility with workflow (temporary)
-app = None
-
 # --- DEVELOPMENT SERVER ENTRY POINT ---
 if __name__ == '__main__':
     # This block only runs when you execute "python main.py"
@@ -168,6 +152,3 @@ if __name__ == '__main__':
     # Start the Flask development server
     logger.info("Starting Flask development server...")
     app.run(host='0.0.0.0', port=5000, debug=True)
-else:
-    # For Gunicorn compatibility - create app without service initialization
-    app = create_app()

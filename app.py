@@ -1,7 +1,7 @@
 import os
 import logging
 from dotenv import load_dotenv
-from flask import Flask, render_template, request, jsonify, send_file, flash, redirect, url_for, session
+from flask import Flask, Blueprint, render_template, request, jsonify, send_file, flash, redirect, url_for, session, current_app
 from werkzeug.utils import secure_filename
 from werkzeug.middleware.proxy_fix import ProxyFix
 import uuid
@@ -19,6 +19,9 @@ load_dotenv()
 
 # Get configuration
 config = get_config()
+
+# Create Blueprint for main routes
+main_routes = Blueprint('main_routes', __name__)
 
 # Configure logging - Use console only in development to avoid file path issues
 log_level = getattr(logging, config.LOG_LEVEL, logging.INFO)
@@ -123,10 +126,12 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in config.ALLOWED_EXTENSIONS
 
 
+@main_routes.route('/')
 def index():
     return render_template('index.html')
 
 
+@main_routes.route('/upload', methods=['POST'])
 def upload_file():
     try:
         if 'file' not in request.files:
@@ -251,6 +256,7 @@ def upload_file():
 
 
 
+@main_routes.route('/progress/<task_id>')
 def get_progress(task_id):
     try:
         # Get task result from Celery
@@ -298,6 +304,7 @@ def get_progress(task_id):
         return jsonify({'error': f'Failed to get task status: {str(e)}'}), 500
 
 
+@main_routes.route('/download/<task_id>')
 def download_file(task_id):
     try:
         # Get task result from Celery
@@ -331,6 +338,7 @@ def download_file(task_id):
         return jsonify({'error': f'Download failed: {str(e)}'}), 500
 
 
+@main_routes.route('/cleanup/<task_id>', methods=['POST'])
 def cleanup_task(task_id):
     """Clean up task files and result data"""
     try:
@@ -370,6 +378,7 @@ def cleanup_task(task_id):
         return jsonify({'error': f'Cleanup failed: {str(e)}'}), 500
 
 
+@main_routes.route('/original/<task_id>')
 def get_original_file(task_id):
     """Serve the original GLB file for 3D comparison viewer"""
     try:
@@ -402,6 +411,7 @@ def get_original_file(task_id):
         return jsonify({'error': f'Failed to serve original file: {str(e)}'}), 500
 
 
+@main_routes.route('/error-logs/<task_id>')
 def download_error_logs(task_id):
     """Download detailed error logs for optimization tasks"""
     try:
@@ -458,6 +468,7 @@ Task is still in progress or in an unknown state.
 
 
 
+@main_routes.route('/admin/analytics')
 def admin_analytics():
     """Admin analytics dashboard showing database insights"""
     try:
@@ -469,6 +480,7 @@ def admin_analytics():
 
 
 
+@main_routes.route('/admin/stats')
 def admin_stats():
     """Quick database statistics endpoint"""
     try:
