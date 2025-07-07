@@ -149,6 +149,15 @@ Changelog:
   - Updated button behavior to toggle between sync and unsync states
   - Added visual feedback and tooltips for better user guidance
   - Improved out-of-the-box experience for comparing models from same angle
+- July 07, 2025. Critical security hardening against command injection vulnerabilities:
+  - Implemented comprehensive path validation with multi-layer security checks
+  - Added prevention against directory traversal attacks (../../../etc/passwd)
+  - Blocked command injection attempts (;, |, &, $, `, etc.) in file paths
+  - Restricted file operations to uploads/ and output/ directories only
+  - Secured subprocess command execution with validated file paths
+  - Added security validation to all optimization pipeline steps
+  - Implemented fail-fast security violations with detailed error logging
+  - Ensured user filenames never directly influence shell commands
 
 ## User Preferences
 

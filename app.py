@@ -79,20 +79,19 @@ def upload_file():
         enable_lod = request.form.get('enable_lod') == 'true'
         enable_simplification = request.form.get('enable_simplification') == 'true'
         
-        # Save uploaded file
-        filename = secure_filename(file.filename or "uploaded.glb")
-        original_name = filename.rsplit('.', 1)[0]
-        input_path = os.path.join(config.UPLOAD_FOLDER, f"{task_id}_{filename}")
+        # Secure: Store original filename only for display/download purposes
+        original_filename = secure_filename(file.filename or "uploaded.glb")
+        original_name = original_filename.rsplit('.', 1)[0] if '.' in original_filename else "model"
+        
+        # Secure: Generate completely safe, server-controlled filenames using task_id only
+        # No user input is used in the actual file paths passed to shell commands
+        input_path = os.path.join(config.UPLOAD_FOLDER, f"{task_id}.glb")
+        output_path = os.path.join(config.OUTPUT_FOLDER, f"{task_id}_optimized.glb")
+        
         file.save(input_path)
         
         # Get original file size
         original_size = os.path.getsize(input_path)
-        
-        # Generate output file path
-        output_path = os.path.join(
-            config.OUTPUT_FOLDER,
-            f"{task_id}_optimized_{original_name}.glb"
-        )
         
         # Store original file info for comparison viewer
         original_file_info = {

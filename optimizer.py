@@ -5,6 +5,8 @@ import time
 import logging
 import shutil
 import json
+import re
+from pathlib import Path
 from typing import Dict, Any, Optional
 
 class GLBOptimizer:
@@ -17,16 +19,87 @@ class GLBOptimizer:
         self.quality_level = quality_level
         self.detailed_logs = []  # Store detailed error logs for user download
         
+        # Security: Define allowed base directories for file operations
+        # Only allow uploads and output directories for security
+        self.allowed_dirs = {
+            os.path.abspath('uploads'),
+            os.path.abspath('output')
+        }
+    
+    def _validate_path(self, file_path: str, allow_temp: bool = False) -> str:
+        """
+        Security: Validate and sanitize file paths to prevent command injection
+        Returns: Validated absolute path or raises ValueError
+        """
+        try:
+            # Convert to absolute path and resolve any path traversal attempts
+            abs_path = os.path.abspath(file_path)
+            
+            # Security: Ensure path doesn't contain dangerous characters
+            if any(char in abs_path for char in [';', '|', '&', '$', '`', '>', '<', '\n', '\r']):
+                raise ValueError(f"Path contains dangerous characters: {file_path}")
+            
+            # Security: Ensure path is within allowed directories
+            path_allowed = False
+            
+            # Check against allowed directories
+            for allowed_dir in self.allowed_dirs:
+                try:
+                    # Check if the path is within an allowed directory
+                    Path(abs_path).relative_to(Path(allowed_dir))
+                    path_allowed = True
+                    break
+                except ValueError:
+                    continue
+            
+            # If temp paths are allowed, check if it's in system temp directory
+            if not path_allowed and allow_temp:
+                try:
+                    Path(abs_path).relative_to(Path(tempfile.gettempdir()))
+                    path_allowed = True
+                except ValueError:
+                    pass
+            
+            if not path_allowed:
+                raise ValueError(f"Path outside allowed directories: {file_path}")
+            
+            # Security: Additional validation for GLB files
+            if not abs_path.endswith('.glb'):
+                raise ValueError(f"Path must be a .glb file: {file_path}")
+            
+            return abs_path
+            
+        except Exception as e:
+            self.logger.error(f"Path validation failed for {file_path}: {e}")
+            raise ValueError(f"Invalid or unsafe file path: {file_path}")
+        
     def _run_subprocess(self, cmd: list, step_name: str, description: str) -> Dict[str, Any]:
         """
         Run subprocess with comprehensive error handling and logging
+        Security: All file paths in commands are validated before execution
         """
         try:
-            self.logger.info(f"Running {step_name}: {' '.join(cmd)}")
+            # Security: Validate all file paths in the command
+            validated_cmd = []
+            for arg in cmd:
+                if arg.endswith('.glb') and os.path.sep in arg:
+                    # This looks like a file path - validate it
+                    try:
+                        # Allow temp paths for intermediate processing files
+                        validated_path = self._validate_path(arg, allow_temp=True)
+                        validated_cmd.append(validated_path)
+                    except ValueError as e:
+                        # If validation fails, reject the command
+                        self.logger.error(f"Security: Blocked potentially dangerous path in command: {arg}")
+                        raise ValueError(f"Command contains invalid file path: {arg}")
+                else:
+                    validated_cmd.append(arg)
+            
+            self.logger.info(f"Running {step_name}: {' '.join(validated_cmd)}")
             
             # Run subprocess with full output capture
             result = subprocess.run(
-                cmd, 
+                validated_cmd, 
                 capture_output=True, 
                 text=True, 
                 timeout=300,  # 5 minute timeout
@@ -226,6 +299,42 @@ class GLBOptimizer:
         start_time = time.time()
         
         try:
+            # Security: Validate all file paths before any operations
+            validated_input = self._validate_path(input_path)
+            validated_output = self._validate_path(output_path)
+            
+            self.logger.info(f"Starting optimization with validated paths: {validated_input} -> {validated_output}")
+            
+            # Verify input file exists and is readable
+            if not os.path.exists(validated_input):
+                return {
+                    'success': False,
+                    'error': f'Input file does not exist: {input_path}',
+                    'user_message': 'The uploaded file could not be found. Please try uploading again.',
+                    'category': 'File System Error'
+                }
+            
+            # Additional security: Ensure paths are within expected directories
+            expected_upload_dir = os.path.abspath('uploads')
+            expected_output_dir = os.path.abspath('output')
+            
+            if not (validated_input.startswith(expected_upload_dir) or validated_input.startswith(expected_output_dir)):
+                self.logger.error(f"Security violation: Input path outside allowed directories: {validated_input}")
+                return {
+                    'success': False,
+                    'error': 'Security violation: Invalid input path',
+                    'user_message': 'File access denied for security reasons.',
+                    'category': 'Security Error'
+                }
+            
+            if not validated_output.startswith(expected_output_dir):
+                self.logger.error(f"Security violation: Output path outside allowed directories: {validated_output}")
+                return {
+                    'success': False,
+                    'error': 'Security violation: Invalid output path',
+                    'user_message': 'File access denied for security reasons.',
+                    'category': 'Security Error'
+                }
             # Create temporary directory for intermediate files
             with tempfile.TemporaryDirectory() as temp_dir:
                 
@@ -234,7 +343,7 @@ class GLBOptimizer:
                     progress_callback("Step 1: Cleanup & Deduplication", 10, "Pruning unused data...")
                 
                 step1_output = os.path.join(temp_dir, "step1_pruned.glb")
-                result = self._run_gltf_transform_prune(input_path, step1_output)
+                result = self._run_gltf_transform_prune(validated_input, step1_output)
                 if not result['success']:
                     return result
                 
@@ -283,7 +392,7 @@ class GLBOptimizer:
                 if progress_callback:
                     progress_callback("Step 5: Final Optimization", 90, "Final bundling and minification...")
                 
-                result = self._run_gltfpack_final(step5_output, output_path)
+                result = self._run_gltfpack_final(step5_output, validated_output)
                 if not result['success']:
                     return result
                 
