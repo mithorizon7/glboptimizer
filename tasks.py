@@ -1,8 +1,11 @@
 import os
 import time
 import logging
+from datetime import datetime, timezone
 from celery_app import celery
 from optimizer import GLBOptimizer
+from database import SessionLocal
+from models import OptimizationTask, PerformanceMetric
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -37,6 +40,25 @@ def optimize_glb_file(self, input_path, output_path, original_name, quality_leve
             }
         )
         logger.info(f"Task {self.request.id}: {step} - {progress}% - {message}")
+        
+        # Update database record
+        try:
+            db = SessionLocal()
+            try:
+                task_record = db.query(OptimizationTask).filter(OptimizationTask.id == self.request.id).first()
+                if task_record:
+                    task_record.status = 'processing' if progress < 100 else 'completed'
+                    task_record.progress = progress
+                    task_record.current_step = step
+                    if progress == 100:
+                        task_record.completed_at = datetime.now(timezone.utc)
+                    elif not task_record.started_at:
+                        task_record.started_at = datetime.now(timezone.utc)
+                    db.commit()
+            finally:
+                db.close()
+        except Exception as e:
+            logger.error(f"Failed to update database progress: {e}")
     
     try:
         logger.info(f"Starting optimization task {self.request.id} for file: {original_name}")
@@ -70,6 +92,49 @@ def optimize_glb_file(self, input_path, output_path, original_name, quality_leve
             
             logger.info(f"Optimization completed for task {self.request.id}")
             
+            # Update database with completion results
+            try:
+                db = SessionLocal()
+                try:
+                    task_record = db.query(OptimizationTask).filter(OptimizationTask.id == self.request.id).first()
+                    if task_record:
+                        task_record.status = 'completed'
+                        task_record.progress = 100
+                        task_record.compressed_size = optimized_size
+                        task_record.compression_ratio = compression_ratio
+                        task_record.processing_time = processing_time
+                        task_record.completed_at = datetime.now(timezone.utc)
+                        
+                        # Store performance metrics if available
+                        if 'performance_metrics' in result:
+                            task_record.performance_metrics = result['performance_metrics']
+                            task_record.estimated_memory_savings = result.get('estimated_memory_savings')
+                        
+                        db.commit()
+                        
+                        # Create performance metrics record
+                        if 'performance_metrics' in result:
+                            perf_metrics = PerformanceMetric(
+                                task_id=self.request.id,
+                                original_size_mb=original_size / (1024 * 1024),
+                                compressed_size_mb=optimized_size / (1024 * 1024),
+                                compression_ratio=compression_ratio,
+                                processing_time_seconds=processing_time,
+                                quality_level=quality_level,
+                                optimization_methods=result['performance_metrics'].get('processing_stats', {}).get('methods_used', []),
+                                mobile_friendly=result['performance_metrics'].get('web_game_readiness', {}).get('mobile_friendly', False),
+                                web_optimized=result['performance_metrics'].get('web_game_readiness', {}).get('web_optimized', False),
+                                streaming_ready=result['performance_metrics'].get('web_game_readiness', {}).get('ready_for_streaming', False),
+                                optimization_successful=True
+                            )
+                            db.add(perf_metrics)
+                            db.commit()
+                            
+                finally:
+                    db.close()
+            except Exception as e:
+                logger.error(f"Failed to update database with completion results: {e}")
+            
             return {
                 'status': 'completed',
                 'success': True,
@@ -78,7 +143,9 @@ def optimize_glb_file(self, input_path, output_path, original_name, quality_leve
                 'compression_ratio': compression_ratio,
                 'processing_time': processing_time,
                 'output_file': os.path.basename(output_path),
-                'original_name': original_name
+                'original_name': original_name,
+                'performance_metrics': result.get('performance_metrics'),
+                'estimated_memory_savings': result.get('estimated_memory_savings')
             }
         else:
             logger.error(f"Optimization failed for task {self.request.id}: {result.get('error')}")

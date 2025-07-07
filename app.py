@@ -1,14 +1,18 @@
 import os
 import logging
 from dotenv import load_dotenv
-from flask import Flask, render_template, request, jsonify, send_file, flash, redirect, url_for
+from flask import Flask, render_template, request, jsonify, send_file, flash, redirect, url_for, session
 from werkzeug.utils import secure_filename
 from werkzeug.middleware.proxy_fix import ProxyFix
 import uuid
+from datetime import datetime, timezone
 from config import get_config
 from celery_app import celery
 # Import the task function to ensure it's registered
 import tasks
+from database import SessionLocal, init_database
+from models import OptimizationTask, PerformanceMetric, UserSession, SystemMetric
+from analytics import get_analytics_dashboard_data
 
 # Load environment variables
 load_dotenv()
@@ -28,6 +32,44 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 app.secret_key = config.SECRET_KEY
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
+
+# Initialize database
+try:
+    init_database()
+    logger.info("Database initialized successfully")
+except Exception as e:
+    logger.error(f"Failed to initialize database: {e}")
+    # Continue without database for now, but log the issue
+
+def get_db():
+    """Get database session"""
+    return SessionLocal()
+
+def get_or_create_user_session():
+    """Get or create user session for tracking"""
+    try:
+        session_id = session.get('session_id')
+        if not session_id:
+            session_id = str(uuid.uuid4())
+            session['session_id'] = session_id
+        
+        db = get_db()
+        try:
+            user_session = db.query(UserSession).filter(UserSession.session_id == session_id).first()
+            if not user_session:
+                user_session = UserSession(
+                    session_id=session_id,
+                    user_agent=request.headers.get('User-Agent', '')[:500]
+                )
+                db.add(user_session)
+                db.commit()
+                logger.info(f"Created new user session: {session_id}")
+            return user_session
+        finally:
+            db.close()
+    except Exception as e:
+        logger.error(f"Failed to get/create user session: {e}")
+        return None
 
 # Apply configuration
 app.config['MAX_CONTENT_LENGTH'] = config.MAX_CONTENT_LENGTH
@@ -150,6 +192,38 @@ def upload_file():
             enable_lod,
             enable_simplification
         )
+        
+        # Create database record for tracking
+        try:
+            db = get_db()
+            try:
+                optimization_task = OptimizationTask(
+                    id=celery_task.id,
+                    original_filename=original_filename,
+                    secure_filename=f"{task_id}.glb",
+                    original_size=original_size,
+                    quality_level=quality_level,
+                    enable_lod=enable_lod,
+                    enable_simplification=enable_simplification,
+                    status='pending'
+                )
+                db.add(optimization_task)
+                db.commit()
+                
+                # Update user session
+                user_session = get_or_create_user_session()
+                if user_session:
+                    user_session.total_uploads += 1
+                    user_session.total_original_size += original_size
+                    user_session.last_upload_at = datetime.now(timezone.utc)
+                    db.commit()
+                
+                logger.info(f"Created database record for task {celery_task.id}")
+            finally:
+                db.close()
+        except Exception as e:
+            logger.error(f"Failed to create database record: {e}")
+            # Continue without database tracking
         
         return jsonify({
             'task_id': celery_task.id,
@@ -371,6 +445,39 @@ Task is still in progress or in an unknown state.
     except Exception as e:
         logging.error(f"Log download failed for task {task_id}: {str(e)}")
         return jsonify({'error': f'Log download failed: {str(e)}'}), 500
+
+
+@app.route('/admin/analytics')
+def admin_analytics():
+    """Admin analytics dashboard showing database insights"""
+    try:
+        analytics_data = get_analytics_dashboard_data()
+        return jsonify(analytics_data)
+    except Exception as e:
+        logger.error(f"Analytics error: {str(e)}")
+        return jsonify({'error': 'Failed to generate analytics'}), 500
+
+
+@app.route('/admin/stats')
+def admin_stats():
+    """Quick database statistics endpoint"""
+    try:
+        db = get_db()
+        try:
+            stats = {
+                'total_tasks': db.query(OptimizationTask).count(),
+                'completed_tasks': db.query(OptimizationTask).filter(OptimizationTask.status == 'completed').count(),
+                'total_users': db.query(UserSession).count(),
+                'total_performance_records': db.query(PerformanceMetric).count(),
+                'database_status': 'connected'
+            }
+            return jsonify(stats)
+        finally:
+            db.close()
+    except Exception as e:
+        logger.error(f"Stats error: {str(e)}")
+        return jsonify({'error': 'Failed to get database stats', 'database_status': 'error'}), 500
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
