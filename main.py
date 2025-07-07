@@ -60,11 +60,22 @@ def start_celery_worker():
         return False
 
 if __name__ == '__main__':
-    # Set environment
+    # Set critical environment variables first, before any imports
     os.environ['REDIS_URL'] = 'redis://localhost:6379/0'
+    os.environ['CELERY_BROKER_URL'] = 'redis://localhost:6379/0'
+    os.environ['CELERY_RESULT_BACKEND'] = 'redis://localhost:6379/0'
     
     # Ensure Redis is running
     ensure_redis_running()
+    
+    # Initialize database
+    try:
+        logger.info("Initializing database...")
+        from database import init_database
+        init_database()
+        logger.info("Database initialized successfully")
+    except Exception as e:
+        logger.error(f"Database initialization failed: {e}")
     
     # Start Celery worker
     start_celery_worker()

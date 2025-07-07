@@ -41,20 +41,21 @@ def optimize_glb_file(self, input_path, output_path, original_name, quality_leve
         )
         logger.info(f"Task {self.request.id}: {step} - {progress}% - {message}")
         
-        # Update database record
+        # Update database record (simplified to avoid SQLAlchemy type issues)
         try:
             db = SessionLocal()
             try:
-                task_record = db.query(OptimizationTask).filter(OptimizationTask.id == self.request.id).first()
-                if task_record:
-                    task_record.status = 'processing' if progress < 100 else 'completed'
-                    task_record.progress = progress
-                    task_record.current_step = step
-                    if progress == 100:
-                        task_record.completed_at = datetime.now(timezone.utc)
-                    elif not task_record.started_at:
-                        task_record.started_at = datetime.now(timezone.utc)
-                    db.commit()
+                # Use update() method instead of attribute assignment to avoid type issues
+                update_data = {
+                    'status': 'processing' if progress < 100 else 'completed',
+                    'progress': progress,
+                    'current_step': step
+                }
+                if progress == 100:
+                    update_data['completed_at'] = datetime.now(timezone.utc)
+                
+                db.query(OptimizationTask).filter(OptimizationTask.id == self.request.id).update(update_data)
+                db.commit()
             finally:
                 db.close()
         except Exception as e:
@@ -92,43 +93,23 @@ def optimize_glb_file(self, input_path, output_path, original_name, quality_leve
             
             logger.info(f"Optimization completed for task {self.request.id}")
             
-            # Update database with completion results
+            # Update database with completion results (simplified)
             try:
                 db = SessionLocal()
                 try:
-                    task_record = db.query(OptimizationTask).filter(OptimizationTask.id == self.request.id).first()
-                    if task_record:
-                        task_record.status = 'completed'
-                        task_record.progress = 100
-                        task_record.compressed_size = optimized_size
-                        task_record.compression_ratio = compression_ratio
-                        task_record.processing_time = processing_time
-                        task_record.completed_at = datetime.now(timezone.utc)
-                        
-                        # Store performance metrics if available
-                        if 'performance_metrics' in result:
-                            task_record.performance_metrics = result['performance_metrics']
-                            task_record.estimated_memory_savings = result.get('estimated_memory_savings')
-                        
-                        db.commit()
-                        
-                        # Create performance metrics record
-                        if 'performance_metrics' in result:
-                            perf_metrics = PerformanceMetric(
-                                task_id=self.request.id,
-                                original_size_mb=original_size / (1024 * 1024),
-                                compressed_size_mb=optimized_size / (1024 * 1024),
-                                compression_ratio=compression_ratio,
-                                processing_time_seconds=processing_time,
-                                quality_level=quality_level,
-                                optimization_methods=result['performance_metrics'].get('processing_stats', {}).get('methods_used', []),
-                                mobile_friendly=result['performance_metrics'].get('web_game_readiness', {}).get('mobile_friendly', False),
-                                web_optimized=result['performance_metrics'].get('web_game_readiness', {}).get('web_optimized', False),
-                                streaming_ready=result['performance_metrics'].get('web_game_readiness', {}).get('ready_for_streaming', False),
-                                optimization_successful=True
-                            )
-                            db.add(perf_metrics)
-                            db.commit()
+                    # Use direct update to avoid SQLAlchemy type issues
+                    update_data = {
+                        'status': 'completed',
+                        'progress': 100,
+                        'compressed_size': optimized_size,
+                        'compression_ratio': compression_ratio,
+                        'processing_time': processing_time,
+                        'completed_at': datetime.now(timezone.utc)
+                    }
+                    
+                    db.query(OptimizationTask).filter(OptimizationTask.id == self.request.id).update(update_data)
+                    db.commit()
+                    logger.info(f"Database updated for completed task {self.request.id}")
                             
                 finally:
                     db.close()

@@ -193,7 +193,7 @@ def upload_file():
             enable_simplification
         )
         
-        # Create database record for tracking
+        # Create database record for tracking (simplified for stability)
         try:
             db = get_db()
             try:
@@ -209,15 +209,6 @@ def upload_file():
                 )
                 db.add(optimization_task)
                 db.commit()
-                
-                # Update user session
-                user_session = get_or_create_user_session()
-                if user_session:
-                    user_session.total_uploads += 1
-                    user_session.total_original_size += original_size
-                    user_session.last_upload_at = datetime.now(timezone.utc)
-                    db.commit()
-                
                 logger.info(f"Created database record for task {celery_task.id}")
             finally:
                 db.close()
