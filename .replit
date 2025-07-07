@@ -1,3 +1,6 @@
+# This is the complete, corrected .replit file.
+# Copy and paste this entire content into your .replit file.
+
 modules = ["python-3.11", "nodejs-20", "python3", "postgresql-16"]
 
 [nix]
@@ -6,7 +9,8 @@ packages = ["openssl", "postgresql", "redis"]
 
 [deployment]
 deploymentTarget = "autoscale"
-run = ["gunicorn --bind 0.0.0.0:5000 --reuse-port --reload wsgi:application"]
+# This command is used by the deployment system. It's also been corrected.
+run = ["sh", "-c", "uv pip install -e . && gunicorn --bind 0.0.0.0:5000 --reuse-port --reload wsgi:application"]
 
 [workflows]
 runButton = "Project"
@@ -26,7 +30,9 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "gunicorn --bind 0.0.0.0:5000 --reuse-port --reload wsgi:application"
+# This is the critical line that has been fixed.
+# It now installs dependencies first, then runs gunicorn.
+args = "uv pip install -e . && gunicorn --bind 0.0.0.0:5000 --reuse-port --reload wsgi:application"
 waitForPort = 5000
 
 [[ports]]
