@@ -23,6 +23,18 @@ class GLBOptimizer {
         this.fileDetails = document.getElementById('file-details');
         this.changeFileBtn = document.getElementById('change-file-btn');
         this.uploadBtn = document.getElementById('upload-btn');
+        
+        // Debug: Check if critical elements exist
+        console.log('File input element:', this.fileInput);
+        console.log('Drop zone element:', this.dropZone);
+        console.log('Upload button element:', this.uploadBtn);
+        
+        if (!this.fileInput) {
+            console.error('CRITICAL: File input element not found!');
+        }
+        if (!this.dropZone) {
+            console.error('CRITICAL: Drop zone element not found!');
+        }
         this.optimizationSettings = document.getElementById('optimization-settings');
         this.qualityLevel = document.getElementById('quality-level');
         this.enableLod = document.getElementById('enable-lod');
@@ -147,9 +159,23 @@ class GLBOptimizer {
         });
         
         // Change file button
-        this.changeFileBtn.addEventListener('click', () => {
-            this.fileInput.click();
-        });
+        if (this.changeFileBtn) {
+            this.changeFileBtn.addEventListener('click', () => {
+                console.log('Change file button clicked');
+                this.fileInput.click();
+            });
+        }
+        
+        // Global test function for debugging
+        window.testFileUpload = () => {
+            console.log('Testing file upload functionality...');
+            if (this.fileInput) {
+                console.log('File input exists, triggering click...');
+                this.fileInput.click();
+            } else {
+                console.error('File input element not found!');
+            }
+        };
     }
     
     handleFileSelect(file) {
