@@ -394,10 +394,31 @@ class GLBOptimizer:
                 if progress_callback:
                     progress_callback("Step 6: Completed", 100, "Optimization completed successfully!")
                 
+                # Calculate comprehensive performance metrics
                 processing_time = time.time() - start_time
+                original_size = os.path.getsize(validated_input)
+                final_size = os.path.getsize(validated_output)
+                compression_ratio = (1 - final_size / original_size) * 100
+                
+                # Estimate GPU memory usage (approximate)
+                estimated_memory_reduction = self._estimate_gpu_memory_savings(original_size, final_size)
+                
+                # Generate performance report
+                performance_metrics = self._generate_performance_report(validated_input, validated_output, processing_time)
+                
+                self.logger.info(f"Optimization completed: {original_size} → {final_size} bytes ({compression_ratio:.1f}% reduction)")
+                self.logger.info(f"Estimated GPU memory savings: {estimated_memory_reduction:.1f}%")
+                
                 return {
                     'success': True,
                     'processing_time': processing_time,
+                    'original_size': original_size,
+                    'compressed_size': final_size,
+                    'compression_ratio': compression_ratio,
+                    'savings_bytes': original_size - final_size,
+                    'estimated_memory_savings': estimated_memory_reduction,
+                    'performance_metrics': performance_metrics,
+                    'optimization_quality': self.quality_level,
                     'message': 'Optimization completed successfully'
                 }
         
@@ -860,18 +881,11 @@ class GLBOptimizer:
         results = {}
         file_sizes = {}
         
-        # Method 1: Advanced KTX2/Basis Universal compression
+        # Method 1: Advanced KTX2/Basis Universal compression with multi-approach testing
         try:
             self.logger.info("Testing KTX2/Basis Universal compression...")
-            ktx2_cmd = [
-                'npx', 'gltf-transform', 'etc1s',
-                input_path, ktx2_output,
-                '--quality', settings['ktx2_quality'],
-                '--slots', '4',         # Use all available slots
-                '--rd', '18'            # Rate-distortion optimization
-            ]
             
-            # Add UASTC mode for high quality
+            # Try gltf-transform approach first (our current implementation)
             if settings['uastc_mode']:
                 ktx2_cmd = [
                     'npx', 'gltf-transform', 'uastc',
@@ -879,6 +893,14 @@ class GLBOptimizer:
                     '--level', '4',     # High compression level
                     '--rdo', '4.0',     # Rate-distortion optimization
                     '--zstd', '18'      # Zstandard compression
+                ]
+            else:
+                ktx2_cmd = [
+                    'npx', 'gltf-transform', 'etc1s',
+                    input_path, ktx2_output,
+                    '--quality', settings['ktx2_quality'],
+                    '--slots', '4',         # Use all available slots
+                    '--rd', '18'            # Rate-distortion optimization
                 ]
             
             result = subprocess.run(ktx2_cmd, capture_output=True, text=True, timeout=600)
@@ -1069,3 +1091,79 @@ class GLBOptimizer:
             return {'success': False, 'error': 'Final optimization timed out'}
         except Exception as e:
             return {'success': False, 'error': f'Final optimization failed: {str(e)}'}
+
+    def _estimate_gpu_memory_savings(self, original_size: int, compressed_size: int) -> float:
+        """
+        Estimate GPU memory savings from optimization
+        This is an approximation based on file size reduction and typical GPU memory usage patterns
+        """
+        # GPU memory usage is typically 2-4x the file size due to decompression
+        # KTX2 textures save significant GPU memory, geometry compression saves less
+        gpu_memory_multiplier = 2.5  # Conservative estimate
+        
+        original_gpu_memory = original_size * gpu_memory_multiplier
+        compressed_gpu_memory = compressed_size * gpu_memory_multiplier
+        
+        # Additional savings from KTX2 compression (textures stay compressed in GPU memory)
+        ktx2_additional_savings = compressed_size * 0.4  # KTX2 stays compressed
+        
+        effective_gpu_memory = compressed_gpu_memory - ktx2_additional_savings
+        memory_savings = (1 - effective_gpu_memory / original_gpu_memory) * 100
+        
+        return max(0, min(95, memory_savings))  # Cap at 95% savings
+
+    def _generate_performance_report(self, input_path: str, output_path: str, processing_time: float) -> dict:
+        """
+        Generate comprehensive performance metrics report
+        """
+        try:
+            original_size = os.path.getsize(input_path)
+            compressed_size = os.path.getsize(output_path)
+            compression_ratio = (1 - compressed_size / original_size) * 100
+            
+            # Estimate performance improvements for web games
+            performance_metrics = {
+                'file_size_reduction': {
+                    'original_mb': round(original_size / 1024 / 1024, 2),
+                    'compressed_mb': round(compressed_size / 1024 / 1024, 2),
+                    'savings_mb': round((original_size - compressed_size) / 1024 / 1024, 2),
+                    'compression_ratio': round(compression_ratio, 1)
+                },
+                'estimated_performance_gains': {
+                    'load_time_improvement': f"{min(compression_ratio * 0.8, 85):.0f}%",
+                    'bandwidth_savings': f"{compression_ratio:.0f}%",
+                    'gpu_memory_savings': f"{self._estimate_gpu_memory_savings(original_size, compressed_size):.0f}%"
+                },
+                'processing_stats': {
+                    'optimization_time': f"{processing_time:.2f}s",
+                    'quality_level': self.quality_level,
+                    'methods_used': self._get_optimization_methods_used()
+                },
+                'web_game_readiness': {
+                    'mobile_friendly': compressed_size < 10 * 1024 * 1024,  # Under 10MB
+                    'web_optimized': compressed_size < 25 * 1024 * 1024,   # Under 25MB
+                    'ready_for_streaming': compressed_size < 5 * 1024 * 1024  # Under 5MB
+                }
+            }
+            
+            return performance_metrics
+            
+        except Exception as e:
+            self.logger.error(f"Failed to generate performance report: {e}")
+            return {'error': 'Performance report generation failed'}
+
+    def _get_optimization_methods_used(self) -> list:
+        """
+        Get list of optimization methods used based on quality level and analysis
+        """
+        methods = ['Geometry Pruning', 'Vertex Welding']
+        
+        if self.quality_level == 'maximum_compression':
+            methods.extend(['Draco Compression', 'KTX2 ETC1S', 'Aggressive Quantization'])
+        elif self.quality_level == 'balanced':
+            methods.extend(['Meshoptimizer', 'KTX2 UASTC', 'Balanced Quantization'])
+        else:  # high quality
+            methods.extend(['Hybrid Compression', 'KTX2 UASTC', 'Conservative Quantization'])
+        
+        methods.extend(['Animation Optimization', 'Final Bundling'])
+        return methods

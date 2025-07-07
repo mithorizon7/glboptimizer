@@ -1,0 +1,53 @@
+. Texture Compression (Most Important)
+
+Your 50MB file size is most likely due to large, uncompressed textures. This is the single most important area to focus on.
+
+Problem: Your optimizer doesn't seem to handle texture compression. Standard PNG or JPEG textures are very large when loaded into GPU memory, which is a huge bottleneck for web games.
+
+Recommendation:
+
+KTX2 with Basis Universal: This is the modern standard for texture compression on the web. It allows for high-quality textures with a very small file size and, crucially, a small memory footprint on the GPU. You can use a command-line tool called toktx to convert your existing textures to KTX2.
+
+WebP: For a simpler, but still effective, approach, you can convert your textures to WebP format. WebP offers a good balance of quality and file size and is widely supported.
+
+Implementation: You can integrate these tools into your glboptimizer by calling them as subprocesses. Alternatively, you can use a more comprehensive tool like glTF-Transform, which has built-in support for KTX2 and WebP compression.
+
+2. Advanced Mesh Compression
+
+Problem: While you have basic geometry simplification, you're missing out on advanced mesh compression techniques that can shrink your geometry data by up to 95%.
+
+Recommendation:
+
+Draco Compression: Draco is a library from Google specifically designed to compress 3D geometry. It's highly effective and widely supported in modern 3D viewers and game engines.
+
+Meshoptimizer: This is another excellent tool that can significantly reduce the size of your mesh data. It's often used in conjunction with Draco for the best results.
+
+Implementation: Both Draco and Meshoptimizer are available as command-line tools or libraries that you could integrate into your optimizer. Again, glTF-Transform provides easy access to both of these.
+
+3. Quantization
+
+Problem: Your tool doesn't seem to perform quantization, which is the process of reducing the precision of your model's data (e.g., vertex positions, normals, and UVs).
+
+Recommendation: Use a tool that supports quantization. This can significantly reduce file size with minimal impact on visual quality. glTF-Transform and gltfpack both have excellent quantization features.
+
+Recommended Tools
+
+While you can definitely continue to build out your glboptimizer, I would strongly recommend using existing, battle-tested tools that already implement all of the features mentioned above. Here are the best options:
+
+glTF-Transform: This is a powerful and flexible command-line tool and library for optimizing glTF and GLB files. It supports everything I've mentioned: Draco, Meshoptimizer, KTX2, WebP, quantization, and much more. It's the Swiss Army knife of glTF optimization.
+
+gltfpack: This is another excellent command-line tool that is incredibly fast and easy to use. It's particularly good at optimizing for rendering performance and can automatically apply many of the best optimization techniques.
+
+Your Workflow for Large Files
+
+Here’s a recommended workflow for handling your 50MB files to get them ready for a web-based game:
+
+Simplify Geometry: Use a tool like Blender or your glboptimizer to reduce the polygon count of your model to a reasonable level for a web game.
+
+Compress Textures: Convert all your textures to KTX2 format using toktx. This will be the biggest factor in reducing your file size.
+
+Optimize with glTF-Transform or gltfpack: Run your GLB file through one of these tools. A good starting point with glTF-Transform would be a command like this:
+
+Bash
+gltf-transform optimize model.glb optimized_model.glb --texture-compress ktx2 --compress draco
+Test: Load the optimized model in your game and check the performance and visual quality. You may need to tweak the optimization settings to find the right balance for your needs.

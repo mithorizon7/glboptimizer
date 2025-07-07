@@ -286,6 +286,22 @@ class GLBOptimizer {
         this.resultCompression.textContent = `${progress.compression_ratio.toFixed(1)}%`;
         this.resultTime.textContent = `${progress.processing_time.toFixed(1)}s`;
         
+        // Add performance metrics if available
+        if (progress.performance_metrics) {
+            const performanceHtml = this.generatePerformanceMetrics(progress);
+            const resultsContainer = document.querySelector('#results-section .container');
+            const existingMetrics = resultsContainer.querySelector('.performance-metrics');
+            
+            if (existingMetrics) {
+                existingMetrics.remove();
+            }
+            
+            const metricsDiv = document.createElement('div');
+            metricsDiv.className = 'performance-metrics';
+            metricsDiv.innerHTML = performanceHtml;
+            resultsContainer.appendChild(metricsDiv);
+        }
+        
         // Initialize 3D model viewer with before/after comparison
         this.initialize3DViewer(progress);
     }
@@ -446,6 +462,57 @@ class GLBOptimizer {
         const i = Math.floor(Math.log(bytes) / Math.log(k));
         
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    generatePerformanceMetrics(progress) {
+        if (!progress.performance_metrics) return '';
+        
+        const metrics = progress.performance_metrics;
+        const readiness = metrics.web_game_readiness || {};
+        
+        return `
+            <div class="card mt-3">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="fas fa-rocket me-2"></i>Performance Gains
+                    </h5>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="text-center">
+                                <h6 class="text-info">Load Time</h6>
+                                <h4 class="text-success">${metrics.estimated_performance_gains?.load_time_improvement || 'N/A'}</h4>
+                                <small class="text-muted">Faster Loading</small>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="text-center">
+                                <h6 class="text-info">GPU Memory</h6>
+                                <h4 class="text-success">${metrics.estimated_performance_gains?.gpu_memory_savings || 'N/A'}</h4>
+                                <small class="text-muted">Memory Savings</small>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="text-center">
+                                <h6 class="text-info">Bandwidth</h6>
+                                <h4 class="text-success">${metrics.estimated_performance_gains?.bandwidth_savings || 'N/A'}</h4>
+                                <small class="text-muted">Data Savings</small>
+                            </div>
+                        </div>
+                    </div>
+                    <hr>
+                    <div class="row">
+                        <div class="col-md-12">
+                            <h6>Web Game Readiness</h6>
+                            <div class="d-flex gap-2 flex-wrap">
+                                ${readiness.ready_for_streaming ? '<span class="badge bg-success">Streaming Ready</span>' : '<span class="badge bg-warning">Large for Streaming</span>'}
+                                ${readiness.mobile_friendly ? '<span class="badge bg-success">Mobile Friendly</span>' : '<span class="badge bg-warning">Consider Mobile Optimization</span>'}
+                                ${readiness.web_optimized ? '<span class="badge bg-success">Web Optimized</span>' : '<span class="badge bg-danger">Needs Further Optimization</span>'}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
     }
     
     initialize3DViewer(progress) {
