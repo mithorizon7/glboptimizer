@@ -85,7 +85,7 @@ def process_file_synchronously(file_path, output_path, task_id, quality_level, e
         db.commit()
         
         # Run optimization
-        optimizer = GLBOptimizer()
+        optimizer = GLBOptimizer(quality_level=quality_level)
         start_time = time.time()
         
         # Get original file size
@@ -94,10 +94,7 @@ def process_file_synchronously(file_path, output_path, task_id, quality_level, e
         result = optimizer.optimize(
             input_path=file_path,
             output_path=output_path,
-            quality_level=quality_level,
-            enable_lod=enable_lod,
-            enable_simplification=enable_simplification,
-            progress_callback=lambda p, s: None  # Skip progress updates for sync mode
+            progress_callback=lambda p, s, m=None: None  # Skip progress updates for sync mode
         )
         
         processing_time = time.time() - start_time
