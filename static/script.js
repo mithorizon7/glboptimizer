@@ -313,8 +313,10 @@ class GLBOptimizer {
         console.log('startProgressPolling called with task ID:', this.currentTaskId);
         this.pollInterval = setInterval(async () => {
             try {
+                console.log(`Polling progress for task: ${this.currentTaskId}`);
                 const response = await fetch(`/progress/${this.currentTaskId}`);
                 const progress = await response.json();
+                console.log('Progress response:', progress);
                 
                 if (!response.ok) {
                     throw new Error(progress.error || 'Failed to get progress');

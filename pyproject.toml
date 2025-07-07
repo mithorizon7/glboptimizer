@@ -42,4 +42,5 @@ dependencies = [
     "urllib3>=2.5.0",
     "requests>=2.32.4",
     "six>=1.17.0",
+    "prompt-toolkit>=3.0.51",
 ]

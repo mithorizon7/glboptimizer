@@ -91,3 +91,24 @@ def on_starting(server):
     os.environ.setdefault('SESSION_SECRET', 'dev_secret_key_change_in_production')
     
     server.log.info("Environment validation passed")
+    
+    # Start Celery worker for background processing
+    try:
+        server.log.info("Starting Celery worker...")
+        celery_proc = subprocess.Popen([
+            sys.executable, '-m', 'celery', 
+            '-A', 'celery_app', 
+            'worker', 
+            '--loglevel=info',
+            '--concurrency=1',
+            '--pool=solo'  # Use solo pool for Replit compatibility
+        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+        # Store process ID for cleanup
+        with open('.celery_worker_pid', 'w') as f:
+            f.write(str(celery_proc.pid))
+            
+        server.log.info(f"Celery worker started with PID: {celery_proc.pid}")
+        
+    except Exception as e:
+        server.log.error(f"Failed to start Celery worker: {e}")
