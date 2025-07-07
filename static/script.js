@@ -7,12 +7,14 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 class GLBOptimizer {
     constructor() {
+        console.log('GLBOptimizer constructor called');
         this.currentTaskId = null;
         this.pollInterval = null;
         this.selectedFile = null;
         
         this.initializeElements();
         this.setupEventListeners();
+        console.log('GLBOptimizer initialization complete');
     }
     
     initializeElements() {
@@ -73,8 +75,12 @@ class GLBOptimizer {
     }
     
     setupEventListeners() {
+        console.log('Setting up event listeners');
+        console.log('fileInput element:', this.fileInput);
+        
         // File input change
         this.fileInput.addEventListener('change', (e) => {
+            console.log('File input change event triggered', e.target.files);
             if (e.target.files.length > 0) {
                 this.handleFileSelect(e.target.files[0]);
             }
@@ -146,8 +152,11 @@ class GLBOptimizer {
     }
     
     handleFileSelect(file) {
+        console.log('handleFileSelect called with file:', file);
+        
         // Validate file type
         if (!file.name.toLowerCase().endsWith('.glb')) {
+            console.log('File type validation failed:', file.name);
             this.showError('Please select a valid GLB file.');
             return;
         }
@@ -155,10 +164,12 @@ class GLBOptimizer {
         // Validate file size (100MB limit)
         const maxSize = 100 * 1024 * 1024; // 100MB
         if (file.size > maxSize) {
+            console.log('File size validation failed:', file.size);
             this.showError('File size must be less than 100MB.');
             return;
         }
         
+        console.log('File validation passed, setting selectedFile');
         this.selectedFile = file;
         
         // Show file info
@@ -848,5 +859,10 @@ class ModelViewer3D {
 
 // Initialize the application when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-    new GLBOptimizer();
+    console.log('DOM loaded, initializing GLBOptimizer');
+    try {
+        new GLBOptimizer();
+    } catch (error) {
+        console.error('Error initializing GLBOptimizer:', error);
+    }
 });
