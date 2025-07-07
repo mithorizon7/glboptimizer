@@ -26,7 +26,7 @@ This is a web-based GLB (3D model) file optimization tool that implements indust
   - `main.py`: Application entry point with Redis/Celery auto-start
 - **File Processing**: Production-grade asynchronous optimization with Celery workers
 - **Scalability**: Controlled concurrency (1 optimization at a time) with proper resource management
-- **Security**: File type validation, secure filename handling, file size limits (100MB)
+- **Security**: File type validation, secure filename handling, file size limits (100MB internal, 25MB displayed)
 
 ## Key Components
 
@@ -245,6 +245,11 @@ Changelog:
   - Added test configuration with isolated environment using in-memory SQLite and separate Redis database
   - Created comprehensive test fixtures and mocking framework for reliable testing
   - Testing suite covers security vulnerabilities, error handling, and performance validation
+- July 07, 2025. Increased internal file size limit from 25MB to 100MB while maintaining 25MB frontend display:
+  - Updated config.py MAX_CONTENT_LENGTH default from 25MB to 100MB
+  - Configuration now allows users to upload files up to 100MB internally
+  - Frontend continues to display 25MB limit for user expectations
+  - Change supports larger GLB files while maintaining conversion funnel strategy
 - July 07, 2025. Critical Celery task unification and application deployment fixes:
   - Fixed multiple separate Celery instances issue by creating single shared instance in celery_app.py
   - Unified all task modules (app.py, tasks.py, pipeline_tasks.py, cleanup_scheduler.py) to use same Celery instance

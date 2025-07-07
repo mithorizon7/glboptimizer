@@ -16,7 +16,7 @@ class Config:
     # File Upload Configuration
     UPLOAD_FOLDER = os.environ.get('UPLOAD_FOLDER', 'uploads')
     OUTPUT_FOLDER = os.environ.get('OUTPUT_FOLDER', 'output')
-    MAX_CONTENT_LENGTH = int(os.environ.get('MAX_FILE_SIZE_MB', '25')) * 1024 * 1024
+    MAX_CONTENT_LENGTH = int(os.environ.get('MAX_FILE_SIZE_MB', '100')) * 1024 * 1024
     ALLOWED_EXTENSIONS = {'glb'}
     
     # Optimization Configuration
