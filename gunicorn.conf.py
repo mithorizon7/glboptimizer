@@ -4,8 +4,10 @@
 import os
 import multiprocessing
 
-# Server socket
-bind = f"0.0.0.0:{os.environ.get('PORT', '5000')}"
+# Server socket - robust binding for Replit deployment
+host = os.environ.get('HOST', '0.0.0.0')
+port = os.environ.get('PORT', '5000')
+bind = f"{host}:{port}"
 backlog = 2048
 
 # Worker processes
