@@ -13,6 +13,8 @@ class GLBOptimizer {
         
         this.initializeElements();
         this.setupEventListeners();
+        this.initializeTooltips();
+        this.initializeQualityDescriptions();
     }
     
     initializeElements() {
@@ -916,6 +918,40 @@ class ModelViewer3D {
             syncBtn.innerHTML = '<i class="fas fa-link me-1"></i>Sync Cameras';
             syncBtn.classList.remove('btn-success');
             syncBtn.classList.add('btn-outline-secondary');
+        }
+    }
+    
+    initializeTooltips() {
+        // Initialize Bootstrap tooltips for all elements with data-bs-toggle="tooltip"
+        // Use a timeout to ensure Bootstrap is loaded
+        setTimeout(() => {
+            try {
+                if (typeof bootstrap !== 'undefined' && bootstrap.Tooltip) {
+                    const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+                    const tooltipList = [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl));
+                    console.log('Tooltips initialized successfully');
+                } else {
+                    console.warn('Bootstrap tooltips not available, falling back to title attributes');
+                }
+            } catch (error) {
+                console.warn('Error initializing tooltips:', error);
+            }
+        }, 100);
+    }
+    
+    initializeQualityDescriptions() {
+        // Update quality description when selection changes
+        const qualitySelect = document.getElementById('quality-level');
+        const qualityDescription = document.getElementById('quality-description');
+        
+        if (qualitySelect && qualityDescription) {
+            qualitySelect.addEventListener('change', (e) => {
+                const selectedOption = e.target.selectedOptions[0];
+                const description = selectedOption.getAttribute('data-description');
+                if (description) {
+                    qualityDescription.textContent = description;
+                }
+            });
         }
     }
 }

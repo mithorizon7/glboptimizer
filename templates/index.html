@@ -50,6 +50,10 @@
                         <h3 class="card-title text-center mb-4">
                             <i class="fas fa-upload me-2"></i>
                             Upload GLB File
+                            <i class="fas fa-question-circle ms-1 text-info" 
+                               data-bs-toggle="tooltip" 
+                               data-bs-placement="top" 
+                               data-bs-title="GLB files are 3D models used in games and web apps. If you have a .gltf file, you can convert it to .glb using online tools."></i>
                         </h3>
                         
                         <!-- Drop Zone -->
@@ -57,7 +61,11 @@
                             <div id="drop-zone-content">
                                 <i class="fas fa-cloud-upload-alt fa-3x mb-3 text-muted"></i>
                                 <h5>Drag & drop your GLB file here</h5>
-                                <p class="text-muted">or click to select a file</p>
+                                <p class="text-muted">or click to select a file (up to 100MB)</p>
+                                <small class="text-muted">
+                                    <i class="fas fa-info-circle me-1"></i>
+                                    We'll automatically compress textures, reduce polygons, and optimize your model for web use
+                                </small>
                                 <label for="file-input" class="btn btn-outline-secondary" style="cursor: pointer;">
                                     <i class="fas fa-folder-open me-2"></i>
                                     Choose File
@@ -76,30 +84,91 @@
                         <!-- Optimization Settings -->
                         <div id="optimization-settings" class="card mt-4" style="display: none;">
                             <div class="card-body">
-                                <h6 class="card-title">Optimization Settings</h6>
+                                <h6 class="card-title">
+                                    Optimization Settings
+                                    <i class="fas fa-info-circle ms-1 text-info" 
+                                       data-bs-toggle="tooltip" 
+                                       data-bs-placement="top" 
+                                       data-bs-title="These settings control how your 3D model is optimized. The defaults work great for most models, but you can adjust them based on your specific needs."></i>
+                                </h6>
+                                <div class="alert alert-info mb-3">
+                                    <i class="fas fa-lightbulb me-2"></i>
+                                    <small><strong>New to 3D optimization?</strong> Keep the default settings - they're chosen to give you the best balance of file size and quality for web use.</small>
+                                </div>
                                 <div class="row">
                                     <div class="col-md-6">
-                                        <label for="quality-level" class="form-label">Quality Level</label>
+                                        <label for="quality-level" class="form-label">
+                                            Quality Level
+                                            <i class="fas fa-info-circle ms-1 text-info" 
+                                               data-bs-toggle="tooltip" 
+                                               data-bs-placement="top" 
+                                               data-bs-title="Choose how much to compress your model. High Quality keeps it looking perfect but larger file size. Maximum Compression makes it tiny but might lose some fine details."></i>
+                                        </label>
                                         <select id="quality-level" class="form-select">
-                                            <option value="high" selected>High Quality (Recommended)</option>
-                                            <option value="balanced">Balanced</option>
-                                            <option value="maximum_compression">Maximum Compression</option>
+                                            <option value="high" selected data-description="Keeps your model looking exactly the same, reduces file size by 70-85%. Perfect for hero assets and close-up viewing.">High Quality (Recommended)</option>
+                                            <option value="balanced" data-description="Good balance between size and quality, reduces file size by 85-90%. Great for most game objects and web use.">Balanced</option>
+                                            <option value="maximum_compression" data-description="Smallest possible file size, reduces by 90-95%. Use when file size is critical and minor detail loss is acceptable.">Maximum Compression</option>
                                         </select>
-                                        <div class="form-text">High quality preserves visual fidelity, maximum compression prioritizes file size.</div>
+                                        <div class="form-text" id="quality-description">
+                                            Keeps your model looking exactly the same, reduces file size by 70-85%. Perfect for hero assets and close-up viewing.
+                                        </div>
                                     </div>
                                     <div class="col-md-6">
                                         <label class="form-label">Advanced Features</label>
-                                        <div class="form-check">
+                                        <div class="form-check mb-2">
                                             <input class="form-check-input" type="checkbox" id="enable-lod" checked>
                                             <label class="form-check-label" for="enable-lod">
                                                 Generate LOD (Level of Detail)
+                                                <i class="fas fa-info-circle ms-1 text-info" 
+                                                   data-bs-toggle="tooltip" 
+                                                   data-bs-placement="top" 
+                                                   data-bs-title="Creates multiple versions of your model: detailed up-close, simpler when far away. Makes games run smoother by showing less detail when you won't notice it."></i>
                                             </label>
+                                            <div class="form-text small">Creates 3 versions: full detail, medium detail (75%), low detail (50%)</div>
                                         </div>
                                         <div class="form-check">
                                             <input class="form-check-input" type="checkbox" id="enable-simplification" checked>
                                             <label class="form-check-label" for="enable-simplification">
                                                 Polygon Simplification
+                                                <i class="fas fa-info-circle ms-1 text-info" 
+                                                   data-bs-toggle="tooltip" 
+                                                   data-bs-placement="top" 
+                                                   data-bs-title="Reduces the number of triangles in your model while keeping the same shape. Like turning a 4K photo into HD - still looks great but much smaller file."></i>
                                             </label>
+                                            <div class="form-text small">Reduces triangle count by up to 50% while preserving the model's appearance</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Help Section -->
+                                <div class="mt-3">
+                                    <button class="btn btn-link p-0 text-info" type="button" data-bs-toggle="collapse" data-bs-target="#help-section" aria-expanded="false" aria-controls="help-section">
+                                        <i class="fas fa-question-circle me-1"></i>
+                                        What do these optimizations actually do?
+                                    </button>
+                                    <div class="collapse mt-2" id="help-section">
+                                        <div class="card card-body bg-dark border-info">
+                                            <h6 class="text-info mb-3">Optimization Explained in Simple Terms:</h6>
+                                            
+                                            <div class="mb-3">
+                                                <strong class="text-warning">Texture Compression:</strong>
+                                                <div class="small text-muted">Converts your model's images (textures) to a more efficient format. Like compressing a photo from PNG to JPEG, but for 3D models. Can reduce file size by 80-90%.</div>
+                                            </div>
+                                            
+                                            <div class="mb-3">
+                                                <strong class="text-warning">Geometry Compression:</strong>
+                                                <div class="small text-muted">Stores the 3D shape data more efficiently without changing how it looks. Similar to ZIP compression for files, but specialized for 3D geometry.</div>
+                                            </div>
+                                            
+                                            <div class="mb-3">
+                                                <strong class="text-warning">LOD Generation:</strong>
+                                                <div class="small text-muted">Creates simpler versions of your model for when it's viewed from far away. Like how Netflix shows lower quality video when your internet is slow - you get the right level of detail for the situation.</div>
+                                            </div>
+                                            
+                                            <div class="mb-0">
+                                                <strong class="text-warning">Polygon Simplification:</strong>
+                                                <div class="small text-muted">Reduces the number of triangles that make up your 3D model while keeping the same overall shape. Think of it like reducing a 4K image to 1080p - still looks great but much smaller file.</div>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
