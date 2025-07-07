@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GLB Optimizer - Industry-Standard GLB File Optimization</title>
+    <link href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="row justify-content-center">
+            <div class="col-lg-10">
+                <header class="text-center py-5">
+                    <h1 class="display-4 mb-3">
+                        <i class="fas fa-cube me-3"></i>
+                        GLB Optimizer
+                    </h1>
+                    <p class="lead">
+                        Industry-standard GLB file optimization using gltf-transform and gltfpack
+                    </p>
+                    <p class="text-muted">
+                        Reduce file sizes by 5-10× while maintaining visual fidelity
+                    </p>
+                </header>
+            </div>
+        </div>
+
+        <!-- Upload Section -->
+        <div class="row justify-content-center" id="upload-section">
+            <div class="col-lg-8">
+                <div class="card">
+                    <div class="card-body p-5">
+                        <h3 class="card-title text-center mb-4">
+                            <i class="fas fa-upload me-2"></i>
+                            Upload GLB File
+                        </h3>
+                        
+                        <!-- Drop Zone -->
+                        <div id="drop-zone" class="drop-zone text-center p-5 mb-4">
+                            <i class="fas fa-cloud-upload-alt fa-3x mb-3 text-muted"></i>
+                            <h5>Drag & drop your GLB file here</h5>
+                            <p class="text-muted">or click to select a file</p>
+                            <input type="file" id="file-input" accept=".glb" style="display: none;">
+                            <button type="button" class="btn btn-outline-secondary" onclick="document.getElementById('file-input').click()">
+                                <i class="fas fa-folder-open me-2"></i>
+                                Choose File
+                            </button>
+                        </div>
+
+                        <!-- File Info -->
+                        <div id="file-info" class="alert alert-info" style="display: none;">
+                            <i class="fas fa-info-circle me-2"></i>
+                            <span id="file-details"></span>
+                        </div>
+
+                        <!-- Upload Button -->
+                        <div class="text-center">
+                            <button id="upload-btn" class="btn btn-primary btn-lg" disabled>
+                                <i class="fas fa-rocket me-2"></i>
+                                Start Optimization
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Progress Section -->
+        <div class="row justify-content-center mt-4" id="progress-section" style="display: none;">
+            <div class="col-lg-8">
+                <div class="card">
+                    <div class="card-body p-4">
+                        <h4 class="card-title mb-4">
+                            <i class="fas fa-cogs me-2"></i>
+                            Optimization Progress
+                        </h4>
+                        
+                        <!-- Progress Bar -->
+                        <div class="mb-3">
+                            <div class="progress" style="height: 20px;">
+                                <div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" 
+                                     role="progressbar" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        
+                        <!-- Progress Info -->
+                        <div class="row">
+                            <div class="col-md-6">
+                                <p class="mb-1"><strong>Current Step:</strong></p>
+                                <p id="current-step" class="text-muted">Initializing...</p>
+                            </div>
+                            <div class="col-md-6">
+                                <p class="mb-1"><strong>Progress:</strong></p>
+                                <p id="progress-text" class="text-muted">0%</p>
+                            </div>
+                        </div>
+                        
+                        <!-- File Size Info -->
+                        <div class="row mt-3" id="size-info" style="display: none;">
+                            <div class="col-md-4">
+                                <div class="text-center">
+                                    <h6>Original Size</h6>
+                                    <span id="original-size" class="badge bg-secondary fs-6"></span>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="text-center">
+                                    <h6>Optimized Size</h6>
+                                    <span id="optimized-size" class="badge bg-success fs-6"></span>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="text-center">
+                                    <h6>Compression</h6>
+                                    <span id="compression-ratio" class="badge bg-primary fs-6"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Results Section -->
+        <div class="row justify-content-center mt-4" id="results-section" style="display: none;">
+            <div class="col-lg-8">
+                <div class="card">
+                    <div class="card-body p-4">
+                        <h4 class="card-title mb-4">
+                            <i class="fas fa-check-circle text-success me-2"></i>
+                            Optimization Complete
+                        </h4>
+                        
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6>Optimization Statistics</h6>
+                                <ul class="list-unstyled">
+                                    <li><strong>Original Size:</strong> <span id="result-original-size"></span></li>
+                                    <li><strong>Optimized Size:</strong> <span id="result-optimized-size"></span></li>
+                                    <li><strong>Size Reduction:</strong> <span id="result-compression"></span></li>
+                                    <li><strong>Processing Time:</strong> <span id="result-time"></span></li>
+                                </ul>
+                            </div>
+                            <div class="col-md-6">
+                                <h6>Optimization Steps Applied</h6>
+                                <ul class="list-unstyled">
+                                    <li><i class="fas fa-check text-success me-2"></i>Cleanup & Deduplication</li>
+                                    <li><i class="fas fa-check text-success me-2"></i>Geometry Compression (Meshopt)</li>
+                                    <li><i class="fas fa-check text-success me-2"></i>Texture Compression (KTX2)</li>
+                                    <li><i class="fas fa-check text-success me-2"></i>Animation Optimization</li>
+                                    <li><i class="fas fa-check text-success me-2"></i>Final Bundle & Minify</li>
+                                </ul>
+                            </div>
+                        </div>
+                        
+                        <div class="text-center mt-4">
+                            <button id="download-btn" class="btn btn-success btn-lg me-3">
+                                <i class="fas fa-download me-2"></i>
+                                Download Optimized GLB
+                            </button>
+                            <button id="new-optimization-btn" class="btn btn-outline-secondary btn-lg">
+                                <i class="fas fa-plus me-2"></i>
+                                Optimize Another File
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Error Section -->
+        <div class="row justify-content-center mt-4" id="error-section" style="display: none;">
+            <div class="col-lg-8">
+                <div class="alert alert-danger">
+                    <h5 class="alert-heading">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        Optimization Failed
+                    </h5>
+                    <p id="error-message"></p>
+                    <hr>
+                    <button id="retry-btn" class="btn btn-outline-danger">
+                        <i class="fas fa-redo me-2"></i>
+                        Try Again
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="text-center py-5 mt-5">
+            <div class="row">
+                <div class="col-lg-8 mx-auto">
+                    <h6>Optimization Pipeline</h6>
+                    <p class="text-muted small">
+                        This tool implements the industry-standard 6-step GLB optimization workflow:
+                        Prune → Compress Geometry → Compress Textures → Optimize Animations → Final Bundle → Progressive Delivery
+                    </p>
+                    <p class="text-muted small">
+                        Powered by <strong>gltf-transform</strong> and <strong>gltfpack</strong>
+                    </p>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
