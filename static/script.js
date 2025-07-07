@@ -144,10 +144,10 @@ class GLBOptimizer {
             }
         });
         
-        // Upload button
+        // Upload button - now labeled "Start Optimization"
         if (this.uploadBtn) {
             this.uploadBtn.addEventListener('click', () => {
-                console.log('Upload button clicked, starting optimization...');
+                console.log('Start optimization button clicked');
                 this.startOptimization();
             });
         } else {
@@ -265,6 +265,13 @@ class GLBOptimizer {
             this.showError('Please select a file first.');
             return;
         }
+
+        // Show progress section immediately
+        this.uploadSection.style.display = 'none';
+        this.progressSection.style.display = 'block';
+        this.progressBar.style.width = '0%';
+        this.progressText.textContent = '0%';
+        this.currentStep.textContent = 'Starting optimization...';
         
         // Create form data with optimization settings
         console.log('Creating form data...');
@@ -278,6 +285,9 @@ class GLBOptimizer {
         try {
             // Upload file and start optimization
             console.log('Sending fetch request to /upload...');
+            this.progressBar.style.width = '10%';
+            this.progressText.textContent = '10%';
+            this.currentStep.textContent = 'Uploading file...';
             const response = await fetch('/upload', {
                 method: 'POST',
                 body: formData
@@ -292,16 +302,29 @@ class GLBOptimizer {
                 throw new Error(result.error || 'Upload failed');
             }
             
-            // Store task ID and start polling
+            // Store task ID
             this.currentTaskId = result.task_id;
             console.log('Task ID stored:', this.currentTaskId);
             this.originalSize.textContent = this.formatFileSize(result.original_size);
             
-            // Show progress section
-            console.log('Showing progress section...');
-            this.showProgressSection();
-            console.log('Starting progress polling...');
-            this.startProgressPolling();
+            // Check if processing completed immediately (synchronous mode)
+            if (result.status === 'completed') {
+                console.log('Optimization completed immediately (synchronous mode)');
+                this.progressBar.style.width = '100%';
+                this.progressText.textContent = '100%';
+                this.currentStep.textContent = 'Optimization complete!';
+                
+                // Small delay to show completion, then show results
+                setTimeout(() => {
+                    this.showResults(result);
+                }, 1000);
+            } else {
+                // Show progress section and start polling (async mode)
+                console.log('Showing progress section...');
+                this.showProgressSection();
+                console.log('Starting progress polling for async processing...');
+                this.startProgressPolling();
+            }
             
         } catch (error) {
             console.error('Optimization error:', error);
