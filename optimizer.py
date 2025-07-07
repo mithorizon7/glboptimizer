@@ -888,18 +888,59 @@ class GLBOptimizer:
         return methods
     
     def _run_gltf_transform_textures(self, input_path, output_path):
-        """Step 4: Safe texture compression that preserves GLB structure"""
+        """Step 4: Intelligent texture compression with KTX2 attempt and safe fallback"""
         import os
         import tempfile
         
-        # For now, skip aggressive texture compression to prevent corruption
-        # Focus on maintaining GLB integrity for working 3D preview
+        # Try KTX2 first for better compression, fall back to safer methods
+        temp_dir = os.path.dirname(output_path)
+        ktx2_test = os.path.join(temp_dir, "test_ktx2.glb")
+        
+        # Attempt KTX2/Basis Universal compression
         try:
-            # Basic texture optimization without format conversion
+            self.logger.info("Attempting KTX2/Basis Universal compression...")
+            ktx2_cmd = [
+                'npx', 'gltf-transform', 'ktx',
+                input_path, ktx2_test,
+                '--format', 'uastc',
+                '--compression', '4'
+            ]
+            
+            result = subprocess.run(ktx2_cmd, capture_output=True, text=True, timeout=600)
+            
+            if result.returncode == 0 and os.path.exists(ktx2_test):
+                # Basic file size check 
+                input_size = os.path.getsize(input_path)
+                test_size = os.path.getsize(ktx2_test)
+                
+                # If KTX2 compression seems reasonable, use it
+                if test_size > 0 and test_size < input_size:
+                    compression_ratio = (1 - test_size / input_size) * 100
+                    shutil.move(ktx2_test, output_path)
+                    
+                    self.logger.info(f"KTX2 compression successful: {input_size} → {test_size} bytes ({compression_ratio:.1f}% reduction)")
+                    return {
+                        'success': True,
+                        'method': 'ktx2',
+                        'compression_ratio': compression_ratio,
+                        'input_size': input_size,
+                        'output_size': test_size
+                    }
+            
+            # Clean up failed attempt
+            if os.path.exists(ktx2_test):
+                os.remove(ktx2_test)
+                
+        except Exception as e:
+            self.logger.warning(f"KTX2 compression failed: {e}")
+        
+        # Fallback to texture resizing
+        self.logger.info("Falling back to safe texture resizing...")
+        try:
             cmd = [
                 'npx', 'gltf-transform', 'resize',
                 input_path, output_path,
-                '--width', '1024', '--height', '1024'  # Resize to reasonable dimensions
+                '--width', '1024', '--height', '1024'
             ]
             
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
@@ -909,23 +950,19 @@ class GLBOptimizer:
                 output_size = os.path.getsize(output_path)
                 compression_ratio = (1 - output_size / input_size) * 100
                 
-                self.logger.info(f"Safe texture optimization: {input_size} → {output_size} bytes ({compression_ratio:.1f}% reduction)")
-                
+                self.logger.info(f"Safe texture resizing: {input_size} → {output_size} bytes ({compression_ratio:.1f}% reduction)")
                 return {
                     'success': True,
-                    'method': 'resize',
+                    'method': 'resize_fallback',
                     'compression_ratio': compression_ratio,
                     'input_size': input_size,
                     'output_size': output_size
                 }
-            else:
-                self.logger.warning(f"Texture resize failed: {result.stderr}")
-                
         except Exception as e:
             self.logger.warning(f"Texture resize failed: {e}")
         
-        # Fallback: just copy the file to preserve structure
-        self.logger.info("Using original textures to preserve GLB integrity")
+        # Final fallback: preserve original to guarantee working GLB
+        self.logger.info("Preserving original textures for maximum GLB compatibility")
         shutil.copy2(input_path, output_path)
         return {'success': True, 'method': 'preserve'}
         
