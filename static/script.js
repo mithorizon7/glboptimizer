@@ -256,34 +256,44 @@ class GLBOptimizer {
         }
         
         // Create form data with optimization settings
+        console.log('Creating form data...');
         const formData = new FormData();
         formData.append('file', this.selectedFile);
         formData.append('quality_level', this.qualityLevel.value);
         formData.append('enable_lod', this.enableLod.checked);
         formData.append('enable_simplification', this.enableSimplification.checked);
+        console.log('Form data created, sending request...');
         
         try {
             // Upload file and start optimization
+            console.log('Sending fetch request to /upload...');
             const response = await fetch('/upload', {
                 method: 'POST',
                 body: formData
             });
             
+            console.log('Response received:', response.status, response.statusText);
             const result = await response.json();
+            console.log('Response data:', result);
             
             if (!response.ok) {
+                console.error('Upload failed:', result.error);
                 throw new Error(result.error || 'Upload failed');
             }
             
             // Store task ID and start polling
             this.currentTaskId = result.task_id;
+            console.log('Task ID stored:', this.currentTaskId);
             this.originalSize.textContent = this.formatFileSize(result.original_size);
             
             // Show progress section
+            console.log('Showing progress section...');
             this.showProgressSection();
+            console.log('Starting progress polling...');
             this.startProgressPolling();
             
         } catch (error) {
+            console.error('Optimization error:', error);
             this.showError(error.message);
         }
     }
