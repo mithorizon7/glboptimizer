@@ -93,6 +93,11 @@ def add_security_headers(response):
         # Control referrer information
         response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
         
+        # CORS headers for same-origin requests
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+        
         # Content Security Policy (allowing required external resources)
         response.headers['Content-Security-Policy'] = (
             "default-src 'self'; "
