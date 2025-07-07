@@ -172,8 +172,11 @@ class GLBOptimizer {
     }
     
     handleFileSelect(file) {
+        console.log('handleFileSelect called with file:', file.name, file.size);
+        
         // Validate file type
         if (!file.name.toLowerCase().endsWith('.glb')) {
+            console.log('File type validation failed');
             this.showError('Please select a valid GLB file.');
             return;
         }
@@ -181,32 +184,44 @@ class GLBOptimizer {
         // Validate file size (100MB limit)
         const maxSize = 100 * 1024 * 1024; // 100MB
         if (file.size > maxSize) {
+            console.log('File size validation failed');
             this.showError('File size must be less than 100MB.');
             return;
         }
         
+        console.log('File validation passed, setting selectedFile');
         this.selectedFile = file;
         
         // Show file info
+        console.log('Updating file details...');
         this.fileDetails.textContent = `Selected: ${file.name} (${this.formatFileSize(file.size)})`;
         this.fileInfo.style.display = 'block';
         
         // Show optimization settings
+        console.log('Showing optimization settings...');
         this.optimizationSettings.style.display = 'block';
         
         // Enable upload button
+        console.log('Enabling upload button...');
         this.uploadBtn.disabled = false;
         
         // Update drop zone content to show selected file
-        document.getElementById('drop-zone-content').innerHTML = `
-            <i class="fas fa-file-archive fa-3x mb-3 text-success"></i>
-            <h5>${file.name}</h5>
-            <p class="text-muted">${this.formatFileSize(file.size)}</p>
-            <button type="button" class="btn btn-outline-secondary" onclick="document.getElementById('file-input').click()">
-                <i class="fas fa-exchange-alt me-2"></i>
-                Change File
-            </button>
-        `;
+        console.log('Updating drop zone content...');
+        const dropZoneContent = document.getElementById('drop-zone-content');
+        if (dropZoneContent) {
+            dropZoneContent.innerHTML = `
+                <i class="fas fa-file-archive fa-3x mb-3 text-success"></i>
+                <h5>${file.name}</h5>
+                <p class="text-muted">${this.formatFileSize(file.size)}</p>
+                <button type="button" class="btn btn-outline-secondary" onclick="document.getElementById('file-input').click()">
+                    <i class="fas fa-exchange-alt me-2"></i>
+                    Change File
+                </button>
+            `;
+            console.log('Drop zone content updated successfully');
+        } else {
+            console.error('drop-zone-content element not found!');
+        }
     }
     
     async startOptimization() {
