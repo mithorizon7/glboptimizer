@@ -299,13 +299,18 @@ class GLBOptimizer {
     }
     
     showProgressSection() {
+        console.log('showProgressSection called');
+        console.log('Upload section:', this.uploadSection);
+        console.log('Progress section:', this.progressSection);
         this.uploadSection.style.display = 'none';
         this.progressSection.style.display = 'block';
         this.resultsSection.style.display = 'none';
         this.errorSection.style.display = 'none';
+        console.log('Progress section display set to block');
     }
     
     startProgressPolling() {
+        console.log('startProgressPolling called with task ID:', this.currentTaskId);
         this.pollInterval = setInterval(async () => {
             try {
                 const response = await fetch(`/progress/${this.currentTaskId}`);
