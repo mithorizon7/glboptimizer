@@ -134,9 +134,14 @@ class GLBOptimizer {
         });
         
         // Upload button
-        this.uploadBtn.addEventListener('click', () => {
-            this.startOptimization();
-        });
+        if (this.uploadBtn) {
+            this.uploadBtn.addEventListener('click', () => {
+                console.log('Upload button clicked, starting optimization...');
+                this.startOptimization();
+            });
+        } else {
+            console.error('Upload button not found!');
+        }
         
         // Download button
         this.downloadBtn.addEventListener('click', () => {
@@ -232,16 +237,20 @@ class GLBOptimizer {
                 <i class="fas fa-file-archive fa-3x mb-3 text-success"></i>
                 <h5>${file.name}</h5>
                 <p class="text-muted">${this.formatFileSize(file.size)}</p>
-                <button type="button" class="btn btn-outline-secondary" onclick="document.getElementById('file-input').click()">
+                <label for="file-input" class="btn btn-outline-secondary" style="cursor: pointer;">
                     <i class="fas fa-exchange-alt me-2"></i>
                     Change File
-                </button>
+                </label>
             `;
         }
     }
     
     async startOptimization() {
+        console.log('startOptimization called');
+        console.log('selectedFile:', this.selectedFile);
+        
         if (!this.selectedFile) {
+            console.log('No file selected, showing error');
             this.showError('Please select a file first.');
             return;
         }
@@ -476,10 +485,10 @@ class GLBOptimizer {
             <i class="fas fa-cloud-upload-alt fa-3x mb-3 text-muted"></i>
             <h5>Drag & drop your GLB file here</h5>
             <p class="text-muted">or click to select a file</p>
-            <button type="button" class="btn btn-outline-secondary" onclick="document.getElementById('file-input').click()">
+            <label for="file-input" class="btn btn-outline-secondary" style="cursor: pointer;">
                 <i class="fas fa-folder-open me-2"></i>
                 Choose File
-            </button>
+            </label>
         `;
         
         // Reset progress
