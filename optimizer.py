@@ -365,9 +365,9 @@ class GLBOptimizer:
                 if not result['success']:
                     return result
                 
-                # Step 4: Compress textures with KTX2/BasisU
+                # Step 4: Advanced texture compression (MOST IMPORTANT for 50MB→5MB reduction)
                 if progress_callback:
-                    progress_callback("Step 3: Texture Compression", 60, "Compressing textures with KTX2...")
+                    progress_callback("Step 3: Texture Compression", 60, "Applying advanced texture compression...")
                 
                 step4_output = os.path.join(temp_dir, "step4_textures.glb")
                 result = self._run_gltf_transform_textures(step3_output, step4_output)
@@ -824,35 +824,160 @@ class GLBOptimizer:
         return methods
     
     def _run_gltf_transform_textures(self, input_path, output_path):
-        """Step 4: Compress textures with KTX2/BasisU (high quality settings)"""
+        """Step 4: Advanced texture compression with KTX2/BasisU and WebP fallback"""
+        import os
+        import tempfile
+        
+        # Create temp files for testing different compression methods
+        temp_dir = os.path.dirname(output_path)
+        ktx2_output = os.path.join(temp_dir, "test_ktx2.glb")
+        webp_output = os.path.join(temp_dir, "test_webp.glb")
+        
+        # Quality-based texture compression settings
+        compression_settings = {
+            'high': {
+                'ktx2_quality': '255',      # Maximum quality
+                'webp_quality': '95',       # High quality WebP
+                'uastc_mode': True,         # UASTC for high quality
+                'channel_packing': True     # Channel packing optimization
+            },
+            'balanced': {
+                'ktx2_quality': '128',      # Balanced quality
+                'webp_quality': '85',       # Good quality WebP
+                'uastc_mode': False,        # ETC1S for better compression
+                'channel_packing': True
+            },
+            'maximum_compression': {
+                'ktx2_quality': '64',       # Lower quality for max compression
+                'webp_quality': '75',       # Compressed WebP
+                'uastc_mode': False,        # ETC1S for maximum compression
+                'channel_packing': True
+            }
+        }
+        
+        settings = compression_settings.get(self.quality_level, compression_settings['balanced'])
+        
+        results = {}
+        file_sizes = {}
+        
+        # Method 1: Advanced KTX2/Basis Universal compression
         try:
-            # Use high-quality settings as recommended in the workflow
-            # --q 255 for maximum quality, --uastc for normals, mixed approach for best results
-            cmd = [
-                'npx', 'gltf-transform', 'copy',
-                input_path, output_path,
-                '--ktx2', '--uastc',
-                '--filter', 'r13z',  # channel packing for roughness/metallic
-                '--q', '255'  # maximum quality as recommended for hero assets
+            self.logger.info("Testing KTX2/Basis Universal compression...")
+            ktx2_cmd = [
+                'npx', 'gltf-transform', 'etc1s',
+                input_path, ktx2_output,
+                '--quality', settings['ktx2_quality'],
+                '--slots', '4',         # Use all available slots
+                '--rd', '18'            # Rate-distortion optimization
             ]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
             
-            if result.returncode != 0:
-                self.logger.warning(f"High-quality texture compression failed, trying fallback: {result.stderr}")
-                # Fallback to basic KTX2 compression
-                cmd_fallback = [
-                    'npx', 'gltf-transform', 'copy',
-                    input_path, output_path,
-                    '--ktx2'
+            # Add UASTC mode for high quality
+            if settings['uastc_mode']:
+                ktx2_cmd = [
+                    'npx', 'gltf-transform', 'uastc',
+                    input_path, ktx2_output,
+                    '--level', '4',     # High compression level
+                    '--rdo', '4.0',     # Rate-distortion optimization
+                    '--zstd', '18'      # Zstandard compression
                 ]
-                result = subprocess.run(cmd_fallback, capture_output=True, text=True, timeout=600)
-                
-                if result.returncode != 0:
-                    self.logger.warning(f"Fallback texture compression failed, skipping: {result.stderr}")
-                    shutil.copy2(input_path, output_path)
-                    return {'success': True}
             
+            result = subprocess.run(ktx2_cmd, capture_output=True, text=True, timeout=600)
+            
+            if result.returncode == 0 and os.path.exists(ktx2_output):
+                results['ktx2'] = {'success': True}
+                file_sizes['ktx2'] = os.path.getsize(ktx2_output)
+                self.logger.info(f"KTX2 compression: {file_sizes['ktx2']} bytes")
+            else:
+                results['ktx2'] = {'success': False, 'error': result.stderr}
+                
+        except Exception as e:
+            results['ktx2'] = {'success': False, 'error': str(e)}
+        
+        # Method 2: WebP compression (fallback and compatibility option)
+        try:
+            self.logger.info("Testing WebP compression...")
+            webp_cmd = [
+                'npx', 'gltf-transform', 'webp',
+                input_path, webp_output,
+                '--quality', settings['webp_quality']
+            ]
+            
+            result = subprocess.run(webp_cmd, capture_output=True, text=True, timeout=600)
+            
+            if result.returncode == 0 and os.path.exists(webp_output):
+                results['webp'] = {'success': True}
+                file_sizes['webp'] = os.path.getsize(webp_output)
+                self.logger.info(f"WebP compression: {file_sizes['webp']} bytes")
+            else:
+                results['webp'] = {'success': False, 'error': result.stderr}
+                
+        except Exception as e:
+            results['webp'] = {'success': False, 'error': str(e)}
+        
+        # Select the best compression method
+        successful_methods = {method: size for method, size in file_sizes.items() 
+                            if results[method]['success']}
+        
+        if not successful_methods:
+            self.logger.warning("All texture compression methods failed, copying original")
+            shutil.copy2(input_path, output_path)
+            # Cleanup temp files
+            for temp_file in [ktx2_output, webp_output]:
+                try:
+                    if os.path.exists(temp_file):
+                        os.remove(temp_file)
+                except:
+                    pass
             return {'success': True}
+        
+        # Prefer KTX2 for compatibility, but select smallest if significantly better
+        if 'ktx2' in successful_methods and 'webp' in successful_methods:
+            ktx2_size = successful_methods['ktx2']
+            webp_size = successful_methods['webp']
+            # Choose WebP only if it's significantly smaller (>10% reduction)
+            if webp_size < ktx2_size * 0.9:
+                selected_method = 'webp'
+                selected_file = webp_output
+            else:
+                selected_method = 'ktx2'
+                selected_file = ktx2_output
+        elif 'ktx2' in successful_methods:
+            selected_method = 'ktx2'
+            selected_file = ktx2_output
+        else:
+            selected_method = 'webp'
+            selected_file = webp_output
+        
+        # Copy the best result to final output
+        try:
+            shutil.copy2(selected_file, output_path)
+            
+            # Cleanup temp files
+            for temp_file in [ktx2_output, webp_output]:
+                try:
+                    if os.path.exists(temp_file):
+                        os.remove(temp_file)
+                except:
+                    pass
+            
+            # Calculate compression ratio
+            input_size = os.path.getsize(input_path)
+            output_size = os.path.getsize(output_path)
+            compression_ratio = (1 - output_size / input_size) * 100
+            
+            self.logger.info(f"Texture compression ({selected_method}): {input_size} → {output_size} bytes ({compression_ratio:.1f}% reduction)")
+            
+            return {
+                'success': True,
+                'method': selected_method,
+                'compression_ratio': compression_ratio,
+                'input_size': input_size,
+                'output_size': output_size
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Failed to finalize texture compression: {str(e)}")
+            return {'success': False, 'error': f'Failed to finalize texture compression: {str(e)}'}
         
         except subprocess.TimeoutExpired:
             return {'success': False, 'error': 'Texture compression timed out'}
