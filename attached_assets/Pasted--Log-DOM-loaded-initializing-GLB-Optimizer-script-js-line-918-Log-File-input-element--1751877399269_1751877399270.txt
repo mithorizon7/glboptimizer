@@ -1,0 +1,41 @@
+[Log] DOM loaded, initializing GLB Optimizer... (script.js, line 918)
+[Log] File input element: –  (script.js, line 28)
+<input type="file" id="file-input" accept=".glb" style="display: none;">
+
+<input type="file" id="file-input" accept=".glb" style="display: none;">
+[Log] Drop zone element: –  (script.js, line 29)
+<div id="drop-zone" class="drop-zone text-center p-5 mb-4">…</div>
+
+<div id="drop-zone" class="drop-zone text-center p-5 mb-4">…</div>
+[Log] Upload button element: –  (script.js, line 30)
+<button id="upload-btn" class="btn btn-primary btn-lg" disabled>…</button>
+
+<button id="upload-btn" class="btn btn-primary btn-lg" disabled>…</button>
+[Log] Adding change event listener to file input (script.js, line 91)
+[Log] File input click test: – () => { (script.js, line 100)
+                console.log('Attempting to click file input...');
+                this.fileInput.click();
+            }
+[Log] GLB Optimizer initialized successfully (script.js, line 921)
+[Log] File input change event fired – FileList {0: File, length: 1, item: function} (script.js, line 93)
+FileList {0: File, length: 1, item: function}FileList
+[Log] handleFileSelect called with file: – "village.glb" – 24071116 (script.js, line 202)
+[Log] File validation passed, setting selectedFile (script.js, line 217)
+[Log] Updating file details... (script.js, line 221)
+[Log] Showing optimization settings... (script.js, line 226)
+[Log] Enabling upload button... (script.js, line 230)
+[Log] Upload button clicked, starting optimization... (script.js, line 139)
+[Log] startOptimization called (script.js, line 249)
+[Log] selectedFile: – File {name: "village.glb", lastModified: 1751831695000, webkitRelativePath: "", …} (script.js, line 250)
+File {name: "village.glb", lastModified: 1751831695000, webkitRelativePath: "", size: 24071116, type: "", …}File
+[Log] Creating form data... (script.js, line 259)
+[Log] Form data created, sending request... (script.js, line 265)
+[Log] Sending fetch request to /upload... (script.js, line 269)
+[Log] Response received: – 200 – "OK" (script.js, line 275)
+[Log] Response data: – {message: "File uploaded successfully. Optimization queued.", original_size: 24071116, task_id: "f03acf4e-2268-4c74-a647-ff96ccaa150d"} (script.js, line 277)
+[Log] Task ID stored: – "f03acf4e-2268-4c74-a647-ff96ccaa150d" (script.js, line 286)
+[Log] Showing progress section... (script.js, line 290)
+[Log] Starting progress polling... (script.js, line 292)
+[Error] Failed to load resource: the server responded with a status of 502 (Bad Gateway) (f03acf4e-2268-4c74-a647-ff96ccaa150d, line 0)
+[Error] Failed to load resource: the server responded with a status of 502 (Bad Gateway) (f03acf4e-2268-4c74-a647-ff96ccaa150d, line 0)
+[Error] Failed to load resource: the server responded with a status of 502 (Bad Gateway) (f03acf4e-2268-4c74-a647-ff96ccaa150d, line 0)
