@@ -32,6 +32,13 @@ def make_celery(app_name=__name__):
         task_acks_late=True,  # Acknowledge task only after completion
         worker_max_tasks_per_child=10,  # Restart worker after 10 tasks to prevent memory leaks
         
+        # Time limits for tasks
+        task_time_limit=600,  # Hard time limit: 10 minutes
+        task_soft_time_limit=540,  # Soft time limit: 9 minutes
+        
+        # Memory limit per worker process (in KB)
+        worker_max_memory_per_child=512000,  # 512MB
+        
         # Task routing and limits
         task_routes={
             'tasks.optimize_glb_file': {'queue': 'optimization'},

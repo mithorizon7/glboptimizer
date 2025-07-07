@@ -512,6 +512,27 @@ def admin_stats():
         logger.error(f"Stats error: {str(e)}")
         return jsonify({'error': 'Failed to get database stats', 'database_status': 'error'}), 500
 
+@main_routes.route('/health')
+def health_check():
+    """Health check endpoint for monitoring."""
+    # Check Celery status
+    try:
+        from celery_app import celery
+        i = celery.control.inspect()
+        stats = i.stats()
+        if not stats:
+            raise Exception("No running Celery workers found.")
+
+        celery_status = 'OK'
+    except Exception as e:
+        celery_status = f'ERROR: {e}'
+
+    return jsonify({
+        'status': 'ok',
+        'services': {
+            'celery_worker': celery_status
+        }
+    })
 
 if __name__ == '__main__':
     # Note: App is now created via factory pattern in main.py

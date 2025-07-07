@@ -1,0 +1,142 @@
+Of course. The .replit file you've provided is now correctly configured to run both the web server and the background worker simultaneously, which will solve the core issue of tasks getting stuck.
+
+Here are the complete, consolidated instructions for your developer to fix the remaining issues and stabilize the application.
+
+Instructions for Your Developer
+Here is a step-by-step guide to resolve the outstanding issues and ensure the application is production-ready.
+
+Step 1: Unify the Celery Application
+
+The main problem was that different parts of the code were creating separate, disconnected Celery instances. We need to ensure the entire application uses a single, shared instance.
+
+Action:
+In the celery_app.py file, the shared Celery instance is already correctly created. Your task is to verify that all other files that use Celery are importing this specific instance.
+
+File to check: celery_app.py
+
+Confirm: This file should contain the single celery = make_celery() instance. The provided file is already correct.
+
+Files to modify: tasks.py, pipeline_tasks.py, cleanup_scheduler.py
+
+Action: In each of these files, make sure you are importing the shared Celery instance with the line: from celery_app import celery.
+
+Remove any lines that create a new Celery instance, such as celery = Celery(...) or celery_app = make_celery().
+
+For example, in pipeline_tasks.py, the top of the file should look like this:
+
+Python
+# pipeline_tasks.py
+
+import os
+import logging
+from optimizer import GLBOptimizer
+from database import SessionLocal
+from models import OptimizationTask
+from sqlalchemy import text
+from datetime import datetime, timezone
+
+# Import the ONE shared Celery instance
+from celery_app import celery as celery_app 
+
+logger = logging.getLogger(__name__)
+
+# ... rest of the file
+Step 2: Clean Up Gunicorn Configuration
+
+The Gunicorn configuration was trying to start a worker, which is now handled by the .replit file. We can remove that logic to prevent conflicts.
+
+Action:
+Modify the gunicorn.conf.py file to remove the Celery worker startup logic from the on_starting hook. It should only be responsible for initializing the database.
+
+File to modify: gunicorn.conf.py
+
+Replace the existing on_starting function with this simplified version:
+
+Python
+# gunicorn.conf.py
+
+def on_starting(server):
+    """Initialize database in the master process before forking."""
+    server.log.info("Initializing services in Gunicorn master process...")
+    os.environ['GUNICORN_PROCESS'] = 'master'
+
+    try:
+        from database import init_database
+        init_database()
+        server.log.info("Database initialized successfully.")
+    except Exception as e:
+        server.log.error(f"Failed to initialize database in Gunicorn: {e}")
+        # Exit if the database can't be reached.
+        sys.exit(1)
+Step 3: Consolidate Startup Scripts
+
+To avoid confusion, you should remove old and redundant startup scripts and use the new, clearly defined ones.
+
+Action:
+
+Delete the following old scripts:
+
+main.py
+
+run_app.py
+
+start_with_cleanup.py
+
+run_production_old.py
+
+Use these two scripts as the official entry points:
+
+develop.py: For local development.
+
+run_production.py: For production deployments (though .replit handles this now).
+
+Step 4: Implement Production Best Practices
+
+For long-term stability, apply these final configurations.
+
+1. Add Health Monitoring:
+To easily check if the system is working, add a health check endpoint. This helps diagnose problems quickly.
+
+File to modify: app.py
+
+Action: Add the following route to the file:
+
+Python
+@main_routes.route('/health')
+def health_check():
+    """Health check endpoint for monitoring."""
+    # Check Celery status
+    try:
+        from celery_app import celery
+        i = celery.control.inspect()
+        stats = i.stats()
+        if not stats:
+            raise Exception("No running Celery workers found.")
+
+        celery_status = 'OK'
+    except Exception as e:
+        celery_status = f'ERROR: {e}'
+
+    return jsonify({
+        'status': 'ok',
+        'services': {
+            'celery_worker': celery_status
+        }
+    })
+2. Configure Resource Limits:
+Prevent the application from crashing due to memory-intensive tasks.
+
+File to modify: celery_app.py
+
+Action: Add the following settings to the celery.conf.update() dictionary to set time and memory limits for tasks.
+
+Python
+# In celery_app.py, inside the celery.conf.update({...}) dictionary:
+
+# Time limits for tasks
+task_time_limit=600,  # Hard time limit: 10 minutes
+task_soft_time_limit=540, # Soft time limit: 9 minutes
+
+# Memory limit per worker process (in KB)
+worker_max_memory_per_child=512000, # 512MB
+Once these steps are completed, the application will be stable, and the optimization tasks will process correctly.

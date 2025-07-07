@@ -56,59 +56,16 @@ def pre_fork(server, worker):
 
 # Environment variables validation
 def on_starting(server):
-    """Initialize services and validate environment on startup"""
-    # Set environment variable to prevent worker-level initialization
-    os.environ['GUNICORN_PROCESS'] = 'worker'
-    
-    # Initialize Redis and database in the master process
+    """Initialize database in the master process before forking."""
+    server.log.info("Initializing services in Gunicorn master process...")
+    os.environ['GUNICORN_PROCESS'] = 'master'
+
     try:
-        import subprocess
-        import time
-        
-        # Check if Redis is running
-        try:
-            result = subprocess.run(['redis-cli', 'ping'], capture_output=True, text=True, timeout=2)
-            if result.returncode != 0 or result.stdout.strip() != 'PONG':
-                # Start Redis if not running
-                server.log.info("Starting Redis server...")
-                subprocess.Popen(['redis-server', '--daemonize', 'yes', '--port', '6379'])
-                time.sleep(2)
-        except:
-            server.log.warning("Could not check Redis status")
-        
-        # Initialize database
         from database import init_database
         init_database()
-        server.log.info("Database initialized in master process")
-        
+        server.log.info("Database initialized successfully.")
     except Exception as e:
-        server.log.error(f"Failed to initialize services: {e}")
-    
-    # Set default environment variables
-    os.environ.setdefault('REDIS_URL', 'redis://localhost:6379/0')
-    os.environ.setdefault('CELERY_BROKER_URL', 'redis://localhost:6379/0')
-    os.environ.setdefault('CELERY_RESULT_BACKEND', 'redis://localhost:6379/0')
-    os.environ.setdefault('SESSION_SECRET', 'dev_secret_key_change_in_production')
-    
-    server.log.info("Environment validation passed")
-    
-    # Start Celery worker for background processing
-    try:
-        server.log.info("Starting Celery worker...")
-        celery_proc = subprocess.Popen([
-            sys.executable, '-m', 'celery', 
-            '-A', 'celery_app', 
-            'worker', 
-            '--loglevel=info',
-            '--concurrency=1',
-            '--pool=solo'  # Use solo pool for Replit compatibility
-        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        
-        # Store process ID for cleanup
-        with open('.celery_worker_pid', 'w') as f:
-            f.write(str(celery_proc.pid))
-            
-        server.log.info(f"Celery worker started with PID: {celery_proc.pid}")
-        
-    except Exception as e:
-        server.log.error(f"Failed to start Celery worker: {e}")
+        server.log.error(f"Failed to initialize database in Gunicorn: {e}")
+        # Exit if the database can't be reached.
+        import sys
+        sys.exit(1)

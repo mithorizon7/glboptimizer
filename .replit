@@ -1,15 +1,17 @@
 # This is the complete, corrected .replit file.
-# The command on line 22 has been updated to use `uv pip sync pyproject.toml`.
+# It now starts both the Gunicorn server and the Celery worker in parallel.
 
 modules = ["python-3.11", "nodejs-20", "python3", "postgresql-16"]
 
 [nix]
 channel = "stable-24_05"
-packages = ["cacert", "openssl", "postgresql", "redis"]
+packages = ["openssl", "postgresql", "redis"]
 
 [deployment]
 deploymentTarget = "autoscale"
-run = ["sh", "-c", "uv pip sync pyproject.toml && gunicorn --bind 0.0.0.0:5000 --reuse-port --reload wsgi:application"]
+# The deployment command needs to start both processes as well.
+# Using `&` runs the first command in the background.
+run = ["sh", "-c", "uv pip sync pyproject.toml && celery -A celery_app.celery worker --loglevel=info --pool=solo & gunicorn --bind 0.0.0.0:5000 --reuse-port --reload wsgi:application"]
 
 [workflows]
 runButton = "Project"
@@ -25,14 +27,22 @@ args = "Start application"
 
 [[workflows.workflow]]
 name = "Start application"
+# This workflow now has two parallel tasks: one for the web server, one for the worker.
+mode = "parallel"
 author = "agent"
 
+# Task 1: Start the Gunicorn Web Server
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-# This is the critical line that has been fixed.
-# It now tells `uv pip sync` to use the pyproject.toml file.
 args = "uv pip sync pyproject.toml && gunicorn --bind 0.0.0.0:5000 --reuse-port --reload wsgi:application"
 waitForPort = 5000
+
+# Task 2: Start the Celery Worker
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+# This command ensures dependencies are installed and then starts the worker.
+# The `--pool=solo` flag is often more reliable in constrained environments.
+args = "uv pip sync pyproject.toml && celery -A celery_app.celery worker --loglevel=info --pool=solo"
 
 [[ports]]
 localPort = 5000
