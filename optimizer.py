@@ -888,14 +888,46 @@ class GLBOptimizer:
         return methods
     
     def _run_gltf_transform_textures(self, input_path, output_path):
-        """Step 4: Advanced texture compression with KTX2/BasisU and WebP fallback"""
+        """Step 4: Safe texture compression that preserves GLB structure"""
         import os
         import tempfile
         
-        # Create temp files for testing different compression methods
-        temp_dir = os.path.dirname(output_path)
-        ktx2_output = os.path.join(temp_dir, "test_ktx2.glb")
-        webp_output = os.path.join(temp_dir, "test_webp.glb")
+        # For now, skip aggressive texture compression to prevent corruption
+        # Focus on maintaining GLB integrity for working 3D preview
+        try:
+            # Basic texture optimization without format conversion
+            cmd = [
+                'npx', 'gltf-transform', 'resize',
+                input_path, output_path,
+                '--width', '1024', '--height', '1024'  # Resize to reasonable dimensions
+            ]
+            
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+            
+            if result.returncode == 0:
+                input_size = os.path.getsize(input_path)
+                output_size = os.path.getsize(output_path)
+                compression_ratio = (1 - output_size / input_size) * 100
+                
+                self.logger.info(f"Safe texture optimization: {input_size} → {output_size} bytes ({compression_ratio:.1f}% reduction)")
+                
+                return {
+                    'success': True,
+                    'method': 'resize',
+                    'compression_ratio': compression_ratio,
+                    'input_size': input_size,
+                    'output_size': output_size
+                }
+            else:
+                self.logger.warning(f"Texture resize failed: {result.stderr}")
+                
+        except Exception as e:
+            self.logger.warning(f"Texture resize failed: {e}")
+        
+        # Fallback: just copy the file to preserve structure
+        self.logger.info("Using original textures to preserve GLB integrity")
+        shutil.copy2(input_path, output_path)
+        return {'success': True, 'method': 'preserve'}
         
         # Quality-based texture compression settings
         compression_settings = {
