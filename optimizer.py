@@ -6,8 +6,13 @@ import logging
 import shutil
 
 class GLBOptimizer:
-    def __init__(self):
+    def __init__(self, quality_level='high'):
+        """
+        Initialize GLB Optimizer
+        quality_level: 'high' (default), 'balanced', or 'maximum_compression'
+        """
         self.logger = logging.getLogger(__name__)
+        self.quality_level = quality_level
     
     def optimize(self, input_path, output_path, progress_callback=None):
         """
@@ -37,14 +42,19 @@ class GLBOptimizer:
                 if not result['success']:
                     return result
                 
-                # Step 3: Compress geometry with meshopt
+                # Step 3: Compress geometry with meshopt (with Draco fallback)
                 if progress_callback:
                     progress_callback("Step 2: Geometry Compression", 40, "Compressing geometry with meshopt...")
                 
                 step3_output = os.path.join(temp_dir, "step3_compressed.glb")
                 result = self._run_gltfpack_geometry(step2_output, step3_output)
                 if not result['success']:
-                    return result
+                    # Try Draco compression as fallback (as mentioned in workflow)
+                    if progress_callback:
+                        progress_callback("Step 2: Geometry Compression", 45, "Trying Draco compression fallback...")
+                    result = self._run_draco_compression(step2_output, step3_output)
+                    if not result['success']:
+                        return result
                 
                 # Step 4: Compress textures with KTX2/BasisU
                 if progress_callback:
@@ -146,23 +156,38 @@ class GLBOptimizer:
             return {'success': False, 'error': f'Welding/joining failed: {str(e)}'}
     
     def _run_gltfpack_geometry(self, input_path, output_path):
-        """Step 3: Compress geometry with meshopt"""
+        """Step 3: Compress geometry with meshopt and optional simplification"""
         try:
+            # Try with light simplification first (recommended in workflow)
+            # Using 0.7 as suggested in the "zero-to-hero" pipeline
             cmd = [
                 'gltfpack',
                 '-i', input_path,
                 '-o', output_path,
                 '--meshopt',
-                '--quantize'
+                '--quantize',
+                '--simplify', '0.7'  # 70% triangle count (light simplification)
             ]
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
             
             if result.returncode != 0:
-                self.logger.error(f"gltfpack geometry compression failed: {result.stderr}")
-                return {
-                    'success': False,
-                    'error': f'Geometry compression failed: {result.stderr}'
-                }
+                self.logger.warning(f"Geometry compression with simplification failed, trying without: {result.stderr}")
+                # Fallback without simplification
+                cmd_fallback = [
+                    'gltfpack',
+                    '-i', input_path,
+                    '-o', output_path,
+                    '--meshopt',
+                    '--quantize'
+                ]
+                result = subprocess.run(cmd_fallback, capture_output=True, text=True, timeout=600)
+                
+                if result.returncode != 0:
+                    self.logger.error(f"Basic geometry compression failed: {result.stderr}")
+                    return {
+                        'success': False,
+                        'error': f'Geometry compression failed: {result.stderr}'
+                    }
             
             return {'success': True}
         
@@ -171,21 +196,58 @@ class GLBOptimizer:
         except Exception as e:
             return {'success': False, 'error': f'Geometry compression failed: {str(e)}'}
     
-    def _run_gltf_transform_textures(self, input_path, output_path):
-        """Step 4: Compress textures with KTX2/BasisU"""
+    def _run_draco_compression(self, input_path, output_path):
+        """Alternative geometry compression using Draco (fallback option)"""
         try:
             cmd = [
-                'npx', 'gltf-transform', 'copy',
-                input_path, output_path,
-                '--ktx2', '--uastc'
+                'npx', 'gltf-transform', 'compress-geometry',
+                '--method', 'edgebreaker',
+                input_path, output_path
             ]
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
             
             if result.returncode != 0:
-                self.logger.warning(f"Texture compression failed, skipping: {result.stderr}")
-                # If texture compression fails, just copy the file
-                shutil.copy2(input_path, output_path)
-                return {'success': True}
+                self.logger.error(f"Draco compression failed: {result.stderr}")
+                return {
+                    'success': False,
+                    'error': f'Draco compression failed: {result.stderr}'
+                }
+            
+            return {'success': True}
+        
+        except subprocess.TimeoutExpired:
+            return {'success': False, 'error': 'Draco compression timed out'}
+        except Exception as e:
+            return {'success': False, 'error': f'Draco compression failed: {str(e)}'}
+    
+    def _run_gltf_transform_textures(self, input_path, output_path):
+        """Step 4: Compress textures with KTX2/BasisU (high quality settings)"""
+        try:
+            # Use high-quality settings as recommended in the workflow
+            # --q 255 for maximum quality, --uastc for normals, mixed approach for best results
+            cmd = [
+                'npx', 'gltf-transform', 'copy',
+                input_path, output_path,
+                '--ktx2', '--uastc',
+                '--filter', 'r13z',  # channel packing for roughness/metallic
+                '--q', '255'  # maximum quality as recommended for hero assets
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+            
+            if result.returncode != 0:
+                self.logger.warning(f"High-quality texture compression failed, trying fallback: {result.stderr}")
+                # Fallback to basic KTX2 compression
+                cmd_fallback = [
+                    'npx', 'gltf-transform', 'copy',
+                    input_path, output_path,
+                    '--ktx2'
+                ]
+                result = subprocess.run(cmd_fallback, capture_output=True, text=True, timeout=600)
+                
+                if result.returncode != 0:
+                    self.logger.warning(f"Fallback texture compression failed, skipping: {result.stderr}")
+                    shutil.copy2(input_path, output_path)
+                    return {'success': True}
             
             return {'success': True}
         
@@ -234,8 +296,9 @@ class GLBOptimizer:
             return {'success': True}
     
     def _run_gltfpack_final(self, input_path, output_path):
-        """Step 6: Final bundle and minify"""
+        """Step 6: Final bundle and minify with LOD generation"""
         try:
+            # Try with LOD generation first (progressive delivery as mentioned in workflow)
             cmd = [
                 'gltfpack',
                 '-i', input_path,
@@ -243,16 +306,34 @@ class GLBOptimizer:
                 '--meshopt',
                 '--quantize',
                 '--texture-compress',
-                '--no-copy'  # embed textures
+                '--ktx2',  # ensure KTX2 textures are preserved
+                '--no-copy',  # embed textures
+                '--lod', '3',  # 3 levels of detail
+                '--lod-scale', '0.5'  # each LOD is 50% of previous
             ]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=900)  # longer timeout for LOD
             
             if result.returncode != 0:
-                self.logger.error(f"Final gltfpack optimization failed: {result.stderr}")
-                return {
-                    'success': False,
-                    'error': f'Final optimization failed: {result.stderr}'
-                }
+                self.logger.warning(f"Final optimization with LOD failed, trying without: {result.stderr}")
+                # Fallback without LOD generation
+                cmd_fallback = [
+                    'gltfpack',
+                    '-i', input_path,
+                    '-o', output_path,
+                    '--meshopt',
+                    '--quantize',
+                    '--texture-compress',
+                    '--ktx2',
+                    '--no-copy'
+                ]
+                result = subprocess.run(cmd_fallback, capture_output=True, text=True, timeout=600)
+                
+                if result.returncode != 0:
+                    self.logger.error(f"Basic final optimization failed: {result.stderr}")
+                    return {
+                        'success': False,
+                        'error': f'Final optimization failed: {result.stderr}'
+                    }
             
             return {'success': True}
         

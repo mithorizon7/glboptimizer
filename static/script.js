@@ -17,6 +17,10 @@ class GLBOptimizer {
         this.fileInfo = document.getElementById('file-info');
         this.fileDetails = document.getElementById('file-details');
         this.uploadBtn = document.getElementById('upload-btn');
+        this.optimizationSettings = document.getElementById('optimization-settings');
+        this.qualityLevel = document.getElementById('quality-level');
+        this.enableLod = document.getElementById('enable-lod');
+        this.enableSimplification = document.getElementById('enable-simplification');
         
         // Sections
         this.uploadSection = document.getElementById('upload-section');
@@ -119,6 +123,9 @@ class GLBOptimizer {
         this.fileDetails.textContent = `Selected: ${file.name} (${this.formatFileSize(file.size)})`;
         this.fileInfo.style.display = 'block';
         
+        // Show optimization settings
+        this.optimizationSettings.style.display = 'block';
+        
         // Enable upload button
         this.uploadBtn.disabled = false;
         
@@ -140,9 +147,12 @@ class GLBOptimizer {
             return;
         }
         
-        // Create form data
+        // Create form data with optimization settings
         const formData = new FormData();
         formData.append('file', this.selectedFile);
+        formData.append('quality_level', this.qualityLevel.value);
+        formData.append('enable_lod', this.enableLod.checked);
+        formData.append('enable_simplification', this.enableSimplification.checked);
         
         try {
             // Upload file and start optimization
@@ -293,6 +303,7 @@ class GLBOptimizer {
         // Reset UI elements
         this.fileInput.value = '';
         this.fileInfo.style.display = 'none';
+        this.optimizationSettings.style.display = 'none';
         this.uploadBtn.disabled = true;
         
         // Reset drop zone

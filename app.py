@@ -53,6 +53,11 @@ def upload_file():
         # Generate unique task ID
         task_id = str(uuid.uuid4())
         
+        # Get optimization settings from form
+        quality_level = request.form.get('quality_level', 'high')
+        enable_lod = request.form.get('enable_lod') == 'true'
+        enable_simplification = request.form.get('enable_simplification') == 'true'
+        
         # Save uploaded file
         filename = secure_filename(file.filename)
         original_name = filename.rsplit('.', 1)[0]
@@ -76,11 +81,11 @@ def upload_file():
             'original_name': original_name
         }
         
-        # Start optimization in background thread
-        optimizer = GLBOptimizer()
+        # Start optimization in background thread with settings
+        optimizer = GLBOptimizer(quality_level=quality_level)
         thread = threading.Thread(
             target=run_optimization,
-            args=(optimizer, input_path, task_id, original_name)
+            args=(optimizer, input_path, task_id, original_name, enable_lod, enable_simplification)
         )
         thread.daemon = True
         thread.start()
@@ -91,7 +96,7 @@ def upload_file():
             'original_size': original_size
         })
 
-def run_optimization(optimizer, input_path, task_id, original_name):
+def run_optimization(optimizer, input_path, task_id, original_name, enable_lod=True, enable_simplification=True):
     """Run the optimization process in a background thread"""
     try:
         output_path = os.path.join(

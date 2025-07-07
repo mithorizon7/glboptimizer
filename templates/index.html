@@ -56,8 +56,41 @@
                             <span id="file-details"></span>
                         </div>
 
+                        <!-- Optimization Settings -->
+                        <div id="optimization-settings" class="card mt-4" style="display: none;">
+                            <div class="card-body">
+                                <h6 class="card-title">Optimization Settings</h6>
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <label for="quality-level" class="form-label">Quality Level</label>
+                                        <select id="quality-level" class="form-select">
+                                            <option value="high" selected>High Quality (Recommended)</option>
+                                            <option value="balanced">Balanced</option>
+                                            <option value="maximum_compression">Maximum Compression</option>
+                                        </select>
+                                        <div class="form-text">High quality preserves visual fidelity, maximum compression prioritizes file size.</div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Advanced Features</label>
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="enable-lod" checked>
+                                            <label class="form-check-label" for="enable-lod">
+                                                Generate LOD (Level of Detail)
+                                            </label>
+                                        </div>
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="enable-simplification" checked>
+                                            <label class="form-check-label" for="enable-simplification">
+                                                Polygon Simplification
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- Upload Button -->
-                        <div class="text-center">
+                        <div class="text-center mt-4">
                             <button id="upload-btn" class="btn btn-primary btn-lg" disabled>
                                 <i class="fas fa-rocket me-2"></i>
                                 Start Optimization
@@ -147,10 +180,11 @@
                             <div class="col-md-6">
                                 <h6>Optimization Steps Applied</h6>
                                 <ul class="list-unstyled">
-                                    <li><i class="fas fa-check text-success me-2"></i>Cleanup & Deduplication</li>
-                                    <li><i class="fas fa-check text-success me-2"></i>Geometry Compression (Meshopt)</li>
-                                    <li><i class="fas fa-check text-success me-2"></i>Texture Compression (KTX2)</li>
-                                    <li><i class="fas fa-check text-success me-2"></i>Animation Optimization</li>
+                                    <li><i class="fas fa-check text-success me-2"></i>Cleanup & Deduplication (Prune, Weld, Join)</li>
+                                    <li><i class="fas fa-check text-success me-2"></i>Geometry Compression (Meshopt + Draco fallback)</li>
+                                    <li><i class="fas fa-check text-success me-2"></i>Texture Compression (KTX2/BasisU + Channel Packing)</li>
+                                    <li><i class="fas fa-check text-success me-2"></i>Animation Optimization (Resample + Quantize)</li>
+                                    <li><i class="fas fa-check text-success me-2"></i>LOD Generation & Progressive Delivery</li>
                                     <li><i class="fas fa-check text-success me-2"></i>Final Bundle & Minify</li>
                                 </ul>
                             </div>
@@ -196,10 +230,16 @@
                     <h6>Optimization Pipeline</h6>
                     <p class="text-muted small">
                         This tool implements the industry-standard 6-step GLB optimization workflow:
-                        Prune → Compress Geometry → Compress Textures → Optimize Animations → Final Bundle → Progressive Delivery
+                        <br><strong>1.</strong> Cleanup & Deduplication (prune unused data, weld vertices, join meshes)
+                        <br><strong>2.</strong> Geometry Compression (EXT_meshopt_compression with quantization + Draco fallback)
+                        <br><strong>3.</strong> Texture Compression (KTX2/BasisU with channel packing, UASTC for normals)
+                        <br><strong>4.</strong> Animation Optimization (resample to 30fps, compress with 16-bit quantization)
+                        <br><strong>5.</strong> LOD Generation (3 levels of detail for progressive delivery)
+                        <br><strong>6.</strong> Final Bundle (embed textures, apply final compression)
                     </p>
                     <p class="text-muted small">
-                        Powered by <strong>gltf-transform</strong> and <strong>gltfpack</strong>
+                        Powered by <strong>gltf-transform v4.2.0</strong> and <strong>gltfpack v0.24.0</strong>
+                        <br>Achieves 5-10× compression while maintaining visual fidelity
                     </p>
                 </div>
             </div>

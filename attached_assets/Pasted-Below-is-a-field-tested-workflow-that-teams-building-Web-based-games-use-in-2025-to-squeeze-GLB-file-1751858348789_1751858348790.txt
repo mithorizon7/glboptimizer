@@ -1,0 +1,109 @@
+Below is a field-tested workflow that teams building Web-based games use in 2025 to squeeze GLB files down to a fraction of their original size without hurting visual fidelity.  I’ve grouped the steps by what they do (geometry, textures, cleanup, delivery) and named the tools/extensions that have become the de-facto standards.
+
+---
+
+### 1. Strip the fat first (cleanup & deduplication)
+
+| What                                  | How                                                                     | Why it matters                                                                                                                                  |
+| ------------------------------------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Prune unused data**                 | `gltf-transform prune scene.glb slim.glb`                               | Removes hidden meshes, orphaned nodes, extra UV sets, vertex colors you never sample, etc. 10-30 % saving is typical. ([gltf-transform.dev][1]) |
+| **Flatten transforms & merge meshes** | `gltf-transform weld --tolerance 0.0001 …` then `gltf-transform join …` | Fewer draw calls and smaller JSON when nodes share materials.                                                                                   |
+
+---
+
+### 2. Compress the geometry
+
+| Option                                        | Typical CLI                                                      | Notes                                                                                                                                              |
+| --------------------------------------------- | ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **EXT\_meshopt\_compression** (meshoptimizer) | `gltfpack -i slim.glb -o geom.glb --meshopt --quantize`          | Today this is the smallest + fastest to decode. Supported in Three.js ≥ 0.163, Babylon.js ≥ 6 .x, CesiumJS, many engines. ([meshoptimizer.org][2]) |
+| **Draco (KHR\_draco\_mesh\_compression)**     | `gltf-transform compress-geometry --method=edgebreaker slim.glb` | Good fallback if you must target engines that still lack meshopt.                                                                                  |
+| **Simplify (polygon reduction)**              | `gltfpack … --simplify 0.5`  (50 % tri count)                    | Built-in quadric simplifier; use cautiously on hero assets.                                                                                        |
+
+Meshopt + 8-/10-bit **quantization** (“`--quantize`”) often halves the vertex data again with no visible loss. ([community.cesium.com][3])
+
+---
+
+### 3. Compress the textures
+
+1. **Resize** to the lowest resolution that still looks good (powers-of-two if you need mipmapping).
+
+2. **GPU-native compression with KTX2 / BasisU**
+
+   ```bash
+   gltf-transform copy geom.glb tex.glb \
+     --ktx2 --uastc --filter r13z # roughness/metal packed
+   ```
+
+   * Adds the `KHR_texture_basisu` extension.
+   * ETC1S for albedo/ORM, UASTC for normals gives the best size-to-quality ratio. ([donmccurdy.com][4])
+
+3. **Channel packing** (R=occlusion, G=roughness, B=metallic) lets three textures share one 4-byte pixel.
+
+Expect 60-90 % savings versus PNG/JPEG plus much faster GPU uploads.
+
+---
+
+### 4. Squeeze the animations (if any)
+
+* **Resample keyframes** to whole-frame intervals:
+  `gltf-transform resample --fps 30 …`
+* **Interpolate & quantize**:
+  `gltf-transform compress-animation --quantize 16 …`
+
+These steps usually cut animation accessors by 40-70 %.
+
+---
+
+### 5. Final bundle & minify
+
+```bash
+gltfpack -i tex.glb -o final.glb \
+  --meshopt --quantize --texture-compress \
+  --no-copy             # embed textures
+```
+
+*Result*: 5-10× smaller than the source FBX/OBJ is common; 25-50 % smaller than a “naïve” GLB.
+
+Serve `final.glb` over HTTPS with **Brotli or Gzip** – both compress the binary chunk further (5-15 %).
+
+---
+
+### 6. Progressive delivery & LOD (optional but powerful)
+
+* `gltfpack --lod 3 --lod-scale 0.5 …` adds three LODs inside one file; engines choose the right mesh on distance.
+* `EXT_meshopt_compression` streams chunks progressively so users start seeing the model before the full mesh arrives. ([forum.babylonjs.com][5])
+
+---
+
+## Quick “one-liner” reference
+
+```bash
+# Zero-to-hero pipeline
+gltf-transform prune input.glb temp.glb
+gltfpack -i temp.glb -o output.glb \
+         --meshopt --quantize --simplify 0.7 \
+         --texture-compress --ktx2
+```
+
+---
+
+### Common pitfalls to avoid
+
+* **Leaving the encoder defaults** — BasisU’s default ETC1S quality is blurry; bump `--q 255` for hero props.
+* **Compressing normal maps with ETC1S** — use UASTC or BC5 for tangents; artefacts otherwise.
+* **Exporting unlit PBR materials** — stick to PBR so that compressed textures stay visually faithful.
+* **Forgetting to ship the WASM decoders** for meshopt/Draco with your loader. They’re <40 kB.
+
+---
+
+### Confidence
+
+*High on current best-practice steps and tools; medium on exact CLI flags you’ll need (they vary by asset). Engine support for EXT\_meshopt\_compression is now widespread but double-check your target stack.*
+
+These recommendations reflect what most WebGL/WebGPU pipelines converge on in 2025, citing the authoritative tool docs and community write-ups above for verification.
+
+[1]: https://gltf-transform.dev/?utm_source=chatgpt.com "glTF Transform"
+[2]: https://meshoptimizer.org/gltf/?utm_source=chatgpt.com "gltfpack - meshoptimizer"
+[3]: https://community.cesium.com/t/how-to-reduce-the-size-of-drone-data-glb-b3dm-tilesets-etc/24756?utm_source=chatgpt.com "How to reduce the size of drone data (glb, b3dm, tilesets etc)?"
+[4]: https://www.donmccurdy.com/2024/02/11/web-texture-formats/?utm_source=chatgpt.com "Choosing texture formats for WebGL and WebGPU applications"
+[5]: https://forum.babylonjs.com/t/ext-meshopt-compression-how-to/22793?utm_source=chatgpt.com "EXT_meshopt_compression - How to? - Questions - Babylon.js"

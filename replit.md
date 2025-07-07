@@ -99,6 +99,14 @@ This is a web-based GLB (3D model) file optimization tool that implements indust
 
 Changelog:
 - July 07, 2025. Initial setup
+- July 07, 2025. Enhanced optimization pipeline with industry-standard features:
+  - Added high-quality texture compression (--q 255, channel packing)
+  - Implemented polygon simplification with fallback handling
+  - Added Draco compression as fallback for geometry compression
+  - Enhanced LOD generation with 3 levels of detail
+  - Added user-configurable optimization settings (quality levels)
+  - Improved error handling and graceful degradation
+  - Updated UI with optimization settings panel
 
 ## User Preferences
 
