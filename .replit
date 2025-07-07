@@ -6,7 +6,7 @@ packages = ["openssl", "postgresql", "redis"]
 
 [deployment]
 deploymentTarget = "autoscale"
-run = ["gunicorn", "--bind", "0.0.0.0:5000", "main:app"]
+run = ["gunicorn --bind 0.0.0.0:5000 --reuse-port --reload wsgi:application"]
 
 [workflows]
 runButton = "Project"
