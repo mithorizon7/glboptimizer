@@ -6,13 +6,20 @@ Debug the optimization process to find where files are going wrong
 import requests
 import os
 import time
+import shutil
 
 def create_test_file():
-    # Create a minimal but valid GLB file
-    glb_data = b'glTF\x02\x00\x00\x00\x50\x00\x00\x00\x18\x00\x00\x00JSON{"asset":{"version":"2.0"}}'
-    with open('debug_test.glb', 'wb') as f:
-        f.write(glb_data)
-    return len(glb_data)
+    # Use an existing real GLB file for testing instead of minimal file
+    real_file = 'uploads/cee1f243-5115-4430-9c3a-265c7bcef381.glb'
+    if os.path.exists(real_file):
+        shutil.copy2(real_file, 'debug_test.glb')
+        return os.path.getsize('debug_test.glb')
+    else:
+        # Fallback to minimal file
+        glb_data = b'glTF\x02\x00\x00\x00\x50\x00\x00\x00\x18\x00\x00\x00JSON{"asset":{"version":"2.0"}}'
+        with open('debug_test.glb', 'wb') as f:
+            f.write(glb_data)
+        return len(glb_data)
 
 def test_optimization_flow():
     print("🔍 DEBUGGING OPTIMIZATION FLOW")

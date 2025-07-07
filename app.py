@@ -223,9 +223,9 @@ def process_file_synchronously(input_path, output_path, task_id, quality_level, 
             db.add(optimization_task)
             db.commit()
         
-        # Initialize simple optimizer for testing
-        from simple_optimizer import SimpleGLBOptimizer
-        optimizer = SimpleGLBOptimizer(quality_level=quality_level)
+        # Initialize optimizer
+        from optimizer import GLBOptimizer
+        optimizer = GLBOptimizer(quality_level=quality_level)
         
         # Set up progress callback to update database
         def progress_callback(step, progress, message):
