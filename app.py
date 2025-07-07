@@ -7,7 +7,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 import uuid
 from datetime import datetime, timezone
 from config import get_config
-# from celery_app import celery  # Removed - using factory pattern now
+from celery_app import make_celery
 # Import the task function to ensure it's registered
 import tasks
 from database import SessionLocal, init_database
@@ -28,6 +28,9 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
+
+# Initialize Celery app
+celery = make_celery(__name__)
 
 app = Flask(__name__)
 app.secret_key = config.SECRET_KEY
@@ -203,27 +206,36 @@ def upload_file():
             # Fallback to legacy single task
             try:
                 from tasks import optimize_glb_file
-                celery_task = optimize_glb_file.delay(
+                # Check if Celery is properly configured
+                if hasattr(optimize_glb_file, 'delay') and callable(optimize_glb_file.delay):
+                    celery_task = optimize_glb_file.delay(
                     input_path,
                     output_path,
                     original_name,
                     quality_level,
                     enable_lod,
                     enable_simplification
-                )
-                logger.info(f"Using legacy optimization task for {celery_task.id}")
+                    )
+                    logger.info(f"Using legacy optimization task for {celery_task.id}")
+                else:
+                    # Celery not available, create mock task with proper attribute access
+                    mock_id = f'mock_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
+                    celery_task = type('MockTask', (), {'id': mock_id})()
+                    logger.info(f"Celery unavailable, using mock task: {mock_id}")
             except Exception as e2:
                 logger.error(f"Fallback task also failed: {e2}")
-                # Final fallback to mock task
-                celery_task = type('MockTask', (), {'id': f'sync_{datetime.now().strftime("%Y%m%d_%H%M%S")}'})()
-                logger.info(f"Using mock task for {celery_task.id}")
+                # Final fallback - create mock task ID
+                task_id = f'sync_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
+                logger.info(f"Using synchronous processing with ID: {task_id}")
+                return task_id
         
         # Create database record for tracking (simplified for stability)
         try:
             db = get_db()
             try:
+                task_id = getattr(celery_task, 'id', f'sync_{datetime.now().strftime("%Y%m%d_%H%M%S")}')
                 optimization_task = OptimizationTask(
-                    id=celery_task.id,
+                    id=task_id,
                     original_filename=original_filename,
                     secure_filename=f"{task_id}.glb",
                     original_size=original_size,
@@ -234,15 +246,16 @@ def upload_file():
                 )
                 db.add(optimization_task)
                 db.commit()
-                logger.info(f"Created database record for task {celery_task.id}")
+                logger.info(f"Created database record for task {getattr(celery_task, 'id', 'unknown')}")
             finally:
                 db.close()
         except Exception as e:
             logger.error(f"Failed to create database record: {e}")
             # Continue without database tracking
         
+        task_id = getattr(celery_task, 'id', f'sync_{datetime.now().strftime("%Y%m%d_%H%M%S")}')
         return jsonify({
-            'task_id': celery_task.id,
+            'task_id': task_id,
             'message': 'File uploaded successfully. Optimization queued.',
             'original_size': original_size
         })

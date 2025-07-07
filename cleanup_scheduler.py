@@ -8,7 +8,7 @@ import os
 import time
 import logging
 from datetime import datetime, timedelta
-from celery_app import celery
+from celery_app import make_celery
 from celery.schedules import crontab
 
 # Configure logging
@@ -19,6 +19,9 @@ logger = logging.getLogger(__name__)
 UPLOAD_FOLDER = os.environ.get('UPLOAD_FOLDER', 'uploads')
 OUTPUT_FOLDER = os.environ.get('OUTPUT_FOLDER', 'output')
 FILE_RETENTION_HOURS = int(os.environ.get('FILE_RETENTION_HOURS', '24'))
+
+# Get celery app instance
+celery = make_celery(__name__)
 
 @celery.task(name='cleanup.cleanup_old_files')
 def cleanup_old_files():
