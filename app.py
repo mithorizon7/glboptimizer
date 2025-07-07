@@ -201,6 +201,92 @@ if config_issues:
 # Log configuration summary
 logger.info(f"GLB Optimizer starting with config: {config.get_config_summary()}")
 
+
+def process_file_synchronously(input_path, output_path, task_id, quality_level, enable_lod, enable_simplification):
+    """Synchronous file processing when Celery is unavailable"""
+    try:
+        start_time = time.time()
+        
+        # Create optimization task in database
+        with get_db() as db:
+            optimization_task = OptimizationTask(
+                id=task_id,
+                original_filename=os.path.basename(input_path),
+                secure_filename=os.path.basename(input_path),
+                quality_level=quality_level,
+                enable_lod=enable_lod,
+                enable_simplification=enable_simplification,
+                status='processing',
+                started_at=datetime.now(timezone.utc)
+            )
+            db.add(optimization_task)
+            db.commit()
+        
+        # Initialize optimizer
+        from optimizer import GLBOptimizer
+        optimizer = GLBOptimizer(quality_level=quality_level)
+        
+        # Set up progress callback to update database
+        def progress_callback(step, progress, message):
+            try:
+                with get_db() as db:
+                    task = db.query(OptimizationTask).filter_by(id=task_id).first()
+                    if task:
+                        task.progress = progress
+                        task.current_step = message
+                        db.commit()
+            except Exception as e:
+                logger.warning(f"Failed to update progress: {e}")
+        
+        # Run optimization
+        success, result = optimizer.optimize_glb(
+            input_path, 
+            output_path,
+            quality_level=quality_level,
+            enable_lod=enable_lod,
+            enable_simplification=enable_simplification,
+            progress_callback=progress_callback
+        )
+        
+        processing_time = time.time() - start_time
+        original_size = os.path.getsize(input_path) if os.path.exists(input_path) else 0
+        optimized_size = os.path.getsize(output_path) if os.path.exists(output_path) else 0
+        compression_ratio = ((original_size - optimized_size) / original_size * 100) if original_size > 0 else 0.0
+        
+        # Update task with final results
+        with get_db() as db:
+            task = db.query(OptimizationTask).filter_by(id=task_id).first()
+            if task:
+                task.status = 'completed' if success else 'failed'
+                task.progress = 100
+                task.original_size = original_size
+                task.compressed_size = optimized_size
+                task.compression_ratio = compression_ratio
+                task.processing_time = processing_time
+                task.completed_at = datetime.now(timezone.utc)
+                if not success:
+                    task.error_message = result.get('error', 'Unknown error') if isinstance(result, dict) else 'Optimization failed'
+                db.commit()
+                logger.info(f"Updated task {task_id}: {original_size} -> {optimized_size} bytes ({compression_ratio:.1f}% reduction)")
+        
+        return success
+        
+    except Exception as e:
+        logger.error(f"Synchronous processing failed: {e}")
+        # Update task with error
+        try:
+            with get_db() as db:
+                task = db.query(OptimizationTask).filter_by(id=task_id).first()
+                if task:
+                    task.status = 'failed'
+                    task.error_message = str(e)
+                    task.completed_at = datetime.now(timezone.utc)
+                    db.commit()
+        except:
+            pass
+        return False
+
+
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in config.ALLOWED_EXTENSIONS
 
@@ -275,7 +361,14 @@ def upload_file():
             logger.info("Celery unavailable - using synchronous processing")
             success = process_file_synchronously(input_path, output_path, task_id, quality_level, enable_lod, enable_simplification)
             if success:
-                return jsonify({'task_id': task_id, 'status': 'completed', 'fallback_mode': True})
+                return jsonify({
+                    'task_id': task_id, 
+                    'status': 'completed', 
+                    'fallback_mode': True,
+                    'original_size': original_size,
+                    'optimized_size': os.path.getsize(output_path) if os.path.exists(output_path) else 0,
+                    'compression_ratio': ((original_size - os.path.getsize(output_path)) / original_size * 100) if os.path.exists(output_path) and original_size > 0 else 0
+                })
             else:
                 return jsonify({'error': 'Optimization failed'}), 500
         
@@ -393,25 +486,25 @@ def get_progress(task_id):
 @main_routes.route('/download/<task_id>')
 def download_file(task_id):
     try:
-        # Get task result from Celery
-        celery_task = celery.AsyncResult(task_id)
+        # Check if task exists in database
+        db = get_db()
+        optimization_task = db.query(OptimizationTask).filter_by(id=task_id).first()
         
-        if celery_task.state != 'SUCCESS':
+        if not optimization_task:
+            return jsonify({'error': 'Task not found'}), 404
+        
+        if optimization_task.status != 'completed':
             return jsonify({'error': 'Task not completed successfully'}), 400
         
-        result = celery_task.result
-        if not result.get('success'):
-            return jsonify({'error': 'Optimization failed'}), 400
+        # Look for the output file
+        expected_output_file = f"{task_id}_optimized.glb"
+        file_path = os.path.join(config.OUTPUT_FOLDER, expected_output_file)
         
-        output_file = result.get('output_file')
-        original_name = result.get('original_name', 'optimized')
-        
-        if not output_file:
-            return jsonify({'error': 'Output file not available'}), 404
-        
-        file_path = os.path.join(config.OUTPUT_FOLDER, output_file)
         if not os.path.exists(file_path):
             return jsonify({'error': 'Output file not found'}), 404
+        
+        # Use original filename for download
+        original_name = optimization_task.original_filename.replace('.glb', '') if optimization_task.original_filename else 'optimized'
         
         return send_file(
             file_path,
@@ -468,18 +561,10 @@ def cleanup_task(task_id):
 def get_original_file(task_id):
     """Serve the original GLB file for 3D comparison viewer"""
     try:
-        # Look for the original file in uploads directory
-        # Original files are temporarily kept until task completion for comparison
-        original_file_path = None
-        upload_dir = config.UPLOAD_FOLDER
+        # Look for the original file in uploads directory using task_id
+        original_file_path = os.path.join(config.UPLOAD_FOLDER, f"{task_id}.glb")
         
-        # Find the original file by task_id prefix
-        for filename in os.listdir(upload_dir):
-            if filename.startswith(f"{task_id}_") and filename.endswith('.glb'):
-                original_file_path = os.path.join(upload_dir, filename)
-                break
-        
-        if not original_file_path or not os.path.exists(original_file_path):
+        if not os.path.exists(original_file_path):
             return jsonify({'error': 'Original file not found'}), 404
         
         response = send_file(
