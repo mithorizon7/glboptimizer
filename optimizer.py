@@ -1066,20 +1066,35 @@ class GLBOptimizer:
             return {'success': True}
     
     def _run_gltfpack_final(self, input_path, output_path):
-        """Step 6: Final bundle and minify with LOD generation"""
+        """Step 6: Final bundle and minify with correct gltfpack flags"""
         try:
-            # Try basic gltfpack (correct syntax: input output)
+            # CORRECTED COMMAND with proper gltfpack flags
             cmd = [
                 'gltfpack',
-                input_path,
-                output_path
+                '-i', input_path,
+                '-o', output_path,
+                '-cc'  # This is the correct flag for high-quality compression
             ]
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
             
             if result.returncode == 0:
                 return {'success': True}
             else:
-                self.logger.warning(f"gltfpack failed: {result.stderr}")
+                self.logger.warning(f"High-quality gltfpack failed: {result.stderr}")
+                
+                # Fallback command if the first one fails
+                cmd_fallback = [
+                    'gltfpack',
+                    '-i', input_path,
+                    '-o', output_path,
+                    '-c'  # Basic compression
+                ]
+                result = subprocess.run(cmd_fallback, capture_output=True, text=True, timeout=600)
+                
+                if result.returncode == 0:
+                    return {'success': True}
+                else:
+                    self.logger.warning(f"Basic gltfpack failed: {result.stderr}")
                 
         except Exception as e:
             self.logger.warning(f"gltfpack failed with exception: {e}")
