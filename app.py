@@ -190,16 +190,14 @@ def upload_file():
         try:
             from pipeline_tasks import start_optimization_pipeline
             
-            # Use the new modular pipeline
-            pipeline_task_id = start_optimization_pipeline(
-                task_id=task_id,
-                input_path=input_path,
-                output_path=output_path
+            # Use the new modular pipeline with proper Celery .delay() call
+            celery_task = start_optimization_pipeline.delay(
+                task_id,
+                input_path,
+                output_path
             )
             
-            # Create a mock task object for compatibility
-            celery_task = type('PipelineTask', (), {'id': task_id})()
-            logger.info(f"Started modular optimization pipeline for task {task_id}")
+            logger.info(f"Started modular optimization pipeline for task {celery_task.id}")
             
         except Exception as e:
             logger.error(f"Failed to start optimization pipeline: {e}")
