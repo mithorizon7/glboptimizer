@@ -32,17 +32,31 @@ logger = logging.getLogger(__name__)
 # Initialize Celery app
 celery = make_celery(__name__)
 
+# Import tasks to ensure they're registered with Celery
+try:
+    import tasks
+    import pipeline_tasks
+    logger.info("Celery tasks imported successfully")
+except ImportError as e:
+    logger.warning(f"Failed to import tasks: {e}")
+    logger.info("Application will continue without background processing")
+
 app = Flask(__name__)
 app.secret_key = config.SECRET_KEY
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
-# Initialize database
-try:
-    init_database()
-    logger.info("Database initialized successfully")
-except Exception as e:
-    logger.error(f"Failed to initialize database: {e}")
-    # Continue without database for now, but log the issue
+# Initialize database only if not already done
+def init_app_database():
+    """Initialize database safely"""
+    try:
+        init_database()
+        logger.info("Database initialized successfully")
+    except Exception as e:
+        logger.error(f"Failed to initialize database: {e}")
+
+# Only initialize if we're the main process (not a gunicorn worker)
+if os.environ.get('GUNICORN_PROCESS') != 'worker':
+    init_app_database()
 
 def get_db():
     """Get database session"""
@@ -186,16 +200,13 @@ def upload_file():
             'name': original_name
         }
         
-        # Start modular optimization pipeline
+        # Start modular optimization pipeline - use simple direct import approach
         try:
-            from pipeline_tasks import start_optimization_pipeline
-            
-            # Use the new modular pipeline with proper Celery .delay() call
-            celery_task = start_optimization_pipeline.delay(
-                task_id,
-                input_path,
-                output_path
-            )
+            # Import tasks to register them with Celery
+            import pipeline_tasks
+            # Use the registered task
+            celery_task = celery.send_task('pipeline.start_optimization', 
+                args=[task_id, input_path, output_path])
             
             logger.info(f"Started modular optimization pipeline for task {celery_task.id}")
             
@@ -203,23 +214,11 @@ def upload_file():
             logger.error(f"Failed to start optimization pipeline: {e}")
             # Fallback to legacy single task
             try:
-                from tasks import optimize_glb_file
-                # Check if Celery is properly configured
-                if hasattr(optimize_glb_file, 'delay') and callable(optimize_glb_file.delay):
-                    celery_task = optimize_glb_file.delay(
-                    input_path,
-                    output_path,
-                    original_name,
-                    quality_level,
-                    enable_lod,
-                    enable_simplification
-                    )
-                    logger.info(f"Using legacy optimization task for {celery_task.id}")
-                else:
-                    # Celery not available, create mock task with proper attribute access
-                    mock_id = f'mock_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
-                    celery_task = type('MockTask', (), {'id': mock_id})()
-                    logger.info(f"Celery unavailable, using mock task: {mock_id}")
+                # Import to register tasks and use send_task
+                import tasks
+                celery_task = celery.send_task('tasks.optimize_glb_file', 
+                    args=[input_path, output_path, original_name, quality_level, enable_lod, enable_simplification])
+                logger.info(f"Using legacy optimization task for {celery_task.id}")
             except Exception as e2:
                 logger.error(f"Fallback task also failed: {e2}")
                 # Final fallback - create mock task ID

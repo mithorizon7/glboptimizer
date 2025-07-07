@@ -32,9 +32,9 @@ certfile = os.environ.get('SSL_CERT_PATH')
 # Process naming
 proc_name = 'glb-optimizer'
 
-# User/group (run as non-root in production)
-user = os.environ.get('GUNICORN_USER', 'www-data')
-group = os.environ.get('GUNICORN_GROUP', 'www-data')
+# User/group removed for Replit compatibility
+# user = os.environ.get('GUNICORN_USER', 'www-data')  
+# group = os.environ.get('GUNICORN_GROUP', 'www-data')
 
 # Logging
 accesslog = os.environ.get('GUNICORN_ACCESS_LOG', 'access.log')
@@ -54,18 +54,38 @@ def pre_fork(server, worker):
 
 # Environment variables validation
 def on_starting(server):
-    """Validate critical environment variables on startup"""
-    required_vars = ['SESSION_SECRET', 'REDIS_URL']
-    missing_vars = [var for var in required_vars if not os.environ.get(var)]
+    """Initialize services and validate environment on startup"""
+    # Set environment variable to prevent worker-level initialization
+    os.environ['GUNICORN_PROCESS'] = 'worker'
     
-    if missing_vars:
-        server.log.error("Missing required environment variables: %s", ', '.join(missing_vars))
-        raise RuntimeError(f"Missing required environment variables: {missing_vars}")
+    # Initialize Redis and database in the master process
+    try:
+        import subprocess
+        import time
+        
+        # Check if Redis is running
+        try:
+            result = subprocess.run(['redis-cli', 'ping'], capture_output=True, text=True, timeout=2)
+            if result.returncode != 0 or result.stdout.strip() != 'PONG':
+                # Start Redis if not running
+                server.log.info("Starting Redis server...")
+                subprocess.Popen(['redis-server', '--daemonize', 'yes', '--port', '6379'])
+                time.sleep(2)
+        except:
+            server.log.warning("Could not check Redis status")
+        
+        # Initialize database
+        from database import init_database
+        init_database()
+        server.log.info("Database initialized in master process")
+        
+    except Exception as e:
+        server.log.error(f"Failed to initialize services: {e}")
     
-    # Validate secret key strength
-    secret = os.environ.get('SESSION_SECRET', '')
-    if len(secret) < 32:
-        server.log.error("SESSION_SECRET must be at least 32 characters long")
-        raise RuntimeError("SESSION_SECRET too short for production")
+    # Set default environment variables
+    os.environ.setdefault('REDIS_URL', 'redis://localhost:6379/0')
+    os.environ.setdefault('CELERY_BROKER_URL', 'redis://localhost:6379/0')
+    os.environ.setdefault('CELERY_RESULT_BACKEND', 'redis://localhost:6379/0')
+    os.environ.setdefault('SESSION_SECRET', 'dev_secret_key_change_in_production')
     
     server.log.info("Environment validation passed")

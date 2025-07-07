@@ -14,7 +14,7 @@ from sqlalchemy import text
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
-celery_app = make_celery('glb_pipeline')
+celery_app = make_celery(__name__)
 
 class PipelineStage:
     """

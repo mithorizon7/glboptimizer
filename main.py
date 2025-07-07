@@ -63,10 +63,9 @@ def start_celery_worker():
     try:
         logger.info("Starting Celery worker...")
         subprocess.Popen([
-            'celery', '-A', 'celery_app', 'worker',
+            'celery', '-A', 'tasks', 'worker',
             '--loglevel=info',
             '--concurrency=1',
-            '--queues=optimization',
             '--detach'
         ])
         logger.info("Celery worker started in background")
@@ -75,30 +74,33 @@ def start_celery_worker():
         logger.error(f"Failed to start Celery worker: {e}")
         return False
 
+# Set critical environment variables first, before any imports
+os.environ['REDIS_URL'] = 'redis://localhost:6379/0'
+os.environ['CELERY_BROKER_URL'] = 'redis://localhost:6379/0'
+os.environ['CELERY_RESULT_BACKEND'] = 'redis://localhost:6379/0'
+
+# Ensure Redis is running
+ensure_redis_running()
+
+# Initialize database
+try:
+    logger.info("Initializing database...")
+    from database import init_database
+    init_database()
+    logger.info("Database initialized successfully")
+except Exception as e:
+    logger.error(f"Database initialization failed: {e}")
+
+# Start Celery worker
+start_celery_worker()
+
+# Give services time to start
+time.sleep(2)
+
+# Import and expose the Flask app for gunicorn
+from app import app
+
 if __name__ == '__main__':
-    # Set critical environment variables first, before any imports
-    os.environ['REDIS_URL'] = 'redis://localhost:6379/0'
-    os.environ['CELERY_BROKER_URL'] = 'redis://localhost:6379/0'
-    os.environ['CELERY_RESULT_BACKEND'] = 'redis://localhost:6379/0'
-    
-    # Ensure Redis is running
-    ensure_redis_running()
-    
-    # Initialize database
-    try:
-        logger.info("Initializing database...")
-        from database import init_database
-        init_database()
-        logger.info("Database initialized successfully")
-    except Exception as e:
-        logger.error(f"Database initialization failed: {e}")
-    
-    # Start Celery worker
-    start_celery_worker()
-    
-    # Give services time to start
-    time.sleep(2)
-    
-    # Start Flask app
+    # Start Flask app in development mode
     logger.info("Starting Flask application...")
     app.run(host='0.0.0.0', port=5000, debug=True)

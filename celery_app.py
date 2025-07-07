@@ -61,6 +61,5 @@ def make_celery(app_name=__name__):
     
     return celery
 
-# DO NOT create the instance here anymore.
-# celery = make_celery()
-# It will be created in the entrypoint scripts (main.py, tasks.py, etc.)
+# Create the default instance for worker commands
+celery = make_celery(__name__)
