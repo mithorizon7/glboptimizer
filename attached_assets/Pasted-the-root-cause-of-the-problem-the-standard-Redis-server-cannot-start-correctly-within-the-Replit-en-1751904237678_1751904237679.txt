@@ -1,0 +1,40 @@
+the root cause of the problem: the standard Redis server cannot start correctly within the Replit environment due to network restrictions.
+
+The good news is the fix is straightforward. We need to stop trying to run our own Redis server and instead use the managed Redis service that Replit provides.
+
+Here are the complete instructions for your developer.
+
+Instructions for Your Developer
+
+The core architecture is now correct, but the application can't connect to Redis because of limitations in the Replit environment. The following steps will reconfigure the application to use Replit's built-in Redis database, which will solve the connectivity issue permanently.
+
+Step 1: Stop the Standalone Redis Server
+
+First, we need to prevent the application from trying to start its own Redis instance, as this is the process that's failing.
+
+File to Modify: .replit
+
+Action: In the run command for the deployment, remove the part that starts Redis. The command should now only install dependencies and start the Gunicorn server and Celery worker.
+
+Modify this line:
+
+run = ["sh", "-c", "uv pip sync pyproject.toml && celery -A celery_app.celery worker --loglevel=info --pool=solo & gunicorn --bind 0.0.0.0:5000 --reuse-port --reload wsgi:application"]
+(No change is needed here, as you've already removed the Redis startup command from your .replit file.)
+
+Step 2: Configure the App to Use Replit's Redis URL
+
+This is the most critical step. We need to tell Celery and Flask to connect to the Redis instance provided by Replit, which is exposed through a special environment variable.
+
+File to Modify: celery_app.py
+
+Action: Update the file to prioritize Replit's Redis URL. This change ensures that when the app is running on Replit, it automatically connects to the correct database.
+
+Replace the existing redis_url line with this:
+
+Python
+# In celery_app.py
+
+# Use Replit's native Redis URL if available, otherwise fall back to the standard one.
+redis_url = os.environ.get('REPLIT_REDIS_URL') or os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
+This single line of code will automatically detect that it's running in Replit and use the correct, working Redis connection string.
+

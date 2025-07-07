@@ -8,15 +8,44 @@ load_dotenv()
 
 # Configure Celery
 def make_celery(app_name=__name__):
-    # Use Redis as the broker and result backend
-    redis_url = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
+    # Use Replit's native Redis URL if available, otherwise fall back to database broker
+    redis_url = os.environ.get('REPLIT_REDIS_URL') or os.environ.get('REDIS_URL')
+    
+    # If no Redis available, use database as broker (PostgreSQL)
+    if not redis_url or redis_url == 'redis://localhost:6379/0':
+        database_url = os.environ.get('DATABASE_URL')
+        if database_url:
+            # Use PostgreSQL as both broker and result backend
+            broker_url = f"db+{database_url}"
+            result_backend = f"db+{database_url}"
+            print(f"Using database broker: {broker_url[:50]}...")
+        else:
+            # Final fallback to localhost Redis (will fail but explicit)
+            broker_url = result_backend = 'redis://localhost:6379/0'
+            print("Warning: No Redis or Database URL available, using localhost Redis")
+    else:
+        broker_url = result_backend = redis_url
+        print(f"Using Redis broker: {broker_url}")
     
     celery = Celery(
         app_name,
-        broker=redis_url,
-        backend=redis_url,
+        broker=broker_url,
+        backend=result_backend,
         include=['tasks', 'cleanup_scheduler', 'pipeline_tasks']  # Include all task modules
     )
+    
+    # Force broker and backend configuration (override any cached values)
+    celery.conf.broker_url = broker_url
+    celery.conf.result_backend = result_backend
+    
+    # Verify configuration was set correctly
+    actual_broker = getattr(celery.conf, 'broker_url', 'NOT SET')
+    actual_backend = getattr(celery.conf, 'result_backend', 'NOT SET')
+    print(f"✓ Final Celery broker config: {actual_broker[:70]}...")
+    print(f"✓ Final Celery backend config: {actual_backend[:70]}...")
+    
+    # Additional force configuration for problematic environments
+    celery.conf.update(broker_url=broker_url, result_backend=result_backend)
     
     # Configure Celery settings
     celery.conf.update(
@@ -69,7 +98,17 @@ def make_celery(app_name=__name__):
     return celery
 
 # Create the single, shared instance here
-celery = make_celery()
+celery = None
+
+def get_celery():
+    """Get or create the Celery instance"""
+    global celery
+    if celery is None:
+        celery = make_celery()
+    return celery
+
+# Initialize immediately
+celery = get_celery()
 
 # Force task discovery by importing task modules
 try:

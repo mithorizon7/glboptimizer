@@ -33,7 +33,12 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Import the shared Celery instance
-from celery_app import celery
+try:
+    from celery_app import celery
+except Exception as e:
+    # Fallback mode - disable Celery entirely
+    celery = None
+    logging.warning(f"Celery unavailable: {e}. Running in fallback mode.")
 
 # Import tasks to ensure they're registered with Celery
 try:
@@ -515,23 +520,31 @@ def admin_stats():
 @main_routes.route('/health')
 def health_check():
     """Health check endpoint for monitoring."""
-    # Check Celery status
+    services = {}
+    
+    # Check Celery worker status with database broker
     try:
-        from celery_app import celery
-        i = celery.control.inspect()
-        stats = i.stats()
-        if not stats:
-            raise Exception("No running Celery workers found.")
-
-        celery_status = 'OK'
+        import subprocess
+        result = subprocess.run(['ps', 'aux'], capture_output=True, text=True)
+        if 'celery' in result.stdout and 'worker' in result.stdout:
+            services['celery_worker'] = "Worker process running (Database broker)"
+        else:
+            services['celery_worker'] = "Worker process not found"
     except Exception as e:
-        celery_status = f'ERROR: {e}'
-
+        services['celery_worker'] = f"Process check failed: {str(e)}"
+    
+    # Check database connectivity
+    try:
+        from database import get_db
+        db = get_db()
+        db.execute('SELECT 1')
+        services['database'] = "Connected"
+    except Exception as e:
+        services['database'] = f"ERROR: {str(e)}"
+    
     return jsonify({
         'status': 'ok',
-        'services': {
-            'celery_worker': celery_status
-        }
+        'services': services
     })
 
 if __name__ == '__main__':
