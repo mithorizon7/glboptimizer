@@ -1,0 +1,53 @@
+the browser is failing to load the CSS stylesheets that provide all the visual design, colors, and layout. Your server is correctly sending the HTML content, but the browser is being blocked from downloading the necessary style files.
+
+The root cause is a Content Security Policy (CSP) mismatch in your Flask application.
+
+The Problem
+
+Your application's security settings are too restrictive. In app-3.py, you set a security header that tells the browser which domains it's allowed to load stylesheets from.
+
+Your app-3.py file allows loading styles from cdnjs.cloudflare.com and cdn.jsdelivr.net.
+
+However, your index.html file tries to load the main Bootstrap theme from cdn.replit.com.
+
+Because cdn.replit.com is not on the approved list, the browser blocks it, and your page gets no styling.
+
+How to Fix It
+
+You need to update the Content-Security-Policy in your application to include cdn.replit.com.
+
+Open your main application file (e.g., app-3.py).
+
+Find the add_security_headers function.
+
+Modify the Content-Security-Policy line to add the missing domain.
+
+Change This:
+
+Python
+# In app-3.py
+response.headers['Content-Security-Policy'] = (
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline' cdnjs.cloudflare.com cdn.jsdelivr.net; "
+    "style-src 'self' 'unsafe-inline' cdnjs.cloudflare.com cdn.jsdelivr.net; " #<-- PROBLEM IS HERE
+    "font-src 'self' cdnjs.cloudflare.com; "
+    "img-src 'self' data:; "
+    "object-src 'none'; "
+    "base-uri 'self'"
+)
+To This:
+
+Python
+# The corrected code for app-3.py
+response.headers['Content-Security-Policy'] = (
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline' cdnjs.cloudflare.com cdn.jsdelivr.net; "
+    # Add cdn.replit.com to allow the bootstrap theme to load
+    "style-src 'self' 'unsafe-inline' cdnjs.cloudflare.com cdn.jsdelivr.net cdn.replit.com; "
+    "font-src 'self' cdnjs.cloudflare.com; "
+    "img-src 'self' data:; "
+    "object-src 'none'; "
+    "base-uri 'self'"
+)
+After making this change and restarting your application, the Bootstrap stylesheet will be allowed to load, and your page will render with the correct design.
+

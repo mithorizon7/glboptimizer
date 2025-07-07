@@ -97,7 +97,7 @@ def add_security_headers(response):
         response.headers['Content-Security-Policy'] = (
             "default-src 'self'; "
             "script-src 'self' 'unsafe-inline' cdnjs.cloudflare.com cdn.jsdelivr.net; "
-            "style-src 'self' 'unsafe-inline' cdnjs.cloudflare.com cdn.jsdelivr.net; "
+            "style-src 'self' 'unsafe-inline' cdnjs.cloudflare.com cdn.jsdelivr.net cdn.replit.com; "
             "font-src 'self' cdnjs.cloudflare.com; "
             "img-src 'self' data:; "
             "object-src 'none'; "
