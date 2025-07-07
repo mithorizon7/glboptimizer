@@ -164,6 +164,20 @@ Changelog:
   - Created production Nginx configuration for secure file serving
   - Added comprehensive security documentation and deployment guidelines
   - All 13 security test cases pass - system is fully protected against common attack vectors
+- July 07, 2025. Code cleanup and efficiency improvements:
+  - Optimized cleanup endpoint to use O(1) direct filename reconstruction instead of O(n) directory scanning
+  - Removed duplicate DOMContentLoaded event listeners in JavaScript
+  - Enhanced file cleanup robustness with proper error handling and Celery task memory management
+  - Improved performance and reduced resource usage across the application
+- July 07, 2025. Marketing-focused frontend redesign for monetization:
+  - Redesigned homepage with compelling "From 50MB to 5MB Instantly" headline targeting AI artists and game developers
+  - Added benefit-focused feature descriptions highlighting professional game studio tools
+  - Created target audience sections for AI Artists, Game Developers, and WebXR builders
+  - Implemented free tier strategy with 25MB file limit to drive pro tier conversions
+  - Added pro tier teaser showcasing batch processing, API access, and higher file limits
+  - Enhanced visual design with professional feature cards and icons
+  - Updated page title and meta information for better SEO targeting
+  - Positioned tool as essential "last mile" solution for AI-generated and bloated 3D models
 
 ## User Preferences
 

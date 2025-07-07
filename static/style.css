@@ -50,6 +50,28 @@
     font-size: 0.875rem !important;
 }
 
+/* Feature icons */
+.feature-icon {
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.feature-icon i {
+    font-size: 1.25rem;
+}
+
+/* Marketing section styling */
+.marketing-highlight {
+    background: linear-gradient(135deg, var(--bs-info-bg-subtle), var(--bs-primary-bg-subtle));
+    border-radius: 0.5rem;
+    padding: 1rem;
+}
+}
+
 /* Upload button states */
 #upload-btn:disabled {
     opacity: 0.6;

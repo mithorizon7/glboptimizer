@@ -1,0 +1,52 @@
+Headline: From 50MB to 5MB. Instantly.
+
+Sub-headline: Your web-based game can't handle a 50MB model. Our optimizer uses the same pipeline as professional game studios to shrink your GLB files by up to 90% while keeping every detail.
+
+In the Body/Features Section:
+
+Instead of just listing the technical steps, translate them into benefits:
+
+Before: "Geometry Compression (EXT_meshopt_compression with quantization + Draco fallback)"
+
+After: " Ultra-Efficient Geometry: We use industry-leading Meshopt and Draco compression to dramatically reduce your model's vertex data without any visible loss of detail. Your models will load faster and render smoother."
+
+Before: "Texture Compression (KTX2/BasisU with channel packing, UASTC for normals)"
+
+After: " GPU-Ready Textures: Say goodbye to slow-loading JPEGs. We convert your textures to the hyper-fast KTX2 format, drastically cutting VRAM usage and improving rendering performance on any device."
+
+Functionality to Pave the Way for Monetization
+
+Introduce a Free Tier and a Pro Tier. The free tier should be generous enough to be useful and demonstrate the tool's power, while the Pro tier should offer features that solve bigger problems for serious users.
+
+The Free Tier (What you have now)
+
+Optimize one file at a time.
+
+File size limit of 25MB. (Lowering this from 100MB creates an incentive to upgrade).
+
+Standard processing queue.
+
+Keep the core optimization pipeline.
+
+The Pro Tier (Paid Subscription)
+
+This is where you add functionality that professionals and businesses will gladly pay for:
+
+ Higher File Size Limits: Offer tiers for up to 250MB or even 1GB for users working with huge, complex scenes.
+
+ Priority Queue: Pro users jump to the front of the line. Their files get processed first, which is a huge benefit for developers on a deadline.
+
+ Batch Processing: This is a killer feature. Allow users to upload a ZIP file containing multiple GLBs and get back a ZIP with all of them optimized. This is a massive time-saver for anyone working with a full set of game assets.
+
+ Advanced Control Panel: Let Pro users fine-tune the optimization settings that are currently hardcoded in your optimizer.py script.
+
+Adjust texture compression quality (--q value).
+
+Set the polygon simplification target (e.g., reduce to 50% or a specific number of faces).
+
+Toggle specific steps like animation compression on or off.
+
+ API Access: This is the ultimate monetization feature for businesses. Provide an API key that allows developers to integrate your optimizer directly into their own automated workflows (e.g., their game's asset build pipeline).
+
+By structuring your offerings this way, you give individual hobbyists a powerful free tool while creating a compelling, value-packed offering for the professional users who will become your paying customers.
+
