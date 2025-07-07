@@ -119,11 +119,84 @@ Progress UI ← Status API ← Task State ← Progress Updates ← File Output
 
 ## Configuration
 
-### Environment Variables
+### Environment-Based Configuration
+The application uses a comprehensive configuration system with environment variables. Copy `.env.example` to `.env` and customize:
+
 ```bash
-REDIS_URL=redis://localhost:6379/0  # Redis connection string
-SESSION_SECRET=your-secret-key       # Flask session secret
+# Flask Configuration
+SESSION_SECRET=your_secret_key_change_in_production
+FLASK_ENV=production
+FLASK_DEBUG=false
+
+# File Upload Settings
+UPLOAD_FOLDER=uploads
+OUTPUT_FOLDER=output
+MAX_FILE_SIZE_MB=100
+
+# File Cleanup (prevents storage bloat)
+FILE_RETENTION_HOURS=24
+CLEANUP_ENABLED=true
+CLEANUP_SCHEDULE_CRON="0 2 * * *"  # Daily at 2 AM
+
+# Performance Settings
+MAX_CONCURRENT_TASKS=1
+TASK_TIMEOUT_SECONDS=600
+
+# Redis/Celery Configuration
+REDIS_URL=redis://localhost:6379/0
+CELERY_BROKER_URL=redis://localhost:6379/0
+CELERY_RESULT_BACKEND=redis://localhost:6379/0
+
+# Security Settings
+SECURE_FILENAME_ENABLED=true
+
+# Logging
+LOG_LEVEL=INFO
+LOG_TO_FILE=false
+LOG_FILE_PATH=glb_optimizer.log
 ```
+
+### Environment Profiles
+- **Development**: `FLASK_ENV=development` - Debug enabled, short file retention
+- **Production**: `FLASK_ENV=production` - Optimized settings, automatic cleanup
+- **Testing**: `FLASK_ENV=testing` - Isolated test environment
+
+## File Management
+
+### Automatic Cleanup System
+The application includes a robust cleanup system to prevent storage bloat:
+
+**File Cleanup:**
+- Removes uploaded files older than retention period (default 24 hours)
+- Cleans optimized output files automatically
+- Configurable retention policy via `FILE_RETENTION_HOURS`
+- Runs daily at 2 AM via Celery beat scheduler
+
+**Task Cleanup:**
+- Purges completed task results from Redis
+- Removes orphaned task metadata
+- Prevents Redis memory bloat
+
+**Manual Cleanup:**
+```bash
+# Emergency cleanup
+python start_with_cleanup.py cleanup
+
+# Test cleanup system
+python -c "from cleanup_scheduler import manual_cleanup; manual_cleanup()"
+```
+
+### Production Deployment with Cleanup
+```bash
+# Full production mode with automatic cleanup scheduling
+python start_with_cleanup.py
+```
+
+This starts:
+- Redis server
+- Celery worker for optimization tasks
+- Celery beat scheduler for cleanup tasks
+- Flask application with Gunicorn
 
 ### Quality Levels
 - **High Quality**: Maximum visual fidelity with efficient compression

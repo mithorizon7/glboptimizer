@@ -1,5 +1,10 @@
 import os
 from celery import Celery
+from celery.schedules import crontab
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Configure Celery
 def make_celery(app_name=__name__):
@@ -10,7 +15,7 @@ def make_celery(app_name=__name__):
         app_name,
         broker=redis_url,
         backend=redis_url,
-        include=['tasks']
+        include=['tasks', 'cleanup_scheduler']
     )
     
     # Configure Celery settings
@@ -30,7 +35,21 @@ def make_celery(app_name=__name__):
         # Task routing and limits
         task_routes={
             'tasks.optimize_glb_file': {'queue': 'optimization'},
+            'cleanup.cleanup_old_files': {'queue': 'cleanup'},
+            'cleanup.cleanup_orphaned_tasks': {'queue': 'cleanup'},
         },
+        
+        # Periodic task schedule for cleanup
+        beat_schedule={
+            'cleanup-old-files': {
+                'task': 'cleanup.cleanup_old_files',
+                'schedule': crontab(hour=2, minute=0),  # Daily at 2 AM
+            },
+            'cleanup-orphaned-tasks': {
+                'task': 'cleanup.cleanup_orphaned_tasks',
+                'schedule': crontab(hour=2, minute=30),  # Daily at 2:30 AM
+            },
+        } if os.environ.get('CLEANUP_ENABLED', 'true').lower() in ['true', '1', 'yes'] else {},
         
         # Result expiration
         result_expires=3600,  # Results expire after 1 hour

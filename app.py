@@ -1,35 +1,58 @@
 import os
 import logging
+from dotenv import load_dotenv
 from flask import Flask, render_template, request, jsonify, send_file, flash, redirect, url_for
 from werkzeug.utils import secure_filename
 from werkzeug.middleware.proxy_fix import ProxyFix
 import uuid
+from config import get_config
 from celery_app import celery
 # Import the task function to ensure it's registered
 import tasks
 
-logging.basicConfig(level=logging.DEBUG)
+# Load environment variables
+load_dotenv()
+
+# Get configuration
+config = get_config()
+
+# Configure logging
+log_level = getattr(logging, config.LOG_LEVEL, logging.INFO)
+if config.LOG_TO_FILE:
+    logging.basicConfig(
+        level=log_level,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler(config.LOG_FILE_PATH),
+            logging.StreamHandler()
+        ]
+    )
+else:
+    logging.basicConfig(level=log_level)
+
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("SESSION_SECRET", "dev_secret_key_change_in_production")
+app.secret_key = config.SECRET_KEY
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
-# Configuration
-UPLOAD_FOLDER = 'uploads'
-OUTPUT_FOLDER = 'output'
-ALLOWED_EXTENSIONS = {'glb'}
-MAX_CONTENT_LENGTH = 100 * 1024 * 1024  # 100MB max file size
-
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.config['OUTPUT_FOLDER'] = OUTPUT_FOLDER
-app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
+# Apply configuration
+app.config['MAX_CONTENT_LENGTH'] = config.MAX_CONTENT_LENGTH
 
 # Ensure directories exist
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-os.makedirs(OUTPUT_FOLDER, exist_ok=True)
+config.ensure_directories()
+
+# Validate configuration
+config_issues = config.validate_config()
+if config_issues:
+    for issue in config_issues:
+        logger.error(f"Configuration issue: {issue}")
+
+# Log configuration summary
+logger.info(f"GLB Optimizer starting with config: {config.get_config_summary()}")
 
 def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in config.ALLOWED_EXTENSIONS
 
 @app.route('/')
 def index():
@@ -59,7 +82,7 @@ def upload_file():
         # Save uploaded file
         filename = secure_filename(file.filename or "uploaded.glb")
         original_name = filename.rsplit('.', 1)[0]
-        input_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{task_id}_{filename}")
+        input_path = os.path.join(config.UPLOAD_FOLDER, f"{task_id}_{filename}")
         file.save(input_path)
         
         # Get original file size
@@ -67,7 +90,7 @@ def upload_file():
         
         # Generate output file path
         output_path = os.path.join(
-            app.config['OUTPUT_FOLDER'],
+            config.OUTPUT_FOLDER,
             f"{task_id}_optimized_{original_name}.glb"
         )
         
