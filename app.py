@@ -138,6 +138,10 @@ def index():
 
 @main_routes.route('/upload', methods=['POST'])
 def upload_file():
+    logger.info("Upload endpoint called")
+    logger.info(f"Request method: {request.method}")
+    logger.info(f"Request files: {list(request.files.keys())}")
+    logger.info(f"Request form: {dict(request.form)}")
     try:
         if 'file' not in request.files:
             return jsonify({'error': 'No file selected'}), 400
@@ -245,11 +249,14 @@ def upload_file():
             # Continue without database tracking
         
         task_id = getattr(celery_task, 'id', f'sync_{datetime.now().strftime("%Y%m%d_%H%M%S")}')
-        return jsonify({
+        logger.info(f"Preparing response for task {task_id}")
+        response_data = {
             'task_id': task_id,
             'message': 'File uploaded successfully. Optimization queued.',
             'original_size': original_size
-        })
+        }
+        logger.info(f"Sending response: {response_data}")
+        return jsonify(response_data)
     
     except Exception as e:
         logger.error(f"Upload error: {str(e)}")
