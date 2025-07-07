@@ -76,6 +76,7 @@ class GLBOptimizer {
     setupEventListeners() {
         // File input change
         this.fileInput.addEventListener('change', (e) => {
+            console.log('File input change event fired', e.target.files);
             if (e.target.files.length > 0) {
                 this.handleFileSelect(e.target.files[0]);
             }
@@ -152,6 +153,8 @@ class GLBOptimizer {
     }
     
     handleFileSelect(file) {
+        console.log('handleFileSelect called with file:', file.name, file.size);
+        
         // Validate file type
         if (!file.name.toLowerCase().endsWith('.glb')) {
             this.showError('Please select a valid GLB file.');
@@ -165,16 +168,20 @@ class GLBOptimizer {
             return;
         }
         
+        console.log('File validation passed, setting selectedFile');
         this.selectedFile = file;
         
         // Show file info
+        console.log('Updating file details...');
         this.fileDetails.textContent = `Selected: ${file.name} (${this.formatFileSize(file.size)})`;
         this.fileInfo.style.display = 'block';
         
         // Show optimization settings
+        console.log('Showing optimization settings...');
         this.optimizationSettings.style.display = 'block';
         
         // Enable upload button
+        console.log('Enabling upload button...');
         this.uploadBtn.disabled = false;
         
         // Update drop zone content to show selected file
@@ -848,5 +855,11 @@ class ModelViewer3D {
 
 // Initialize the application when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-    new GLBOptimizer();
+    console.log('DOM loaded, initializing GLB Optimizer...');
+    try {
+        new GLBOptimizer();
+        console.log('GLB Optimizer initialized successfully');
+    } catch (error) {
+        console.error('Error initializing GLB Optimizer:', error);
+    }
 });

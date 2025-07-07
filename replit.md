@@ -245,11 +245,12 @@ Changelog:
   - Added test configuration with isolated environment using in-memory SQLite and separate Redis database
   - Created comprehensive test fixtures and mocking framework for reliable testing
   - Testing suite covers security vulnerabilities, error handling, and performance validation
-- July 07, 2025. Increased internal file size limit from 25MB to 100MB while maintaining 25MB frontend display:
-  - Updated config.py MAX_CONTENT_LENGTH default from 25MB to 100MB
-  - Configuration now allows users to upload files up to 100MB internally
-  - Frontend continues to display 25MB limit for user expectations
-  - Change supports larger GLB files while maintaining conversion funnel strategy
+- July 07, 2025. Fixed file upload system and increased file size limit to 100MB:
+  - Resolved JavaScript file input element destruction issue by preserving DOM structure
+  - Fixed environment variable override (.env MAX_FILE_SIZE_MB was set to 25MB)
+  - Updated both backend configuration and frontend display to support 100MB files
+  - Fixed Content Security Policy to allow Three.js and Google Fonts resources
+  - File upload now works correctly with proper visual feedback and larger file support
 - July 07, 2025. Critical Celery task unification and application deployment fixes:
   - Fixed multiple separate Celery instances issue by creating single shared instance in celery_app.py
   - Unified all task modules (app.py, tasks.py, pipeline_tasks.py, cleanup_scheduler.py) to use same Celery instance
