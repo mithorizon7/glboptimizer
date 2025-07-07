@@ -41,20 +41,40 @@ def optimize_glb_file(self, input_path, output_path, original_name, quality_leve
         )
         logger.info(f"Task {self.request.id}: {step} - {progress}% - {message}")
         
-        # Update database record (simplified to avoid SQLAlchemy type issues)
+        # Update database record using text-based column names
         try:
+            from sqlalchemy import text
             db = SessionLocal()
             try:
-                # Use update() method instead of attribute assignment to avoid type issues
-                update_data = {
-                    'status': 'processing' if progress < 100 else 'completed',
-                    'progress': progress,
-                    'current_step': step
-                }
-                if progress == 100:
-                    update_data['completed_at'] = datetime.now(timezone.utc)
+                # Build update query with proper parameterization
+                status_val = 'processing' if progress < 100 else 'completed'
                 
-                db.query(OptimizationTask).filter(OptimizationTask.id == self.request.id).update(update_data)
+                if progress == 100:
+                    query = text("""
+                        UPDATE optimization_tasks 
+                        SET status = :status, progress = :progress, current_step = :step, completed_at = :completed_at
+                        WHERE id = :task_id
+                    """)
+                    db.execute(query, {
+                        'status': status_val,
+                        'progress': progress,
+                        'step': step,
+                        'completed_at': datetime.now(timezone.utc),
+                        'task_id': self.request.id
+                    })
+                else:
+                    query = text("""
+                        UPDATE optimization_tasks 
+                        SET status = :status, progress = :progress, current_step = :step
+                        WHERE id = :task_id
+                    """)
+                    db.execute(query, {
+                        'status': status_val,
+                        'progress': progress,
+                        'step': step,
+                        'task_id': self.request.id
+                    })
+                
                 db.commit()
             finally:
                 db.close()
@@ -97,17 +117,25 @@ def optimize_glb_file(self, input_path, output_path, original_name, quality_leve
             try:
                 db = SessionLocal()
                 try:
-                    # Use direct update to avoid SQLAlchemy type issues
-                    update_data = {
+                    # Use raw SQL to avoid SQLAlchemy type issues
+                    from sqlalchemy import text
+                    update_query = text("""
+                        UPDATE optimization_tasks 
+                        SET status = :status, progress = :progress, compressed_size = :compressed_size,
+                            compression_ratio = :compression_ratio, processing_time = :processing_time,
+                            completed_at = :completed_at
+                        WHERE id = :task_id
+                    """)
+                    
+                    db.execute(update_query, {
                         'status': 'completed',
                         'progress': 100,
                         'compressed_size': optimized_size,
                         'compression_ratio': compression_ratio,
                         'processing_time': processing_time,
-                        'completed_at': datetime.now(timezone.utc)
-                    }
-                    
-                    db.query(OptimizationTask).filter(OptimizationTask.id == self.request.id).update(update_data)
+                        'completed_at': datetime.now(timezone.utc),
+                        'task_id': self.request.id
+                    })
                     db.commit()
                     logger.info(f"Database updated for completed task {self.request.id}")
                             

@@ -997,10 +997,6 @@ class GLBOptimizer:
                 'output_size': output_size
             }
             
-        except Exception as e:
-            self.logger.error(f"Failed to finalize texture compression: {str(e)}")
-            return {'success': False, 'error': f'Failed to finalize texture compression: {str(e)}'}
-        
         except subprocess.TimeoutExpired:
             return {'success': False, 'error': 'Texture compression timed out'}
         except Exception as e:

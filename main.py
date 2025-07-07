@@ -1,7 +1,22 @@
+#!/usr/bin/env python3
 import os
 import subprocess
 import time
 import logging
+
+# Set environment variables BEFORE any imports to ensure they're available
+os.environ['REDIS_URL'] = 'redis://localhost:6379/0'
+os.environ['CELERY_BROKER_URL'] = 'redis://localhost:6379/0'
+os.environ['CELERY_RESULT_BACKEND'] = 'redis://localhost:6379/0'
+os.environ['FLASK_SECRET_KEY'] = 'dev_secret_key_change_in_production'
+
+# Load environment from .env file if it exists
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 from app import app
 
 # Configure logging
