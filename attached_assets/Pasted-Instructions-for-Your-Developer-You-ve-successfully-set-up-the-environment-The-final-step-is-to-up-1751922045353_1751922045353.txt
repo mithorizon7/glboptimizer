@@ -1,0 +1,59 @@
+Instructions for Your Developer
+
+You've successfully set up the environment. The final step is to update the optimizer to use the correct commands for the newly available KTX-Software.
+
+The Goal: Fix the texture optimization step so it stops producing blank files and starts using the high-quality KTX2/Basis Universal compression.
+
+File to Edit: optimizer.py
+
+Action:
+In the _run_gltf_transform_textures function, you need to replace the temporary "safe" texture resizing with the correct commands for etc1s and uastc compression. The logic should be:
+
+Attempt to use the powerful uastc command for high-quality textures.
+
+If that fails, fall back to the etc1s command for more aggressive compression.
+
+If both fail, use the webp command as a final safety net.
+
+Your investigation already revealed the correct commands. Now, you just need to implement them in the script.
+
+Example Code for _run_gltf_transform_textures:
+
+Python
+# In optimizer.py
+
+def _run_gltf_transform_textures(self, input_path, output_path):
+    """
+    Step 4: Advanced texture compression with KTX2/BasisU and WebP fallback.
+    This version uses the correct etc1s and uastc commands.
+    """
+    # ... (setup code for temp files and settings remains the same)
+
+    # Method 1: KTX2/Basis Universal compression (Primary)
+    try:
+        self.logger.info("Attempting KTX2/Basis Universal compression (uastc/etc1s)...")
+        
+        # Define the correct command based on quality settings
+        if self.quality_level == 'high':
+            # UASTC is best for high quality
+            ktx2_cmd = ['npx', 'gltf-transform', 'uastc', input_path, ktx2_output, '--level', '4', '--rdo', '4.0', '--zstd', '18']
+        else:
+            # ETC1S is better for higher compression
+            ktx2_cmd = ['npx', 'gltf-transform', 'etc1s', input_path, ktx2_output, '--quality', settings['ktx2_quality']]
+
+        result = subprocess.run(ktx2_cmd, capture_output=True, text=True, timeout=600)
+
+        if result.returncode == 0 and os.path.exists(ktx2_output):
+            results['ktx2'] = {'success': True}
+            file_sizes['ktx2'] = os.path.getsize(ktx2_output)
+            self.logger.info(f"KTX2 compression successful: {file_sizes['ktx2']} bytes")
+        else:
+            results['ktx2'] = {'success': False, 'error': result.stderr}
+            self.logger.warning(f"KTX2 compression failed. Stderr: {result.stderr}")
+
+    except Exception as e:
+        results['ktx2'] = {'success': False, 'error': str(e)}
+
+    # ... (the rest of the function with the WebP fallback and file selection logic remains the same)
+By making this final change, the optimizer.py script will now correctly use the installed KTX-Software, fixing the blank file issue and enabling the full, high-quality optimization you've been working towards.
+
