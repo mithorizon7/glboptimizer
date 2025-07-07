@@ -82,12 +82,28 @@ def optimize_glb_file(self, input_path, output_path, original_name, quality_leve
             }
         else:
             logger.error(f"Optimization failed for task {self.request.id}: {result.get('error')}")
-            return {
+            
+            # Get detailed error information from optimizer
+            detailed_logs = optimizer.get_detailed_logs()
+            
+            # Prepare enhanced error response
+            error_response = {
                 'status': 'error',
                 'success': False,
                 'error': result.get('error', 'Unknown error occurred'),
+                'user_message': result.get('user_message', result.get('error', 'Optimization failed')),
+                'category': result.get('category', 'Unknown Error'),
+                'detailed_error': detailed_logs,
                 'original_name': original_name
             }
+            
+            # Update task state with detailed error
+            self.update_state(
+                state='FAILURE',
+                meta=error_response
+            )
+            
+            return error_response
     
     except Exception as e:
         logger.error(f"Task {self.request.id} failed with exception: {str(e)}")

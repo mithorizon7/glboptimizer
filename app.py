@@ -5,7 +5,8 @@ from werkzeug.utils import secure_filename
 from werkzeug.middleware.proxy_fix import ProxyFix
 import uuid
 from celery_app import celery
-from tasks import optimize_glb_file
+# Import the task function to ensure it's registered
+import tasks
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -78,13 +79,13 @@ def upload_file():
         }
         
         # Start Celery task for optimization
-        celery_task = optimize_glb_file.delay(
-            input_path=input_path,
-            output_path=output_path,
-            original_name=original_name,
-            quality_level=quality_level,
-            enable_lod=enable_lod,
-            enable_simplification=enable_simplification
+        celery_task = tasks.optimize_glb_file.delay(
+            input_path,
+            output_path,
+            original_name,
+            quality_level,
+            enable_lod,
+            enable_simplification
         )
         
         return jsonify({
@@ -116,11 +117,21 @@ def get_progress(task_id):
             response = result
             response['completed'] = True
         elif celery_task.state == 'FAILURE':
-            response = {
-                'status': 'error',
-                'error': str(celery_task.info),
-                'completed': True
-            }
+            error_info = celery_task.info
+            if isinstance(error_info, dict):
+                # Enhanced error response with details
+                response = {
+                    'status': 'error',
+                    'completed': True,
+                    **error_info  # Include all error details
+                }
+            else:
+                # Simple error string
+                response = {
+                    'status': 'error',
+                    'error': str(error_info),
+                    'completed': True
+                }
         else:
             response = {
                 'status': celery_task.state.lower(),

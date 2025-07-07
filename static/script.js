@@ -64,6 +64,11 @@ class GLBOptimizer {
         
         // Error elements
         this.errorMessage = document.getElementById('error-message');
+        this.errorDetails = document.getElementById('error-details');
+        this.errorCategory = document.getElementById('error-category');
+        this.technicalDetails = document.getElementById('technical-details');
+        this.showErrorDetailsBtn = document.getElementById('show-error-details-btn');
+        this.downloadLogsBtn = document.getElementById('download-logs-btn');
         this.retryBtn = document.getElementById('retry-btn');
     }
     
@@ -304,15 +309,61 @@ class GLBOptimizer {
         }
     }
     
-    showError(message) {
+    showError(error) {
         // Hide other sections
         this.uploadSection.style.display = 'none';
         this.progressSection.style.display = 'none';
         this.resultsSection.style.display = 'none';
-        
-        // Show error section
         this.errorSection.style.display = 'block';
-        this.errorMessage.textContent = message;
+        
+        // Handle error object or string
+        if (typeof error === 'object' && error !== null) {
+            // Detailed error object
+            this.errorMessage.textContent = error.user_message || error.error || 'An unknown error occurred';
+            
+            if (error.category || error.detailed_error) {
+                // Show enhanced error details
+                if (this.errorCategory) {
+                    this.errorCategory.textContent = `Category: ${error.category || 'Unknown'}`;
+                }
+                if (this.technicalDetails && error.detailed_error) {
+                    this.technicalDetails.textContent = error.detailed_error;
+                }
+                
+                // Enable show details button
+                if (this.showErrorDetailsBtn) {
+                    this.showErrorDetailsBtn.style.display = 'inline-block';
+                    this.showErrorDetailsBtn.onclick = () => {
+                        if (this.errorDetails) {
+                            const isHidden = this.errorDetails.style.display === 'none';
+                            this.errorDetails.style.display = isHidden ? 'block' : 'none';
+                            this.showErrorDetailsBtn.innerHTML = isHidden ? 
+                                '<i class="fas fa-eye-slash me-1"></i>Hide Technical Details' : 
+                                '<i class="fas fa-info-circle me-1"></i>Show Technical Details';
+                        }
+                    };
+                }
+            }
+        } else {
+            // Simple error string
+            this.errorMessage.textContent = error || 'An unknown error occurred';
+            
+            // Hide enhanced error features
+            if (this.showErrorDetailsBtn) {
+                this.showErrorDetailsBtn.style.display = 'none';
+            }
+            if (this.errorDetails) {
+                this.errorDetails.style.display = 'none';
+            }
+        }
+        
+        // Enable download logs button
+        if (this.downloadLogsBtn && this.currentTaskId) {
+            this.downloadLogsBtn.style.display = 'inline-block';
+            this.downloadLogsBtn.onclick = () => {
+                window.open(`/download-logs/${this.currentTaskId}`, '_blank');
+            };
+        }
         
         // Stop polling if active
         if (this.pollInterval) {
