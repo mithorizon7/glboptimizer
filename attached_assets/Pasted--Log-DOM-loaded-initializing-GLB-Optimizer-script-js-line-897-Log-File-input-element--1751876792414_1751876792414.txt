@@ -1,0 +1,49 @@
+[Log] DOM loaded, initializing GLB Optimizer... (script.js, line 897)
+[Log] File input element: –  (script.js, line 28)
+<input type="file" id="file-input" accept=".glb" style="display: none;">
+
+<input type="file" id="file-input" accept=".glb" style="display: none;">
+[Log] Drop zone element: –  (script.js, line 29)
+<div id="drop-zone" class="drop-zone text-center p-5 mb-4">…</div>
+
+<div id="drop-zone" class="drop-zone text-center p-5 mb-4">…</div>
+[Log] Upload button element: –  (script.js, line 30)
+<button id="upload-btn" class="btn btn-primary btn-lg" disabled>…</button>
+
+<button id="upload-btn" class="btn btn-primary btn-lg" disabled>…</button>
+[Log] Adding change event listener to file input (script.js, line 91)
+[Log] File input click test: – () => { (script.js, line 100)
+                console.log('Attempting to click file input...');
+                this.fileInput.click();
+            }
+[Log] GLB Optimizer initialized successfully (script.js, line 900)
+[Log] Drop zone clicked –  (script.js, line 110)
+<input type="file" id="file-input" accept=".glb" style="display: none;">
+
+<input type="file" id="file-input" accept=".glb" style="display: none;">
+[Log] Triggering file input click from drop zone (script.js, line 111)
+[Log] Drop zone clicked –  (script.js, line 110)
+<button type="button" class="btn btn-outline-secondary" onclick="document.getElementById('file-input').click()">…</button>
+
+<button type="button" class="btn btn-outline-secondary" onclick="document.getElementById('file-input').click()">…</button>
+[Log] Triggering file input click from drop zone (script.js, line 111)
+[Log] Drop zone clicked –  (script.js, line 110)
+<input type="file" id="file-input" accept=".glb" style="display: none;">
+
+<input type="file" id="file-input" accept=".glb" style="display: none;">
+[Log] Triggering file input click from drop zone (script.js, line 111)
+[Log] Drop zone clicked –  (script.js, line 110)
+<input type="file" id="file-input" accept=".glb" style="display: none;">
+
+<input type="file" id="file-input" accept=".glb" style="display: none;">
+[Log] Triggering file input click from drop zone (script.js, line 111)
+[Log] Drop zone clicked –  (script.js, line 110)
+<button type="button" class="btn btn-outline-secondary" onclick="document.getElementById('file-input').click()">…</button>
+
+<button type="button" class="btn btn-outline-secondary" onclick="document.getElementById('file-input').click()">…</button>
+[Log] Triggering file input click from drop zone (script.js, line 111)
+[Log] Drop zone clicked –  (script.js, line 110)
+<input type="file" id="file-input" accept=".glb" style="display: none;">
+
+<input type="file" id="file-input" accept=".glb" style="display: none;">
+[Log] Triggering file input click from drop zone (script.js, line 111)

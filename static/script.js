@@ -105,11 +105,13 @@ class GLBOptimizer {
             console.error('Cannot add event listener - file input not found!');
         }
         
-        // Drag and drop
+        // Drop zone click (only for the drop zone area, not the button)
         this.dropZone.addEventListener('click', (e) => {
-            console.log('Drop zone clicked', e.target);
-            console.log('Triggering file input click from drop zone');
-            this.fileInput.click();
+            // Only trigger file input if clicking on the drop zone itself, not the label/button
+            if (e.target === this.dropZone || (e.target.closest('#drop-zone-content') && !e.target.closest('label'))) {
+                console.log('Drop zone area clicked, triggering file input');
+                this.fileInput.click();
+            }
         });
         
         this.dropZone.addEventListener('dragover', (e) => {
