@@ -107,10 +107,6 @@ def optimize_glb_file(self, input_path, output_path, original_name, quality_leve
         raise
     
     finally:
-        # Clean up input file
-        try:
-            if os.path.exists(input_path):
-                os.remove(input_path)
-                logger.info(f"Cleaned up input file: {input_path}")
-        except Exception as e:
-            logger.warning(f"Failed to clean up input file {input_path}: {str(e)}")
+        # Don't clean up input file immediately - keep it for 3D viewer comparison
+        # It will be cleaned up when the user downloads or the task is manually cleaned up
+        logger.info(f"Task completed, keeping original file for comparison: {input_path}")

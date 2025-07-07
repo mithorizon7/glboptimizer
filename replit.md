@@ -119,6 +119,13 @@ Changelog:
   - Enhanced error handling and resource cleanup
   - Added comprehensive logging and monitoring capabilities
   - Now supports multiple concurrent users with proper resource isolation
+- July 07, 2025. Added 3D before/after model comparison viewer:
+  - Implemented side-by-side 3D model visualization using Three.js
+  - Added interactive camera controls with sync capability
+  - Real-time loading progress for both original and optimized models
+  - Professional lighting setup and automatic model centering/scaling
+  - Responsive design with proper error handling and loading states
+  - Enhanced user confidence in optimization quality through visual comparison
 
 ## User Preferences
 

@@ -190,6 +190,62 @@
                             </div>
                         </div>
                         
+                        <!-- 3D Viewer Section -->
+                        <div class="row mt-4" id="model-viewer-section">
+                            <div class="col-12">
+                                <h6 class="mb-3">
+                                    <i class="fas fa-cube me-2"></i>
+                                    3D Model Comparison
+                                </h6>
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="card">
+                                            <div class="card-header text-center">
+                                                <h6 class="mb-0">Original Model</h6>
+                                                <small class="text-muted" id="original-model-size"></small>
+                                            </div>
+                                            <div class="card-body p-0">
+                                                <div id="original-viewer" class="model-viewer"></div>
+                                                <div class="viewer-controls p-2">
+                                                    <small class="text-muted">
+                                                        <i class="fas fa-mouse me-1"></i> Click & drag to rotate
+                                                        <i class="fas fa-expand-arrows-alt ms-2 me-1"></i> Scroll to zoom
+                                                    </small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="card">
+                                            <div class="card-header text-center">
+                                                <h6 class="mb-0">Optimized Model</h6>
+                                                <small class="text-muted" id="optimized-model-size"></small>
+                                            </div>
+                                            <div class="card-body p-0">
+                                                <div id="optimized-viewer" class="model-viewer"></div>
+                                                <div class="viewer-controls p-2">
+                                                    <small class="text-muted">
+                                                        <i class="fas fa-mouse me-1"></i> Click & drag to rotate
+                                                        <i class="fas fa-expand-arrows-alt ms-2 me-1"></i> Scroll to zoom
+                                                    </small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="text-center mt-3">
+                                    <button id="sync-cameras-btn" class="btn btn-outline-primary btn-sm me-2">
+                                        <i class="fas fa-link me-1"></i>
+                                        Sync Camera Views
+                                    </button>
+                                    <button id="reset-cameras-btn" class="btn btn-outline-secondary btn-sm">
+                                        <i class="fas fa-undo me-1"></i>
+                                        Reset Views
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="text-center mt-4">
                             <button id="download-btn" class="btn btn-success btn-lg me-3">
                                 <i class="fas fa-download me-2"></i>
@@ -247,6 +303,14 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="{{ url_for('static', filename='script.js') }}"></script>
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+    <script type="module" src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 </html>

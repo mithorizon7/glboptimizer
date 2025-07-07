@@ -1,3 +1,8 @@
+// Three.js ES Module Imports
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
 // GLB Optimizer Frontend JavaScript
 
 class GLBOptimizer {
@@ -21,6 +26,18 @@ class GLBOptimizer {
         this.qualityLevel = document.getElementById('quality-level');
         this.enableLod = document.getElementById('enable-lod');
         this.enableSimplification = document.getElementById('enable-simplification');
+        
+        // 3D Viewer elements
+        this.modelViewerSection = document.getElementById('model-viewer-section');
+        this.originalViewer = document.getElementById('original-viewer');
+        this.optimizedViewer = document.getElementById('optimized-viewer');
+        this.originalModelSize = document.getElementById('original-model-size');
+        this.optimizedModelSize = document.getElementById('optimized-model-size');
+        this.syncCamerasBtn = document.getElementById('sync-cameras-btn');
+        this.resetCamerasBtn = document.getElementById('reset-cameras-btn');
+        
+        // 3D Viewer instances
+        this.viewer3D = new ModelViewer3D();
         
         // Sections
         this.uploadSection = document.getElementById('upload-section');
@@ -100,6 +117,15 @@ class GLBOptimizer {
         // Retry button
         this.retryBtn.addEventListener('click', () => {
             this.resetUI();
+        });
+        
+        // 3D Viewer controls
+        this.syncCamerasBtn.addEventListener('click', () => {
+            this.viewer3D.syncCameras();
+        });
+        
+        this.resetCamerasBtn.addEventListener('click', () => {
+            this.viewer3D.resetCameras();
         });
     }
     
@@ -233,15 +259,19 @@ class GLBOptimizer {
     }
     
     showResults(progress) {
-        // Hide progress section, show results
+        // Hide progress section, show results and viewer
         this.progressSection.style.display = 'none';
         this.resultsSection.style.display = 'block';
+        this.modelViewerSection.style.display = 'block';
         
         // Update result statistics
         this.resultOriginalSize.textContent = this.formatFileSize(progress.original_size);
         this.resultOptimizedSize.textContent = this.formatFileSize(progress.optimized_size);
         this.resultCompression.textContent = `${progress.compression_ratio.toFixed(1)}%`;
         this.resultTime.textContent = `${progress.processing_time.toFixed(1)}s`;
+        
+        // Initialize 3D model viewer with before/after comparison
+        this.initialize3DViewer(progress);
     }
     
     async downloadOptimizedFile() {
@@ -337,6 +367,13 @@ class GLBOptimizer {
         this.progressSection.style.display = 'none';
         this.resultsSection.style.display = 'none';
         this.errorSection.style.display = 'none';
+        this.modelViewerSection.style.display = 'none';
+        
+        // Clear 3D viewers
+        if (this.viewer3D) {
+            this.originalViewer.innerHTML = '';
+            this.optimizedViewer.innerHTML = '';
+        }
     }
     
     formatFileSize(bytes) {
@@ -348,7 +385,300 @@ class GLBOptimizer {
         
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     }
+    
+    initialize3DViewer(progress) {
+        // Update model size displays
+        this.originalModelSize.textContent = this.formatFileSize(progress.original_size);
+        this.optimizedModelSize.textContent = this.formatFileSize(progress.optimized_size);
+        
+        // Initialize viewers with model URLs
+        const originalUrl = `/original/${this.currentTaskId}`;
+        const optimizedUrl = `/download/${this.currentTaskId}`;
+        
+        this.viewer3D.initializeViewers(
+            this.originalViewer,
+            this.optimizedViewer,
+            originalUrl,
+            optimizedUrl
+        );
+    }
 }
+
+// 3D Model Viewer Class using Three.js
+class ModelViewer3D {
+    constructor() {
+        this.originalScene = null;
+        this.optimizedScene = null;
+        this.originalCamera = null;
+        this.optimizedCamera = null;
+        this.originalRenderer = null;
+        this.optimizedRenderer = null;
+        this.originalControls = null;
+        this.optimizedControls = null;
+        this.loader = new GLTFLoader();
+        this.cameraSynced = false;
+    }
+    
+    initializeViewers(originalContainer, optimizedContainer, originalUrl, optimizedUrl) {
+        // Clear containers
+        originalContainer.innerHTML = '';
+        optimizedContainer.innerHTML = '';
+        
+        // Initialize original viewer
+        this.setupViewer(originalContainer, 'original').then(() => {
+            this.loadModel(originalUrl, 'original');
+        });
+        
+        // Initialize optimized viewer
+        this.setupViewer(optimizedContainer, 'optimized').then(() => {
+            this.loadModel(optimizedUrl, 'optimized');
+        });
+    }
+    
+    async setupViewer(container, type) {
+        const width = container.clientWidth;
+        const height = container.clientHeight;
+        
+        // Create scene
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x1a1a2e);
+        
+        // Create camera
+        const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
+        camera.position.set(0, 0, 5);
+        
+        // Create renderer
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(width, height);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1;
+        
+        // Add lights
+        const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+        scene.add(ambientLight);
+        
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(5, 5, 5);
+        directionalLight.castShadow = true;
+        directionalLight.shadow.mapSize.width = 2048;
+        directionalLight.shadow.mapSize.height = 2048;
+        scene.add(directionalLight);
+        
+        const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.4);
+        directionalLight2.position.set(-5, -5, -5);
+        scene.add(directionalLight2);
+        
+        // Create controls
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.screenSpacePanning = false;
+        controls.minDistance = 1;
+        controls.maxDistance = 100;
+        controls.maxPolarAngle = Math.PI;
+        
+        // Store references
+        if (type === 'original') {
+            this.originalScene = scene;
+            this.originalCamera = camera;
+            this.originalRenderer = renderer;
+            this.originalControls = controls;
+        } else {
+            this.optimizedScene = scene;
+            this.optimizedCamera = camera;
+            this.optimizedRenderer = renderer;
+            this.optimizedControls = controls;
+        }
+        
+        // Add to container
+        container.appendChild(renderer.domElement);
+        
+        // Handle resize
+        const resizeObserver = new ResizeObserver(entries => {
+            for (let entry of entries) {
+                const { width, height } = entry.contentRect;
+                camera.aspect = width / height;
+                camera.updateProjectionMatrix();
+                renderer.setSize(width, height);
+            }
+        });
+        resizeObserver.observe(container);
+        
+        // Start render loop
+        const animate = () => {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        };
+        animate();
+        
+        return { scene, camera, renderer, controls };
+    }
+    
+    loadModel(url, type) {
+        const container = type === 'original' ? 
+            document.getElementById('original-viewer') : 
+            document.getElementById('optimized-viewer');
+        
+        // Show loading indicator
+        this.showLoading(container, type);
+        
+        this.loader.load(
+            url,
+            (gltf) => {
+                this.onModelLoaded(gltf, type);
+            },
+            (progress) => {
+                // Progress callback
+                const percent = (progress.loaded / progress.total * 100);
+                this.updateLoadingProgress(container, percent);
+            },
+            (error) => {
+                console.error(`Error loading ${type} model:`, error);
+                this.showError(container, `Failed to load ${type} model`);
+            }
+        );
+    }
+    
+    onModelLoaded(gltf, type) {
+        const scene = type === 'original' ? this.originalScene : this.optimizedScene;
+        const camera = type === 'original' ? this.originalCamera : this.optimizedCamera;
+        const container = type === 'original' ? 
+            document.getElementById('original-viewer') : 
+            document.getElementById('optimized-viewer');
+        
+        // Remove loading indicator
+        this.hideLoading(container);
+        
+        // Add model to scene
+        const model = gltf.scene;
+        scene.add(model);
+        
+        // Center and scale model
+        const box = new THREE.Box3().setFromObject(model);
+        const center = box.getCenter(new THREE.Vector3());
+        const size = box.getSize(new THREE.Vector3());
+        
+        // Center the model
+        model.position.sub(center);
+        
+        // Scale to fit in view
+        const maxSize = Math.max(size.x, size.y, size.z);
+        const scale = 3 / maxSize;
+        model.scale.setScalar(scale);
+        
+        // Adjust camera position
+        camera.position.set(0, 0, maxSize * 1.5);
+        
+        // Enable animations if present
+        if (gltf.animations && gltf.animations.length > 0) {
+            const mixer = new THREE.AnimationMixer(model);
+            const action = mixer.clipAction(gltf.animations[0]);
+            action.play();
+            
+            // Store mixer for animation updates
+            const animate = () => {
+                requestAnimationFrame(animate);
+                mixer.update(0.01);
+            };
+            animate();
+        }
+        
+        console.log(`${type} model loaded successfully`);
+    }
+    
+    showLoading(container, type) {
+        const loading = document.createElement('div');
+        loading.className = 'model-loading';
+        loading.innerHTML = `
+            <div class="spinner-border" role="status"></div>
+            <div>Loading ${type} model...</div>
+        `;
+        container.appendChild(loading);
+    }
+    
+    updateLoadingProgress(container, percent) {
+        const loading = container.querySelector('.model-loading div:last-child');
+        if (loading) {
+            loading.textContent = `Loading... ${Math.round(percent)}%`;
+        }
+    }
+    
+    hideLoading(container) {
+        const loading = container.querySelector('.model-loading');
+        if (loading) {
+            loading.remove();
+        }
+    }
+    
+    showError(container, message) {
+        container.innerHTML = `
+            <div class="model-viewer-error">
+                <i class="fas fa-exclamation-triangle fa-2x mb-2"></i>
+                <div>${message}</div>
+            </div>
+        `;
+    }
+    
+    syncCameras() {
+        if (!this.originalCamera || !this.optimizedCamera) return;
+        
+        this.cameraSynced = !this.cameraSynced;
+        
+        if (this.cameraSynced) {
+            // Sync optimized camera to original
+            this.optimizedCamera.position.copy(this.originalCamera.position);
+            this.optimizedCamera.rotation.copy(this.originalCamera.rotation);
+            this.optimizedControls.target.copy(this.originalControls.target);
+            this.optimizedControls.update();
+            
+            // Add sync indicators
+            document.querySelector('#original-viewer').closest('.card').classList.add('camera-synced');
+            document.querySelector('#optimized-viewer').closest('.card').classList.add('camera-synced');
+            
+            // Sync on camera changes
+            this.originalControls.addEventListener('change', this.onCameraChange.bind(this));
+        } else {
+            // Remove sync
+            this.originalControls.removeEventListener('change', this.onCameraChange.bind(this));
+            
+            // Remove sync indicators
+            document.querySelector('#original-viewer').closest('.card').classList.remove('camera-synced');
+            document.querySelector('#optimized-viewer').closest('.card').classList.remove('camera-synced');
+        }
+    }
+    
+    onCameraChange() {
+        if (this.cameraSynced && this.optimizedCamera && this.optimizedControls) {
+            this.optimizedCamera.position.copy(this.originalCamera.position);
+            this.optimizedCamera.rotation.copy(this.originalCamera.rotation);
+            this.optimizedControls.target.copy(this.originalControls.target);
+            this.optimizedControls.update();
+        }
+    }
+    
+    resetCameras() {
+        if (this.originalControls) {
+            this.originalControls.reset();
+        }
+        if (this.optimizedControls) {
+            this.optimizedControls.reset();
+        }
+        
+        // Remove sync
+        this.cameraSynced = false;
+        document.querySelector('#original-viewer').closest('.card').classList.remove('camera-synced');
+        document.querySelector('#optimized-viewer').closest('.card').classList.remove('camera-synced');
+    }
+}
+
+// Initialize the application when DOM is loaded
+document.addEventListener('DOMContentLoaded', () => {
+    new GLBOptimizer();
+});
 
 // Initialize the optimizer when the page loads
 document.addEventListener('DOMContentLoaded', () => {

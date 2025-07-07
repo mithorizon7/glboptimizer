@@ -70,6 +70,13 @@ def upload_file():
             f"{task_id}_optimized_{original_name}.glb"
         )
         
+        # Store original file info for comparison viewer
+        original_file_info = {
+            'path': input_path,
+            'size': original_size,
+            'name': original_name
+        }
+        
         # Start Celery task for optimization
         celery_task = optimize_glb_file.delay(
             input_path=input_path,
@@ -186,6 +193,33 @@ def cleanup_task(task_id):
     except Exception as e:
         logging.error(f"Cleanup failed for task {task_id}: {str(e)}")
         return jsonify({'error': f'Cleanup failed: {str(e)}'}), 500
+
+@app.route('/original/<task_id>')
+def get_original_file(task_id):
+    """Serve the original GLB file for 3D comparison viewer"""
+    try:
+        # Look for the original file in uploads directory
+        # Original files are temporarily kept until task completion for comparison
+        original_file_path = None
+        upload_dir = app.config['UPLOAD_FOLDER']
+        
+        # Find the original file by task_id prefix
+        for filename in os.listdir(upload_dir):
+            if filename.startswith(f"{task_id}_") and filename.endswith('.glb'):
+                original_file_path = os.path.join(upload_dir, filename)
+                break
+        
+        if not original_file_path or not os.path.exists(original_file_path):
+            return jsonify({'error': 'Original file not found'}), 404
+        
+        return send_file(
+            original_file_path,
+            mimetype='model/gltf-binary',
+            as_attachment=False
+        )
+    
+    except Exception as e:
+        return jsonify({'error': f'Failed to serve original file: {str(e)}'}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
