@@ -56,7 +56,7 @@ def upload_file():
         enable_simplification = request.form.get('enable_simplification') == 'true'
         
         # Save uploaded file
-        filename = secure_filename(file.filename)
+        filename = secure_filename(file.filename or "uploaded.glb")
         original_name = filename.rsplit('.', 1)[0]
         input_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{task_id}_{filename}")
         file.save(input_path)
@@ -185,6 +185,18 @@ def cleanup_task(task_id):
                 except Exception as e:
                     logging.warning(f"Failed to remove output file {output_path}: {str(e)}")
         
+        # Remove original file (kept for 3D viewer comparison)
+        upload_dir = app.config['UPLOAD_FOLDER']
+        for filename in os.listdir(upload_dir):
+            if filename.startswith(f"{task_id}_"):
+                original_path = os.path.join(upload_dir, filename)
+                try:
+                    os.remove(original_path)
+                    logging.info(f"Cleaned up original file: {original_path}")
+                except Exception as e:
+                    logging.warning(f"Failed to remove original file {original_path}: {str(e)}")
+                break
+        
         # Revoke/forget the task in Celery
         celery_task.forget()
         
@@ -212,11 +224,16 @@ def get_original_file(task_id):
         if not original_file_path or not os.path.exists(original_file_path):
             return jsonify({'error': 'Original file not found'}), 404
         
-        return send_file(
+        response = send_file(
             original_file_path,
             mimetype='model/gltf-binary',
             as_attachment=False
         )
+        # Add CORS headers for 3D viewer access
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'GET'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+        return response
     
     except Exception as e:
         return jsonify({'error': f'Failed to serve original file: {str(e)}'}), 500

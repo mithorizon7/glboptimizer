@@ -395,12 +395,31 @@ class GLBOptimizer {
         const originalUrl = `/original/${this.currentTaskId}`;
         const optimizedUrl = `/download/${this.currentTaskId}`;
         
-        this.viewer3D.initializeViewers(
-            this.originalViewer,
-            this.optimizedViewer,
-            originalUrl,
-            optimizedUrl
-        );
+        try {
+            this.viewer3D.initializeViewers(
+                this.originalViewer,
+                this.optimizedViewer,
+                originalUrl,
+                optimizedUrl
+            );
+        } catch (error) {
+            console.error('Failed to initialize 3D viewer:', error);
+            // Show fallback message
+            this.originalViewer.innerHTML = `
+                <div class="model-viewer-error">
+                    <i class="fas fa-exclamation-triangle fa-2x mb-2"></i>
+                    <div>3D viewer not available</div>
+                    <small class="text-muted">Models can still be downloaded</small>
+                </div>
+            `;
+            this.optimizedViewer.innerHTML = `
+                <div class="model-viewer-error">
+                    <i class="fas fa-exclamation-triangle fa-2x mb-2"></i>
+                    <div>3D viewer not available</div>
+                    <small class="text-muted">Models can still be downloaded</small>
+                </div>
+            `;
+        }
     }
 }
 

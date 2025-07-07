@@ -1,7 +1,6 @@
 import os
 import time
 import logging
-from celery import current_task
 from celery_app import celery
 from optimizer import GLBOptimizer
 
@@ -28,7 +27,7 @@ def optimize_glb_file(self, input_path, output_path, original_name, quality_leve
     
     def progress_callback(step, progress, message):
         """Update task progress"""
-        current_task.update_state(
+        self.update_state(
             state='PROGRESS',
             meta={
                 'step': step,
@@ -37,13 +36,13 @@ def optimize_glb_file(self, input_path, output_path, original_name, quality_leve
                 'status': 'processing'
             }
         )
-        logger.info(f"Task {current_task.request.id}: {step} - {progress}% - {message}")
+        logger.info(f"Task {self.request.id}: {step} - {progress}% - {message}")
     
     try:
-        logger.info(f"Starting optimization task {current_task.request.id} for file: {original_name}")
+        logger.info(f"Starting optimization task {self.request.id} for file: {original_name}")
         
         # Update initial state
-        current_task.update_state(
+        self.update_state(
             state='PROGRESS',
             meta={
                 'step': 'Starting optimization...',
@@ -69,7 +68,7 @@ def optimize_glb_file(self, input_path, output_path, original_name, quality_leve
             optimized_size = os.path.getsize(output_path)
             compression_ratio = ((original_size - optimized_size) / original_size) * 100
             
-            logger.info(f"Optimization completed for task {current_task.request.id}")
+            logger.info(f"Optimization completed for task {self.request.id}")
             
             return {
                 'status': 'completed',
@@ -82,7 +81,7 @@ def optimize_glb_file(self, input_path, output_path, original_name, quality_leve
                 'original_name': original_name
             }
         else:
-            logger.error(f"Optimization failed for task {current_task.request.id}: {result.get('error')}")
+            logger.error(f"Optimization failed for task {self.request.id}: {result.get('error')}")
             return {
                 'status': 'error',
                 'success': False,
@@ -91,10 +90,10 @@ def optimize_glb_file(self, input_path, output_path, original_name, quality_leve
             }
     
     except Exception as e:
-        logger.error(f"Task {current_task.request.id} failed with exception: {str(e)}")
+        logger.error(f"Task {self.request.id} failed with exception: {str(e)}")
         
         # Update task state to failure
-        current_task.update_state(
+        self.update_state(
             state='FAILURE',
             meta={
                 'status': 'error',

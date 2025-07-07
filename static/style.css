@@ -141,6 +141,7 @@
     border-radius: 0;
     position: relative;
     overflow: hidden;
+    border: 1px solid var(--bs-border-color);
 }
 
 .model-viewer canvas {
