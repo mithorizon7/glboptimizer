@@ -60,17 +60,21 @@ def index():
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file selected'}), 400
-    
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({'error': 'No file selected'}), 400
-    
-    if not allowed_file(file.filename):
-        return jsonify({'error': 'Invalid file type. Only GLB files are allowed.'}), 400
-    
-    if file:
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file selected'}), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+        
+        if not allowed_file(file.filename):
+            return jsonify({'error': 'Invalid file type. Only GLB files are allowed.'}), 400
+        
+        # Check file size
+        if hasattr(file, 'content_length') and file.content_length > config.MAX_CONTENT_LENGTH:
+            return jsonify({'error': f'File too large. Maximum size is {config.MAX_CONTENT_LENGTH // (1024*1024)}MB.'}), 400
+        
         # Generate unique task ID
         task_id = str(uuid.uuid4())
         
@@ -115,6 +119,13 @@ def upload_file():
             'message': 'File uploaded successfully. Optimization queued.',
             'original_size': original_size
         })
+    
+    except Exception as e:
+        logger.error(f"Upload error: {str(e)}")
+        return jsonify({
+            'error': 'An error occurred during file upload. Please try again.',
+            'details': str(e) if config.DEBUG else None
+        }), 500
 
 
 

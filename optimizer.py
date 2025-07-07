@@ -125,7 +125,7 @@ class GLBOptimizer:
                 detailed_log = {
                     'step': step_name,
                     'description': description,
-                    'command': ' '.join(cmd),
+                    'command': ' '.join(validated_cmd),  # Log the validated command, not original
                     'exit_code': result.returncode,
                     'stdout': result.stdout,
                     'stderr': result.stderr,
