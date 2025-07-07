@@ -1,0 +1,93 @@
+What's Still Broken:
+
+The Core Modular Pipeline: The root cause of the AttributeError: ... has no attribute 'optimizer' still exists in pipeline_tasks.py. The new fallback logic is a smart workaround, but the modern, multi-step pipeline remains unusable.
+
+The Cleanup Scheduler: The cleanup_scheduler.py file still has the original Celery import bug and will fail to run, meaning old files will not be automatically deleted.
+
+Development Startup: The develop.py script is still missing default environment variables, which can make local development setup fragile.
+
+Verdict: The application has moved from "critically broken" to "partially functional." It can now process files via its legacy fallback system, but the modern, more powerful pipeline is inactive.
+
+Next Steps to Make It Fully Operational
+
+Here are the next systematic fixes to get the entire application working as intended.
+
+1. Repair the Modular Pipeline (pipeline_tasks.py)
+
+This is the most important fix to unlock the application's full potential. You need to correct the way the GLBOptimizer is used within each Celery task. The file pipeline_improvements.py already contains the correct design pattern for this.
+
+Action: Open pipeline_tasks.py. For each task (e.g., prune_model_task, weld_model_task, etc.), ensure it creates a PipelineStage object and uses that object's optimizer instance to run the command.
+
+Example for prune_model_task:
+
+Python
+// In pipeline_tasks.py
+
+@celery_app.task(bind=True, name='pipeline.prune_model')
+def prune_model_task(self, task_id: str, input_path: str, output_path: str, model_info: Dict[str, Any]):
+    """
+    Stage 2: Prune unused data and clean up model
+    """
+    # This stage object correctly contains its own optimizer instance.
+    stage = PipelineStage(task_id, "Data Cleanup")
+    stage.update_progress(15, "Removing unused data")
+
+    try:
+        prune_output = input_path.replace('.glb', '_pruned.glb')
+
+        # This call now correctly uses the optimizer from the stage object.
+        result = stage.optimizer._run_gltf_transform_prune(input_path, prune_output)
+
+        if result['success']:
+            stage.update_progress(25, "Cleanup complete")
+            # Chain to the next task
+            weld_model_task.delay(task_id, prune_output, output_path, model_info)
+            return {'success': True}
+        else:
+            raise Exception(result.get('error', 'Pruning failed'))
+    except Exception as e:
+        logger.error(f"Pruning failed: {e}")
+        stage.update_progress(15, f"Cleanup failed: {str(e)}", status='failed')
+        return {'success': False, 'error': str(e)}
+
+You will need to apply this same pattern to all seven tasks within pipeline_tasks.py.
+
+2. Fix the Cleanup Scheduler (cleanup_scheduler.py)
+
+This is a quick fix to ensure your server doesn't fill up with old files.
+
+Action: Open cleanup_scheduler.py. Replace the direct import of celery with the factory pattern to create a local instance.
+
+Python
+// In cleanup_scheduler.py
+
+from celery_app import make_celery
+
+# Create a local Celery instance using the factory
+celery = make_celery()
+
+@celery.task(name='cleanup.cleanup_old_files')
+def cleanup_old_files():
+  # ... function remains the same
+3. Harden the Development Script (develop.py)
+
+This change will make your local development environment more stable and less prone to configuration errors on startup.
+
+Action: Open develop.py. At the very top of the file, add os.environ.setdefault() calls to provide sane defaults for essential environment variables.
+
+Python
+// At the top of develop.py
+
+import os
+
+# Set sane defaults BEFORE any other application imports
+os.environ.setdefault('FLASK_ENV', 'development')
+os.environ.setdefault('DATABASE_URL', 'sqlite:///dev.db') # Use a simple file-based database for local dev
+os.environ.setdefault('REDIS_URL', 'redis://localhost:6379/0')
+os.environ.setdefault('SESSION_SECRET', 'a-temporary-but-valid-secret-for-local-dev')
+
+# The rest of the script follows...
+import sys
+import subprocess
+# ...
+By completing these three steps, you will have a fully functional, resilient, and production-ready application that works as designed. You're very close.

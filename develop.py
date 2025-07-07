@@ -31,8 +31,8 @@ from pathlib import Path
 os.environ.setdefault('FLASK_ENV', 'development')
 os.environ.setdefault('DATABASE_URL', os.environ.get('DATABASE_URL', 'sqlite:///dev.db'))
 os.environ.setdefault('REDIS_URL', 'redis://localhost:6379/0')
-os.environ.setdefault('CELERY_BROKER_URL', os.environ['REDIS_URL'])
-os.environ.setdefault('CELERY_RESULT_BACKEND', os.environ['REDIS_URL'])
+os.environ.setdefault('CELERY_BROKER_URL', 'redis://localhost:6379/0')
+os.environ.setdefault('CELERY_RESULT_BACKEND', 'redis://localhost:6379/0')
 os.environ.setdefault('SESSION_SECRET', 'dev_secret_key_for_local_development_only')
 
 # Configure development logging
