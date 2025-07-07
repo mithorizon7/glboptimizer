@@ -1,0 +1,146 @@
+{
+  "test_suite": "Pipeline Resilience Testing",
+  "start_time": "2025-07-07T05:19:07.961912+00:00",
+  "tests": {
+    "failure_resilience": {
+      "texture_compression_failure": {
+        "test_name": "texture_compression_failure",
+        "status": "ERROR",
+        "error": "'compress_textures_task' object has no attribute 'optimizer'"
+      },
+      "geometry_compression_failure": {
+        "test_name": "geometry_compression_failure",
+        "status": "ERROR",
+        "error": "'compress_geometry_task' object has no attribute 'optimizer'"
+      },
+      "animation_failure": {
+        "test_name": "animation_optimization_failure",
+        "status": "ERROR",
+        "error": "'optimize_animations_task' object has no attribute 'optimizer'"
+      },
+      "early_stage_failure": {
+        "test_name": "early_stage_failure",
+        "status": "ERROR",
+        "error": "'prune_model_task' object has no attribute 'optimizer'"
+      }
+    },
+    "data_integrity": {
+      "test_name": "data_integrity",
+      "stages_completed": [
+        "prune",
+        "weld",
+        "geometry"
+      ],
+      "file_sizes": {
+        "original": 77,
+        "pruned": 77,
+        "welded": 77,
+        "geometry": 77
+      },
+      "data_integrity_ok": true,
+      "status": "PASS"
+    },
+    "performance_profiling": {
+      "test_name": "performance_profiling",
+      "stage_timings": {
+        "model_analysis": {
+          "avg_time": 0.5,
+          "min_time": 0.2,
+          "max_time": 1.0
+        },
+        "data_cleanup": {
+          "avg_time": 2.1,
+          "min_time": 1.5,
+          "max_time": 3.2
+        },
+        "mesh_processing": {
+          "avg_time": 3.8,
+          "min_time": 2.1,
+          "max_time": 6.5
+        },
+        "geometry_compression": {
+          "avg_time": 12.5,
+          "min_time": 8.2,
+          "max_time": 18.9
+        },
+        "texture_compression": {
+          "avg_time": 8.7,
+          "min_time": 4.1,
+          "max_time": 15.3
+        },
+        "animation_optimization": {
+          "avg_time": 4.2,
+          "min_time": 2.8,
+          "max_time": 7.1
+        },
+        "final_packaging": {
+          "avg_time": 1.8,
+          "min_time": 1.2,
+          "max_time": 2.9
+        }
+      },
+      "total_avg_time": 33.599999999999994,
+      "bottlenecks": [
+        {
+          "stage": "geometry_compression",
+          "avg_time": 12.5,
+          "percentage": 37.202380952380956
+        },
+        {
+          "stage": "texture_compression",
+          "avg_time": 8.7,
+          "percentage": 25.892857142857146
+        }
+      ],
+      "recommendations": [
+        "Consider adaptive quality settings for geometry compression",
+        "Implement progressive texture compression for large files"
+      ],
+      "analytics_data": [
+        {
+          "date": "2025-07-06",
+          "total_tasks": 6,
+          "completed_tasks": 3,
+          "success_rate": 50.0,
+          "avg_compression_ratio": 60.0,
+          "avg_processing_time": 90.0
+        },
+        {
+          "date": "2025-07-07",
+          "total_tasks": 9,
+          "completed_tasks": 3,
+          "success_rate": 33.33333333333333,
+          "avg_compression_ratio": 85.0,
+          "avg_processing_time": 40.0
+        }
+      ],
+      "status": "PASS"
+    },
+    "partial_optimization": {
+      "test_name": "partial_optimization_delivery",
+      "stages_completed": [
+        "inspect",
+        "prune",
+        "weld",
+        "geometry"
+      ],
+      "stages_failed": [
+        "textures",
+        "animations",
+        "finalize"
+      ],
+      "original_size": 77,
+      "partial_size": 42,
+      "partial_benefit": 0.44425000000000003,
+      "significant_improvement": true,
+      "user_value": "HIGH",
+      "status": "PASS"
+    }
+  },
+  "end_time": "2025-07-07T05:19:09.496095+00:00",
+  "duration_seconds": 1.5342001914978027,
+  "total_tests": 25,
+  "passed_tests": 3,
+  "success_rate": 12.0,
+  "overall_status": "FAIL"
+}
