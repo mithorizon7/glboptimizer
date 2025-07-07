@@ -112,12 +112,37 @@ class DevelopmentConfig(Config):
     CLEANUP_ENABLED = False  # Disable automatic cleanup in development
 
 class ProductionConfig(Config):
-    """Production-specific configuration"""
+    """Production-specific configuration with enhanced security"""
     DEBUG = False
     LOG_LEVEL = 'INFO'
     LOG_TO_FILE = True
     CLEANUP_ENABLED = True
     SECURE_FILENAME_ENABLED = True
+    
+    @classmethod
+    def validate_config(cls):
+        """Enhanced validation for production security requirements"""
+        issues = super().validate_config()
+        
+        # Critical security validations for production
+        if cls.SECRET_KEY == 'dev_secret_key_change_in_production':
+            issues.append("CRITICAL: SESSION_SECRET must be set to a strong random value in production")
+        
+        if len(cls.SECRET_KEY) < 32:
+            issues.append("CRITICAL: SESSION_SECRET must be at least 32 characters long")
+        
+        if cls.DEBUG:
+            issues.append("CRITICAL: DEBUG mode must be disabled in production (set FLASK_DEBUG=false)")
+        
+        # Check for HTTPS configuration hints
+        if not os.environ.get('HTTPS_ENABLED'):
+            issues.append("WARNING: Consider enabling HTTPS in production (set HTTPS_ENABLED=true)")
+        
+        # Check for security headers configuration
+        if not os.environ.get('SECURITY_HEADERS_ENABLED'):
+            issues.append("INFO: Consider enabling security headers (set SECURITY_HEADERS_ENABLED=true)")
+        
+        return issues
 
 class TestingConfig(Config):
     """Testing-specific configuration"""

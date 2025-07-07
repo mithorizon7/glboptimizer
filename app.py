@@ -39,6 +39,40 @@ app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 # Apply configuration
 app.config['MAX_CONTENT_LENGTH'] = config.MAX_CONTENT_LENGTH
 
+# Security headers middleware
+@app.after_request
+def add_security_headers(response):
+    """Add security headers to all responses"""
+    if os.environ.get('SECURITY_HEADERS_ENABLED', 'true').lower() in ['true', '1', 'yes']:
+        # Prevent clickjacking
+        response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+        
+        # Prevent MIME type sniffing
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        
+        # Enable XSS protection
+        response.headers['X-XSS-Protection'] = '1; mode=block'
+        
+        # Control referrer information
+        response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+        
+        # Content Security Policy (restrictive for uploads)
+        response.headers['Content-Security-Policy'] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' cdnjs.cloudflare.com cdn.jsdelivr.net; "
+            "style-src 'self' 'unsafe-inline' cdnjs.cloudflare.com cdn.jsdelivr.net; "
+            "font-src 'self' cdnjs.cloudflare.com; "
+            "img-src 'self' data:; "
+            "object-src 'none'; "
+            "base-uri 'self'"
+        )
+        
+        # HTTPS enforcement (if enabled)
+        if os.environ.get('HTTPS_ENABLED', 'false').lower() in ['true', '1', 'yes']:
+            response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    
+    return response
+
 # Ensure directories exist
 config.ensure_directories()
 
