@@ -87,15 +87,28 @@ class GLBOptimizer {
     
     setupEventListeners() {
         // File input change
-        this.fileInput.addEventListener('change', (e) => {
-            console.log('File input change event fired', e.target.files);
-            if (e.target.files.length > 0) {
-                this.handleFileSelect(e.target.files[0]);
-            }
-        });
+        if (this.fileInput) {
+            console.log('Adding change event listener to file input');
+            this.fileInput.addEventListener('change', (e) => {
+                console.log('File input change event fired', e.target.files);
+                if (e.target.files.length > 0) {
+                    this.handleFileSelect(e.target.files[0]);
+                }
+            });
+            
+            // Test if we can manually trigger the file dialog
+            console.log('File input click test:', () => {
+                console.log('Attempting to click file input...');
+                this.fileInput.click();
+            });
+        } else {
+            console.error('Cannot add event listener - file input not found!');
+        }
         
         // Drag and drop
-        this.dropZone.addEventListener('click', () => {
+        this.dropZone.addEventListener('click', (e) => {
+            console.log('Drop zone clicked', e.target);
+            console.log('Triggering file input click from drop zone');
             this.fileInput.click();
         });
         
