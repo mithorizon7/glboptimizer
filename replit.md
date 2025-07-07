@@ -267,6 +267,13 @@ Changelog:
   - Added comprehensive debugging and error handling for upload workflow
   - Fixed CORS issues preventing progress polling from working
   - File upload and optimization pipeline now fully operational
+- July 07, 2025. Added comprehensive user guidance system for complete novices:
+  - Implemented interactive Bootstrap tooltips with simple, practical explanations
+  - Added dynamic quality level descriptions that update based on user selection
+  - Created expandable help section explaining optimization techniques in everyday language
+  - Added beginner-friendly tips and default setting recommendations
+  - Enhanced tooltips use relatable comparisons (4K to HD, ZIP compression, Netflix quality)
+  - Fixed JavaScript initialization errors and improved error handling for UI features
 
 ## User Preferences
 

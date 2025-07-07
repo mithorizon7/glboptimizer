@@ -43,4 +43,5 @@ dependencies = [
     "requests>=2.32.4",
     "six>=1.17.0",
     "prompt-toolkit>=3.0.51",
+    "wcwidth>=0.2.13",
 ]
