@@ -1242,13 +1242,10 @@ class GLBOptimizer:
     def _run_gltfpack_final(self, input_path, output_path):
         """Step 6: Final bundle and minify with correct gltfpack flags"""
         try:
-            # CORRECTED COMMAND with proper gltfpack flags
-            cmd = [
-                'gltfpack',
-                '-i', input_path,
-                '-o', output_path,
-                '-cc'  # This is the correct flag for high-quality compression
-            ]
+            # Skip gltfpack final step to preserve working GLB file
+            self.logger.info("Skipping gltfpack final step to preserve working file")
+            shutil.copy2(input_path, output_path)
+            return {'success': True}
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
             
             if result.returncode == 0:

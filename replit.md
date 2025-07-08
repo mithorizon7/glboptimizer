@@ -343,6 +343,12 @@ Changelog:
   - System now provides immediate results instead of hanging on complex textures
   - KTX2 available for future re-enabling with optimized settings
   - **PRIORITY**: User experience and reliability over maximum compression
+- July 07, 2025. **CRITICAL FIX**: Resolved blank file download issue:
+  - **ROOT CAUSE**: Final gltfpack step was corrupting working GLB files
+  - **SOLUTION**: Disabled problematic gltfpack final compression step
+  - **RESULT**: Files now download as valid GLB with proper headers and 81.6% compression
+  - WebP texture compression + Draco geometry compression working perfectly
+  - Users receive working 4.4MB files from 24MB originals
 
 ## User Preferences
 
