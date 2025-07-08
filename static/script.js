@@ -4,6 +4,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { MeshoptDecoder } from 'meshopt-decoder';
 
 // GLB Optimizer Frontend JavaScript
 
@@ -700,7 +701,6 @@ class ModelViewer3D {
         
         // Setup Meshopt decoder for EXT_meshopt_compression using importmap
         try {
-            const { MeshoptDecoder } = await import('meshopt-decoder');
             this.loader.setMeshoptDecoder(MeshoptDecoder);
             this.meshoptInitialized = true;
             console.log('✓ Meshopt decoder initialized via importmap');
@@ -912,7 +912,6 @@ class ModelViewer3D {
         // Ensure Meshopt decoder is properly initialized for each model
         if (!this.meshoptInitialized) {
             try {
-                const { MeshoptDecoder } = await import('meshopt-decoder');
                 this.loader.setMeshoptDecoder(MeshoptDecoder);
                 this.meshoptInitialized = true;
                 console.log(`✓ Meshopt decoder ensured for ${type} model loading`);
