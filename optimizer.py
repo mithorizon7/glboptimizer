@@ -1688,11 +1688,8 @@ class GLBOptimizer:
         ktx2_output = os.path.join(temp_dir, "test_ktx2.glb")
         webp_output = os.path.join(temp_dir, "test_webp.glb")
         
-        # Use centralized texture compression settings
-        settings = self.config.TEXTURE_COMPRESSION_SETTINGS.get(
-            self.quality_level, 
-            self.config.TEXTURE_COMPRESSION_SETTINGS['balanced']
-        )
+        # Use centralized texture compression settings from quality presets
+        settings = self.quality_settings
         results = {}
         file_sizes = {}
         
@@ -1835,10 +1832,8 @@ class GLBOptimizer:
         }
         
         # Use centralized texture compression settings to avoid duplication
-        settings = self.config.TEXTURE_COMPRESSION_SETTINGS.get(
-            self.quality_level, 
-            self.config.TEXTURE_COMPRESSION_SETTINGS['balanced']
-        )
+        # Use centralized texture compression settings from quality presets
+        settings = self.quality_settings
         
         results = {}
         file_sizes = {}

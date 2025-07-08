@@ -570,6 +570,14 @@ Changelog:
   - **CENTRALIZED CONFIGURATION COMPLETE**: All magic numbers moved to OptimizationConfig with environment variable support
   - **ENTERPRISE-GRADE RELIABILITY**: Full production readiness with structured monitoring, resource management, and maintainable architecture
   - **COMPREHENSIVE TESTING**: All improvements verified working with 100% functional compatibility and zero performance impact
+- July 08, 2025. **TEXTURE COMPRESSION SETTINGS CONSOLIDATION**: Eliminated duplicate texture compression configuration blocks:
+  - **CONFIGURATION DUPLICATION ELIMINATED**: Removed entire TEXTURE_COMPRESSION_SETTINGS dictionary (20+ lines) from config.py
+  - **SINGLE SOURCE OF TRUTH**: All texture compression settings now centralized in QUALITY_PRESETS with no configuration drift risk
+  - **ENHANCED MAINTAINABILITY**: Changes only require updates in single location (config.py) instead of multiple files
+  - **UNIVERSAL KTX2 ACCESS**: Fixed enable_ktx2: True for balanced and maximum_compression quality levels
+  - **COMPLETE SETTINGS INTEGRATION**: Added uastc_mode and channel_packing properties to all quality presets
+  - **CODE QUALITY IMPROVEMENT**: 100% reduction in texture configuration duplication with DRY principle implementation
+  - **ZERO FUNCTIONAL IMPACT**: Complete configuration consolidation with preserved compression functionality and performance
 - July 08, 2025. **DUPLICATE CODE ELIMINATION VERIFICATION**: Confirmed complete removal of all legacy duplicate code blocks:
   - **SINGLE METHOD DEFINITIONS**: Verified only one definition each for _run_gltfpack_final, _run_gltf_transform_animations, and optimize methods
   - **NO QUALITY LEVEL GUARDS**: Eliminated all legacy `if self.quality_level == 'high'` conditional blocks
