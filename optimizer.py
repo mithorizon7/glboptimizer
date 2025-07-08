@@ -25,6 +25,7 @@ def run_gltfpack_geometry_parallel(input_path, output_path):
     try:
         import subprocess
         import os
+        from pathlib import Path
         
         cmd = [
             'gltfpack',
@@ -34,9 +35,22 @@ def run_gltfpack_geometry_parallel(input_path, output_path):
             '-cf'   # No fallback compression
         ]
         
-        # Safe environment
+        # Build safe environment dynamically
+        project_root = Path.cwd()
+        path_components = []
+        
+        # Add project node_modules if it exists
+        node_modules_bin = project_root / 'node_modules' / '.bin'
+        if node_modules_bin.is_dir():
+            path_components.append(str(node_modules_bin))
+        
+        # Add standard system paths
+        for path in ['/usr/local/bin', '/usr/bin', '/bin']:
+            if os.path.isdir(path):
+                path_components.append(path)
+        
         safe_env = {
-            'PATH': f"{os.path.join(os.getcwd(), 'node_modules', '.bin')}:/nix/store/s62s2lf3bdqd0iiprrf3xcks35vkyhpb-npx/bin:/nix/store/lyx73qs96hfazl77arnwllwckq9dy012-nodejs-20.18.1-wrapped/bin:/usr/local/bin:/usr/bin:/bin",
+            'PATH': ':'.join(path_components),
             'HOME': '/tmp',
             'LANG': 'C.UTF-8'
         }
@@ -49,7 +63,8 @@ def run_gltfpack_geometry_parallel(input_path, output_path):
             env=safe_env
         )
         
-        if result.returncode == 0 and self._safe_file_operation(output_path, 'exists') and self._safe_file_operation(output_path, 'size') > 0:
+        # Check output using standard os operations instead of self._safe_file_operation
+        if result.returncode == 0 and os.path.exists(output_path) and os.path.getsize(output_path) > 0:
             return {'success': True}
         else:
             return {'success': False, 'error': f'gltfpack failed: {result.stderr}'}
@@ -62,6 +77,7 @@ def run_draco_compression_parallel(input_path, output_path):
     try:
         import subprocess
         import os
+        from pathlib import Path
         
         cmd = [
             'npx', 'gltf-transform', 'draco',
@@ -73,8 +89,22 @@ def run_draco_compression_parallel(input_path, output_path):
             '--quantize-texcoord', '12'
         ]
         
+        # Build safe environment dynamically
+        project_root = Path.cwd()
+        path_components = []
+        
+        # Add project node_modules if it exists
+        node_modules_bin = project_root / 'node_modules' / '.bin'
+        if node_modules_bin.is_dir():
+            path_components.append(str(node_modules_bin))
+        
+        # Add standard system paths
+        for path in ['/usr/local/bin', '/usr/bin', '/bin']:
+            if os.path.isdir(path):
+                path_components.append(path)
+        
         safe_env = {
-            'PATH': f"{os.path.join(os.getcwd(), 'node_modules', '.bin')}:/nix/store/s62s2lf3bdqd0iiprrf3xcks35vkyhpb-npx/bin:/nix/store/lyx73qs96hfazl77arnwllwckq9dy012-nodejs-20.18.1-wrapped/bin:/usr/local/bin:/usr/bin:/bin",
+            'PATH': ':'.join(path_components),
             'HOME': '/tmp',
             'LANG': 'C.UTF-8',
             'NODE_PATH': '/usr/local/lib/node_modules'
@@ -88,7 +118,8 @@ def run_draco_compression_parallel(input_path, output_path):
             env=safe_env
         )
         
-        if result.returncode == 0 and self._safe_file_operation(output_path, 'exists') and self._safe_file_operation(output_path, 'size') > 0:
+        # Check output using standard os operations instead of self._safe_file_operation
+        if result.returncode == 0 and os.path.exists(output_path) and os.path.getsize(output_path) > 0:
             return {'success': True}
         else:
             return {'success': False, 'error': f'Draco compression failed: {result.stderr}'}
@@ -101,6 +132,7 @@ def run_gltf_transform_optimize_parallel(input_path, output_path):
     try:
         import subprocess
         import os
+        from pathlib import Path
         
         cmd = [
             'npx', 'gltf-transform', 'optimize',
@@ -111,8 +143,22 @@ def run_gltf_transform_optimize_parallel(input_path, output_path):
             '--weld', '0.0001'
         ]
         
+        # Build safe environment dynamically
+        project_root = Path.cwd()
+        path_components = []
+        
+        # Add project node_modules if it exists
+        node_modules_bin = project_root / 'node_modules' / '.bin'
+        if node_modules_bin.is_dir():
+            path_components.append(str(node_modules_bin))
+        
+        # Add standard system paths
+        for path in ['/usr/local/bin', '/usr/bin', '/bin']:
+            if os.path.isdir(path):
+                path_components.append(path)
+        
         safe_env = {
-            'PATH': f"{os.path.join(os.getcwd(), 'node_modules', '.bin')}:/nix/store/s62s2lf3bdqd0iiprrf3xcks35vkyhpb-npx/bin:/nix/store/lyx73qs96hfazl77arnwllwckq9dy012-nodejs-20.18.1-wrapped/bin:/usr/local/bin:/usr/bin:/bin",
+            'PATH': ':'.join(path_components),
             'HOME': '/tmp',
             'LANG': 'C.UTF-8',
             'NODE_PATH': '/usr/local/lib/node_modules'
@@ -126,7 +172,8 @@ def run_gltf_transform_optimize_parallel(input_path, output_path):
             env=safe_env
         )
         
-        if result.returncode == 0 and self._safe_file_operation(output_path, 'exists') and self._safe_file_operation(output_path, 'size') > 0:
+        # Check output using standard os operations instead of self._safe_file_operation
+        if result.returncode == 0 and os.path.exists(output_path) and os.path.getsize(output_path) > 0:
             return {'success': True}
         else:
             return {'success': False, 'error': f'gltf-transform optimize failed: {result.stderr}'}
