@@ -77,35 +77,7 @@ def start_celery_worker():
         return False
 
 # --- THE APPLICATION FACTORY ---
-def create_app():
-    """
-    Creates and configures the Flask application object.
-    This is the factory that Gunicorn will use via wsgi.py.
-    """
-    from config import get_config
-    from celery_app import celery
-    
-    app = Flask(__name__)
-    
-    # Load configuration
-    config = get_config()
-    app.secret_key = config.SECRET_KEY
-    app.config['MAX_CONTENT_LENGTH'] = config.MAX_CONTENT_LENGTH
-    
-    # Apply middleware
-    app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
-
-    # Import and register Blueprint
-    from app import main_routes, add_security_headers
-    
-    # Register the Blueprint with all routes
-    app.register_blueprint(main_routes)
-    
-    # Register middleware
-    app.after_request(add_security_headers)
-        
-    logger.info("Flask application created with factory pattern")
-    return app
+# App creation now handled in app.py to avoid circular imports
 
 # --- ONE-TIME SERVICE INITIALIZATION ---
 def initialize_services():

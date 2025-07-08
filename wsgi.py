@@ -54,10 +54,9 @@ def create_application():
         except Exception as e:
             logger.error(f"Database initialization failed: {e}")
         
-        # Import and register routes
-        from app import main_routes, add_security_headers
-        app.register_blueprint(main_routes)
-        app.after_request(add_security_headers)
+        # Import the app factory and create app
+        from app import create_app
+        app = create_app()
         
         logger.info("Flask application created successfully")
         return app

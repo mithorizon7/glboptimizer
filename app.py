@@ -685,6 +685,33 @@ def health_check():
         'services': services
     })
 
+def create_app():
+    """
+    Creates and configures the Flask application object.
+    This is the factory that Gunicorn will use via wsgi.py.
+    """
+    # Create Flask app
+    app = Flask(__name__)
+    
+    # Load configuration
+    app.secret_key = config.SECRET_KEY
+    app.config['MAX_CONTENT_LENGTH'] = config.MAX_CONTENT_LENGTH
+    
+    # Apply middleware
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
+
+    # Register the Blueprint with all routes
+    app.register_blueprint(main_routes)
+    
+    # Register middleware
+    app.after_request(add_security_headers)
+        
+    logger.info("Flask application created with factory pattern")
+    return app
+
+# Create the app instance for imports
+app = create_app()
+
 if __name__ == '__main__':
-    # Note: App is now created via factory pattern in main.py
-    pass
+    # Run the app
+    app.run(host='0.0.0.0', port=5000, debug=config.DEBUG)

@@ -1,0 +1,74 @@
+Additional Fixes for Issues from the External Review
+Fix for Dead Code in _estimate_gpu_memory_savings
+pythondef _estimate_gpu_memory_savings(self, original_size: int, compressed_size: int) -> float:
+    """Estimate GPU memory savings from optimization"""
+    if original_size == 0:
+        return 0.0
+    
+    # Base memory savings from file size reduction
+    base_savings = (1.0 - compressed_size / original_size) * 100
+    
+    # GPU memory multiplier (textures typically expand 2-4x in GPU memory)
+    # Compressed textures (KTX2) stay compressed in GPU memory
+    estimated_gpu_savings = min(base_savings * 1.2, 95.0)
+    
+    return estimated_gpu_savings
+Fix for Missing Return in _run_gltfpack_final
+pythondef _run_gltfpack_final(self, input_path, output_path):
+    """Step 6: Final bundle and minify"""
+    try:
+        # ... existing code ...
+    except Exception as e:
+        self.logger.warning(f"gltfpack failed with exception: {e}")
+        # Fallback: copy the input file
+        shutil.copy2(input_path, output_path)
+        return {'success': True, 'fallback': True}
+Fix for Duplicate compression_settings
+Move the compression settings to the configuration class and reference it from both locations:
+python# In OptimizationConfig class, add:
+TEXTURE_COMPRESSION_SETTINGS = {
+    'high': {
+        'ktx2_quality': '255',
+        'webp_quality': '95',
+        'uastc_mode': True,
+        'channel_packing': True
+    },
+    # ... other quality levels ...
+}
+
+# Then in _run_gltf_transform_textures:
+def _run_gltf_transform_textures(self, input_path, output_path):
+    settings = self.config.TEXTURE_COMPRESSION_SETTINGS.get(
+        self.quality_level, 
+        self.config.TEXTURE_COMPRESSION_SETTINGS['balanced']
+    )
+    # ... use settings ...
+Fix for Inconsistent Subprocess Usage
+Route all subprocess calls through _run_subprocess:
+python# Replace direct subprocess.run calls in methods like _run_gltf_transform_weld
+def _run_gltf_transform_weld(self, input_path, output_path):
+    try:
+        # First weld vertices
+        temp_welded = input_path + '.welded.glb'
+        self._temp_files.add(temp_welded)
+        
+        cmd = ['npx', 'gltf-transform', 'weld', '--tolerance', '0.0001', input_path, temp_welded]
+        result = self._run_subprocess(cmd, "Weld Vertices", "Welding duplicate vertices")
+        
+        if not result['success']:
+            self.logger.warning(f"Welding failed, continuing: {result.get('error', '')}")
+            shutil.copy2(input_path, output_path)
+            return {'success': True}
+        
+        # Then join meshes
+        cmd = ['npx', 'gltf-transform', 'join', temp_welded, output_path]
+        result = self._run_subprocess(cmd, "Join Meshes", "Joining compatible meshes")
+        
+        if not result['success']:
+            self.logger.warning(f"Joining failed, using welded version: {result.get('error', '')}")
+            shutil.copy2(temp_welded, output_path)
+        
+        return {'success': True}
+        
+    except Exception as e:
+        return {'success': False, 'error': f'Welding/joining failed: {str(e)}'}
