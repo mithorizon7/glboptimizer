@@ -1382,7 +1382,8 @@ class GLBOptimizer:
         
         # Determine optimal worker count (cap at available cores and method count)
         available_cores = multiprocessing.cpu_count()
-        max_workers = min(available_cores, len(methods_to_test), Config.MAX_PARALLEL_WORKERS)
+        max_parallel_workers = getattr(Config, 'MAX_PARALLEL_WORKERS', 3)  # Fallback to 3 workers
+        max_workers = min(available_cores, len(methods_to_test), max_parallel_workers)
         
         self.logger.info(f"Running parallel compression with {max_workers} workers for methods: {methods_to_test}")
         
@@ -1411,7 +1412,8 @@ class GLBOptimizer:
                 
                 # Collect results with timeout
                 completed_methods = 0
-                for future in concurrent.futures.as_completed(future_to_method, timeout=Config.PARALLEL_TIMEOUT):
+                parallel_timeout = getattr(Config, 'PARALLEL_TIMEOUT', 120)  # Fallback to 120 seconds
+                for future in concurrent.futures.as_completed(future_to_method, timeout=parallel_timeout):
                     method, temp_output = future_to_method[future]
                     completed_methods += 1
                     
