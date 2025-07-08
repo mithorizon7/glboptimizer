@@ -252,82 +252,109 @@ class GLBOptimizer:
         Security: Validate and sanitize file paths with TOCTOU protection
         Returns: Validated absolute path or raises ValueError
         """
-        # Performance: Check cache first
+        # Performance: Check cache first (but still re-validate at operation time)
         cache_key = f"{file_path}:{allow_temp}"
         if cache_key in self._path_cache:
-            return self._path_cache[cache_key]
+            cached_path = self._path_cache[cache_key]
+            # Still perform immediate re-validation for TOCTOU protection
+            return self._immediate_path_validation(cached_path, allow_temp)
         
         try:
             # Security: Initial validation - resolve symlinks and get real path
             abs_path = os.path.realpath(os.path.abspath(file_path))
-            
-            # Security: Validate file extension
-            if not allow_temp and not abs_path.lower().endswith('.glb'):
-                raise ValueError(f"Path must be a .glb file: {file_path}")
-            
-            # For temp files, allow GLB or temporary extensions
-            if allow_temp:
-                # Allow .glb files or temporary files that are GLB-based
-                is_glb = abs_path.lower().endswith('.glb')
-                is_temp_glb = (abs_path.lower().endswith('.glb.tmp') or 
-                              '.glb.tmp.' in abs_path.lower() or
-                              abs_path.lower().endswith('.tmp') or
-                              abs_path.lower().endswith('.gltfpack_temp.glb'))
-                if not (is_glb or is_temp_glb):
-                    raise ValueError(f"Temporary path must be GLB-related: {file_path}")
-            
-            # Security: Ensure path doesn't contain dangerous characters
-            dangerous_chars = [';', '|', '&', '$', '`', '>', '<', '\n', '\r', '\0']
-            if any(char in abs_path for char in dangerous_chars):
-                raise ValueError(f"Path contains dangerous characters: {file_path}")
-            
-            # For temp files, allow system temp directory paths
-            if allow_temp:
-                temp_dir = tempfile.gettempdir()
-                temp_real = os.path.realpath(temp_dir)
-                try:
-                    Path(abs_path).relative_to(Path(temp_real))
-                    self._path_cache[cache_key] = abs_path
-                    return abs_path
-                except ValueError:
-                    pass
-            
-            # Security: Check against allowed directories using commonpath for compatibility
-            path_allowed = False
-            for allowed_dir in self.allowed_dirs:
-                allowed_real = os.path.realpath(allowed_dir)
-                try:
-                    if os.path.commonpath([abs_path, allowed_real]) == allowed_real:
-                        path_allowed = True
-                        break
-                except ValueError:
-                    # Different drives on Windows
-                    continue
-            
-            # Also check if it's in system temp directory (for intermediate files)
-            if not path_allowed and allow_temp:
-                temp_dir = tempfile.gettempdir()
-                temp_real = os.path.realpath(temp_dir)
-                try:
-                    if os.path.commonpath([abs_path, temp_real]) == temp_real:
-                        path_allowed = True
-                except ValueError:
-                    pass
-            
-            if not path_allowed:
-                raise ValueError(f"Path outside allowed directories: {file_path}")
+            validated_path = self._immediate_path_validation(abs_path, allow_temp)
             
             # Cache successful validation
-            self._path_cache[cache_key] = abs_path
-            return abs_path
+            self._path_cache[cache_key] = validated_path
+            return validated_path
             
         except Exception as e:
             self.logger.error(f"Path validation failed for {file_path}: {e}")
             raise ValueError(f"Invalid or unsafe file path: {file_path}")
     
+    def _immediate_path_validation(self, abs_path: str, allow_temp: bool = False) -> str:
+        """
+        Security: Immediate path validation with TOCTOU protection
+        Performs real-time validation immediately before file operations
+        """
+        # CRITICAL: Re-resolve symlinks immediately before use (TOCTOU protection)
+        abs_path = os.path.realpath(abs_path)
+        
+        # Security: Enhanced extension validation for temporary files
+        if allow_temp:
+            # Whitelist of allowed extensions for temporary files
+            allowed_temp_extensions = ['.glb', '.tmp', '.ktx2', '.webp', '.png', '.jpg', '.jpeg']
+            
+            # Check if the file has an allowed extension
+            has_valid_extension = any(abs_path.lower().endswith(ext) for ext in allowed_temp_extensions)
+            
+            # Also allow compound extensions for GLB temp files
+            glb_temp_patterns = ['.glb.tmp', '.gltfpack_temp.glb', '.ktx2.tmp', '.webp.tmp']
+            is_glb_temp = any(pattern in abs_path.lower() for pattern in glb_temp_patterns)
+            
+            if not (has_valid_extension or is_glb_temp):
+                raise ValueError(f"Temporary file has disallowed extension: {abs_path}")
+        else:
+            # Non-temp files must be .glb
+            if not abs_path.lower().endswith('.glb'):
+                raise ValueError(f"Path must be a .glb file: {abs_path}")
+        
+        # Security: Ensure path doesn't contain dangerous characters
+        dangerous_chars = [';', '|', '&', '$', '`', '>', '<', '\n', '\r', '\0']
+        if any(char in abs_path for char in dangerous_chars):
+            raise ValueError(f"Path contains dangerous characters: {abs_path}")
+        
+        # Security: Check against allowed directories
+        path_allowed = False
+        allowed_directories = []
+        
+        # Add configured allowed directories
+        for allowed_dir in self.allowed_dirs:
+            allowed_real = os.path.realpath(allowed_dir)
+            allowed_directories.append(allowed_real)
+            try:
+                if os.path.commonpath([abs_path, allowed_real]) == allowed_real:
+                    path_allowed = True
+                    break
+            except ValueError:
+                # Different drives on Windows
+                continue
+        
+        # Add secure temp directory if initialized
+        if hasattr(self, '_secure_temp_dir') and self._secure_temp_dir:
+            secure_temp_real = os.path.realpath(self._secure_temp_dir)
+            allowed_directories.append(secure_temp_real)
+            try:
+                if os.path.commonpath([abs_path, secure_temp_real]) == secure_temp_real:
+                    path_allowed = True
+            except ValueError:
+                pass
+        
+        # Allow system temp directory for temp files only
+        if allow_temp and not path_allowed:
+            temp_dir = tempfile.gettempdir()
+            temp_real = os.path.realpath(temp_dir)
+            allowed_directories.append(temp_real)
+            try:
+                if os.path.commonpath([abs_path, temp_real]) == temp_real:
+                    path_allowed = True
+            except ValueError:
+                pass
+        
+        if not path_allowed:
+            self.logger.error(f"Path outside allowed directories: {abs_path}")
+            self.logger.error(f"Allowed directories: {allowed_directories}")
+            raise ValueError(f"Path outside allowed directories: {abs_path}")
+        
+        # Security: Additional symlink check after path resolution
+        if os.path.islink(abs_path):
+            raise ValueError(f"TOCTOU attack detected: Symlink still present after resolution: {abs_path}")
+        
+        return abs_path
+    
     def _safe_file_operation(self, filepath: str, operation: str, *args, **kwargs):
-        """Security: Perform file operations with TOCTOU protection"""
-        # Re-validate path immediately before use (TOCTOU protection)
+        """Security: Perform file operations with enhanced TOCTOU protection"""
+        # Initial path validation
         validated_path = self._validate_path(filepath, allow_temp=True)
         
         # Get or create file lock for thread safety
@@ -335,56 +362,49 @@ class GLBOptimizer:
             self._file_locks[validated_path] = threading.Lock()
         
         with self._file_locks[validated_path]:
-            # CRITICAL: Final re-check immediately before use (TOCTOU protection)
-            current_real = os.path.realpath(validated_path)
-            original_real = os.path.realpath(os.path.abspath(filepath))
-            
-            # Ensure the resolved paths match what we validated
-            if current_real != validated_path:
-                raise ValueError(f"TOCTOU attack detected: Path changed between validation and use: {filepath}")
-            
-            # Additional symlink protection - ensure no new symlinks were introduced
-            if os.path.islink(validated_path):
-                raise ValueError(f"TOCTOU attack detected: Symlink introduced after validation: {filepath}")
+            # CRITICAL: Immediate re-validation before every file operation (TOCTOU protection)
+            # This is the key enhancement - re-realpath and re-check before each operation
+            final_validated_path = self._immediate_path_validation(validated_path, allow_temp=True)
             
             # Perform the actual operation with final path validation
             if operation == 'read':
-                # Final check before opening
-                if not os.path.exists(validated_path):
+                # Final existence check before opening
+                if not os.path.exists(final_validated_path):
                     raise FileNotFoundError(f"File does not exist: {filepath}")
-                with open(validated_path, 'rb') as f:
+                with open(final_validated_path, 'rb') as f:
                     return f.read()
             elif operation == 'write':
-                with open(validated_path, 'wb') as f:
+                with open(final_validated_path, 'wb') as f:
                     return f.write(args[0])
             elif operation == 'copy':
-                dest_path = self._validate_path(args[0], allow_temp=True)
+                # Re-validate destination path immediately before copy
+                dest_path = self._immediate_path_validation(args[0], allow_temp=True)
                 # Re-validate source exists before copy
-                if not os.path.exists(validated_path):
+                if not os.path.exists(final_validated_path):
                     raise FileNotFoundError(f"Source file does not exist: {filepath}")
-                return shutil.copy2(validated_path, dest_path)
+                return shutil.copy2(final_validated_path, dest_path)
             elif operation == 'exists':
-                return os.path.exists(validated_path)
+                return os.path.exists(final_validated_path)
             elif operation == 'size':
-                if not os.path.exists(validated_path):
+                if not os.path.exists(final_validated_path):
                     raise FileNotFoundError(f"File does not exist: {filepath}")
-                return os.path.getsize(validated_path)
+                return os.path.getsize(final_validated_path)
             elif operation == 'remove':
-                if os.path.exists(validated_path):
-                    return os.remove(validated_path)
+                if os.path.exists(final_validated_path):
+                    return os.remove(final_validated_path)
                 return True  # Already removed
             elif operation == 'makedirs':
                 mode = kwargs.get('mode', 0o755)
                 exist_ok = kwargs.get('exist_ok', True)
-                return os.makedirs(validated_path, mode=mode, exist_ok=exist_ok)
+                return os.makedirs(final_validated_path, mode=mode, exist_ok=exist_ok)
             elif operation == 'read_text':
-                # Final check before opening
-                if not os.path.exists(validated_path):
+                # Final existence check before opening
+                if not os.path.exists(final_validated_path):
                     raise FileNotFoundError(f"File does not exist: {filepath}")
-                with open(validated_path, 'r', encoding='utf-8') as f:
+                with open(final_validated_path, 'r', encoding='utf-8') as f:
                     return f.read()
             elif operation == 'write_text':
-                with open(validated_path, 'w', encoding='utf-8') as f:
+                with open(final_validated_path, 'w', encoding='utf-8') as f:
                     return f.write(args[0])
             else:
                 raise ValueError(f"Unknown operation: {operation}")

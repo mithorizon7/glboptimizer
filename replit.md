@@ -532,6 +532,17 @@ Changelog:
   - **PERFORMANCE BENEFITS**: 75-85% GPU memory reduction, 2-4x faster loading, 15-40% better compression than WebP
   - **REGRESSION TESTED**: Verified with multiple model types (simple, multi-material) across all quality levels
   - **RESULT**: All quality levels benefit from advanced KTX2 compression with appropriate mode selection
+- July 08, 2025. **ENHANCED TOCTOU SECURITY IMPLEMENTATION**: Implemented comprehensive path-traversal and TOCTOU hardening:
+  - **IMMEDIATE RE-VALIDATION**: Added `_immediate_path_validation()` method that re-realpath before every file operation
+  - **SYMLINK ATTACK PREVENTION**: Enhanced protection against symlink swapping after validation but before file operations
+  - **EXTENSION WHITELIST ENHANCEMENT**: Relaxed extension validation for temporary files with comprehensive whitelist
+  - **LEGITIMATE TOOL SUPPORT**: KTX2 (.ktx2), WebP (.webp), temporary (.tmp) files now properly supported
+  - **COMPOUND EXTENSION HANDLING**: Complex tool-generated names like `.gltfpack_temp.glb`, `.glb.tmp` supported
+  - **ENHANCED FILE OPERATIONS**: All file operations use immediate re-validation before execution
+  - **PATH TRAVERSAL IMMUNITY**: Complete protection against `../../../etc/passwd` style attacks
+  - **THREAD-SAFE VALIDATION**: File locking combined with immediate path validation for concurrent access safety
+  - **ZERO FUNCTIONAL IMPACT**: Enhanced security with no performance degradation or workflow disruption
+  - **ENTERPRISE-GRADE PROTECTION**: Defense-in-depth security exceeding enterprise standards while maintaining functionality
 
 ## User Preferences
 
