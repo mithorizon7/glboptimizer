@@ -1,0 +1,55 @@
+Process-Based Parallel Compression
+The Problem:
+Sequential compression testing wastes time, and ThreadPoolExecutor doesn't help much due to Python's GIL when calling external processes.
+Why This Matters:
+Users wait 3x longer than necessary when testing multiple compression methods.
+How to Fix:
+Use ProcessPoolExecutor for true parallelism:
+pythonimport concurrent.futures
+import multiprocessing
+
+def _run_advanced_geometry_compression(self, input_path, output_path, progress_callback=None):
+    """Parallel compression testing with process pool"""
+    
+    # Determine optimal worker count
+    available_cores = multiprocessing.cpu_count()
+    methods_to_test = self._select_compression_methods(self._analyze_model_complexity(input_path))
+    max_workers = min(available_cores, len(methods_to_test), 3)  # Cap at 3 to avoid overload
+    
+    results = {}
+    file_sizes = {}
+    
+    with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
+        future_to_method = {}
+        
+        # Submit tasks with individual timeouts
+        for method in methods_to_test:
+            temp_output = os.path.join(self._secure_temp_dir, f"test_{method}_{os.getpid()}.glb")
+            self._temp_files.add(temp_output)
+            
+            if method == 'meshopt':
+                future = executor.submit(self._run_gltfpack_geometry, input_path, temp_output)
+            elif method == 'draco':
+                future = executor.submit(self._run_draco_compression, input_path, temp_output)
+            elif method == 'hybrid':
+                future = executor.submit(self._run_gltf_transform_optimize, input_path, temp_output)
+            
+            future_to_method[future] = (method, temp_output)
+        
+        # Collect results with per-task timeout
+        task_timeout = self.config.PARALLEL_TIMEOUT
+        for future in concurrent.futures.as_completed(future_to_method, timeout=task_timeout):
+            method, temp_output = future_to_method[future]
+            try:
+                result = future.result(timeout=1)  # Quick timeout since task is done
+                results[method] = result
+                if result['success'] and os.path.exists(temp_output):
+                    file_sizes[method] = os.path.getsize(temp_output)
+            except concurrent.futures.TimeoutError:
+                self.logger.error(f"Compression timeout for {method}")
+                results[method] = {'success': False, 'error': 'Timeout'}
+            except Exception as e:
+                self.logger.error(f"Compression failed for {method}: {e}")
+                results[method] = {'success': False, 'error': str(e)}
+    
+    # ... rest of method to select best result ...

@@ -10,6 +10,7 @@ import fcntl
 import stat
 import hashlib
 import atexit
+import struct
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Dict, Any, Optional, Set
@@ -330,6 +331,187 @@ class GLBOptimizer:
                 'user_message': 'Unable to validate the GLB file format.',
                 'category': 'Format Error'
             }
+    
+    def _validate_glb_file(self, filepath: str) -> Dict[str, Any]:
+        """
+        Comprehensive GLB file structure validation
+        Validates magic number, version, file length, and basic structure integrity
+        """
+        try:
+            if not os.path.exists(filepath):
+                return {
+                    'success': False,
+                    'error': 'File does not exist',
+                    'user_message': 'The output file was not created.',
+                    'category': 'File System Error'
+                }
+            
+            file_size = os.path.getsize(filepath)
+            if file_size == 0:
+                return {
+                    'success': False,
+                    'error': 'File is empty',
+                    'user_message': 'The optimization produced an empty file.',
+                    'category': 'Output Error'
+                }
+            
+            if file_size < 12:
+                return {
+                    'success': False,
+                    'error': 'File too small for GLB header',
+                    'user_message': 'The optimization produced a corrupted file.',
+                    'category': 'Output Error'
+                }
+            
+            with open(filepath, 'rb') as f:
+                # Read GLB header (12 bytes)
+                header_data = f.read(12)
+                if len(header_data) < 12:
+                    return {
+                        'success': False,
+                        'error': 'Cannot read GLB header',
+                        'user_message': 'The optimization produced a corrupted file.',
+                        'category': 'Output Error'
+                    }
+                
+                # Check magic number (bytes 0-3)
+                magic = header_data[0:4]
+                if magic != b'glTF':
+                    return {
+                        'success': False,
+                        'error': f'Invalid GLB magic number: {magic}',
+                        'user_message': 'The optimization produced an invalid GLB file.',
+                        'category': 'Output Error'
+                    }
+                
+                # Check version (bytes 4-7)
+                version = struct.unpack('<I', header_data[4:8])[0]
+                if version != 2:
+                    return {
+                        'success': False,
+                        'error': f'Unsupported GLB version: {version}',
+                        'user_message': f'The optimization produced GLB version {version}, but only version 2 is supported.',
+                        'category': 'Output Error'
+                    }
+                
+                # Check file length consistency (bytes 8-11)
+                stated_length = struct.unpack('<I', header_data[8:12])[0]
+                actual_length = file_size
+                
+                if stated_length != actual_length:
+                    self.logger.error(f"GLB length mismatch: header says {stated_length}, file is {actual_length}")
+                    return {
+                        'success': False,
+                        'error': f'GLB length mismatch: header={stated_length}, actual={actual_length}',
+                        'user_message': 'The optimization produced a corrupted GLB file with length mismatch.',
+                        'category': 'Output Error'
+                    }
+                
+                # Additional validation: check if file has at least one chunk
+                if file_size < 20:  # 12 bytes header + 8 bytes minimum chunk header
+                    return {
+                        'success': False,
+                        'error': 'GLB file has no chunks',
+                        'user_message': 'The optimization produced an incomplete GLB file.',
+                        'category': 'Output Error'
+                    }
+                
+                # Validate first chunk header
+                chunk_header = f.read(8)
+                if len(chunk_header) < 8:
+                    return {
+                        'success': False,
+                        'error': 'Cannot read first chunk header',
+                        'user_message': 'The optimization produced a corrupted GLB file.',
+                        'category': 'Output Error'
+                    }
+                
+                chunk_length = struct.unpack('<I', chunk_header[0:4])[0]
+                chunk_type = chunk_header[4:8]
+                
+                # First chunk should be JSON
+                if chunk_type != b'JSON':
+                    return {
+                        'success': False,
+                        'error': f'First chunk is not JSON: {chunk_type}',
+                        'user_message': 'The optimization produced an invalid GLB file structure.',
+                        'category': 'Output Error'
+                    }
+                
+                # Basic sanity check on chunk length
+                if chunk_length == 0 or chunk_length > file_size:
+                    return {
+                        'success': False,
+                        'error': f'Invalid chunk length: {chunk_length}',
+                        'user_message': 'The optimization produced a corrupted GLB file.',
+                        'category': 'Output Error'
+                    }
+                
+                self.logger.info(f"GLB validation passed: version {version}, length {stated_length}, first chunk length {chunk_length}")
+                return {
+                    'success': True,
+                    'version': version,
+                    'file_size': actual_length,
+                    'chunk_length': chunk_length
+                }
+                
+        except Exception as e:
+            self.logger.error(f"GLB validation failed: {str(e)}")
+            return {
+                'success': False,
+                'error': f'GLB validation error: {str(e)}',
+                'user_message': 'Unable to validate the optimization output.',
+                'category': 'Validation Error'
+            }
+    
+    def _atomic_write(self, temp_path: str, final_path: str) -> Dict[str, Any]:
+        """
+        Atomically move temporary file to final destination with validation
+        """
+        try:
+            # Validate the temporary file before moving
+            validation_result = self._validate_glb_file(temp_path)
+            if not validation_result['success']:
+                return validation_result
+            
+            # Ensure target directory exists
+            target_dir = os.path.dirname(final_path)
+            if not os.path.exists(target_dir):
+                os.makedirs(target_dir, mode=0o755, exist_ok=True)
+            
+            # Atomic move (POSIX) or rename (Windows)
+            if os.name == 'posix':
+                # On POSIX systems, os.replace() is atomic
+                os.replace(temp_path, final_path)
+            else:
+                # On Windows, need to remove target first
+                if os.path.exists(final_path):
+                    os.remove(final_path)
+                os.rename(temp_path, final_path)
+            
+            # Remove from temp tracking since it's now the final file
+            self._temp_files.discard(temp_path)
+            
+            # Final validation of moved file
+            final_validation = self._validate_glb_file(final_path)
+            if not final_validation['success']:
+                return final_validation
+            
+            self.logger.info(f"Atomic write successful: {temp_path} -> {final_path}")
+            return {
+                'success': True,
+                'final_path': final_path,
+                'file_size': final_validation['file_size']
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Atomic write failed: {str(e)}")
+            return {
+                'success': False,
+                'error': f'Atomic write failed: {str(e)}',
+                'user_message': 'Failed to finalize the optimization output.',
+                'category': 'File System Error'
+            }
 
     def cleanup_temp_files(self):
         """Security: Clean up temporary files and directories"""
@@ -577,9 +759,10 @@ class GLBOptimizer:
     
     def optimize(self, input_path, output_path, progress_callback=None):
         """
-        Optimize a GLB file using the industry-standard 6-step workflow
+        Optimize a GLB file using the industry-standard 6-step workflow with atomic output
         """
         start_time = time.time()
+        temp_output = None
         
         try:
             # Security: Validate all file paths before any operations
@@ -592,6 +775,10 @@ class GLBOptimizer:
             file_validation = self._validate_file_size(validated_input)
             if not file_validation['success']:
                 return file_validation
+            
+            # Create temporary output file for atomic operation
+            temp_output = validated_output + '.tmp.' + str(os.getpid())
+            self._temp_files.add(temp_output)
             
             # Additional security: Ensure paths are within expected directories
             expected_upload_dir = os.path.abspath('uploads')
@@ -676,40 +863,49 @@ class GLBOptimizer:
                 if progress_callback:
                     progress_callback("Step 5: Final Optimization", 90, "Final bundling and minification...")
                 
-                current_result = step5_output
+                best_result = step5_output
                 if self.quality_level == 'high':
-                    result = self._run_gltfpack_final(step5_output, validated_output)
+                    result = self._run_gltfpack_final(step5_output, temp_output)
                     if result['success']:
-                        current_result = validated_output
+                        best_result = temp_output
                     else:
-                        # If final optimization fails, copy the best result we have so far
+                        # If final optimization fails, use step 5 result
                         self.logger.warning("Final optimization failed, using step 5 result")
-                        self._safe_file_operation(step5_output, 'copy', validated_output)
-                        current_result = validated_output
+                        best_result = step5_output
                 else:
-                    # For non-high quality, just copy the current best result
-                    self._safe_file_operation(step5_output, 'copy', validated_output)
-                    current_result = validated_output
+                    # For non-high quality, use step 5 result
+                    best_result = step5_output
                 
-                # Ensure we have a valid output file
-                if not self._safe_file_operation(validated_output, 'exists') or self._safe_file_operation(validated_output, 'size') == 0:
-                    # Find the best intermediate result to use as final output
+                # Ensure we have a valid result, find best fallback if needed
+                if not os.path.exists(best_result) or os.path.getsize(best_result) == 0:
                     best_file = None
                     best_size = 0
                     
                     for temp_file in [step5_output, step4_output, step3_output, step2_output, step1_output]:
-                        if (self._safe_file_operation(temp_file, 'exists') and 
-                            self._safe_file_operation(temp_file, 'size') > best_size):
+                        if os.path.exists(temp_file) and os.path.getsize(temp_file) > best_size:
                             best_file = temp_file
-                            best_size = self._safe_file_operation(temp_file, 'size')
+                            best_size = os.path.getsize(temp_file)
                     
                     if best_file:
                         self.logger.warning(f"Using best intermediate result: {best_file} ({best_size} bytes)")
-                        self._safe_file_operation(best_file, 'copy', validated_output)
+                        best_result = best_file
                     else:
                         # Last resort: copy the original file
                         self.logger.error("No valid optimization results, copying original")
-                        shutil.copy2(validated_input, validated_output)
+                        shutil.copy2(validated_input, temp_output)
+                        best_result = temp_output
+                
+                # If best result is not temp_output, copy it there
+                if best_result != temp_output:
+                    shutil.copy2(best_result, temp_output)
+                
+                if progress_callback:
+                    progress_callback("Step 6: Finalizing", 98, "Validating and finalizing output...")
+                
+                # Atomic write with comprehensive validation
+                atomic_result = self._atomic_write(temp_output, validated_output)
+                if not atomic_result['success']:
+                    return atomic_result
                 
                 if progress_callback:
                     progress_callback("Step 6: Completed", 100, "Optimization completed successfully!")
@@ -717,7 +913,7 @@ class GLBOptimizer:
                 # Calculate comprehensive performance metrics
                 processing_time = time.time() - start_time
                 original_size = os.path.getsize(validated_input)
-                final_size = os.path.getsize(validated_output)
+                final_size = atomic_result['file_size']
                 compression_ratio = (1 - final_size / original_size) * 100
                 
                 # Estimate GPU memory usage (approximate)
@@ -748,6 +944,14 @@ class GLBOptimizer:
                 'success': False,
                 'error': f'Optimization failed: {str(e)}'
             }
+        finally:
+            # Clean up temporary output file if it exists
+            if temp_output and os.path.exists(temp_output):
+                try:
+                    os.remove(temp_output)
+                    self._temp_files.discard(temp_output)
+                except Exception as cleanup_error:
+                    self.logger.warning(f"Failed to cleanup temp file {temp_output}: {cleanup_error}")
     
     def _run_gltf_transform_prune(self, input_path, output_path):
         """Step 1: Prune unused data"""

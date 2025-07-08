@@ -391,6 +391,14 @@ Changelog:
   - **COMPREHENSIVE ERROR REPORTING**: Clear user-friendly messages with technical details for debugging
   - **EARLY VALIDATION**: Files are validated before any processing begins to prevent resource waste
   - **SECURITY CATEGORIES**: Proper error categorization for monitoring and security analysis
+- July 07, 2025. **ATOMIC OUTPUT WITH ENHANCED VALIDATION**: Implemented atomic writes to prevent corrupted partial files:
+  - **COMPREHENSIVE GLB VALIDATION**: Validates magic number, version, file length, and chunk structure integrity
+  - **ATOMIC FILE OPERATIONS**: Uses temporary files with atomic move to prevent partial writes during failures
+  - **ENHANCED OUTPUT VALIDATION**: Checks GLB header, first chunk type (JSON), and basic file structure
+  - **CROSS-PLATFORM COMPATIBILITY**: Handles atomic moves on both POSIX (os.replace) and Windows (remove+rename)
+  - **FAILURE RECOVERY**: Validates output before finalizing and provides detailed error messages for corrupted files
+  - **GUARANTEED CLEANUP**: Temporary files are cleaned up even if optimization fails partway through
+  - **DOUBLE VALIDATION**: Files are validated both before atomic write and after move to final destination
 
 ## User Preferences
 
