@@ -332,9 +332,38 @@ class GLBOptimizer:
                 raise ValueError(f"Unknown operation: {operation}")
     
     def _get_safe_environment(self):
-        """Create a minimal safe environment for subprocesses"""
+        """Create a minimal safe environment for subprocesses with dynamic PATH construction"""
+        # Build PATH dynamically for cross-environment compatibility
+        path_components = []
+        
+        # 1. Add project node_modules/.bin if it exists (for local npm packages)
+        project_node_bin = os.path.join(os.getcwd(), 'node_modules', '.bin')
+        if os.path.isdir(project_node_bin):
+            path_components.append(project_node_bin)
+            self.logger.debug(f"Added project node_modules/.bin to PATH: {project_node_bin}")
+        
+        # 2. Extract Node.js/NPX paths from current environment if available (for Nix/containerized environments)
+        current_path = os.environ.get('PATH', '')
+        if current_path:
+            for path_dir in current_path.split(':'):
+                # Include Node.js and NPX directories from current environment
+                if any(tool in path_dir.lower() for tool in ['node', 'npm', 'npx']) and os.path.isdir(path_dir):
+                    if path_dir not in path_components:
+                        path_components.append(path_dir)
+                        self.logger.debug(f"Added Node.js path from environment: {path_dir}")
+        
+        # 3. Add standard system directories (always present)
+        standard_paths = ['/usr/local/bin', '/usr/bin', '/bin']
+        for std_path in standard_paths:
+            if std_path not in path_components and os.path.isdir(std_path):
+                path_components.append(std_path)
+        
+        # Construct final PATH
+        safe_path = ':'.join(path_components)
+        self.logger.info(f"Dynamic PATH constructed: {safe_path}")
+        
         safe_env = {
-            'PATH': f"{os.path.join(os.getcwd(), 'node_modules', '.bin')}:/nix/store/s62s2lf3bdqd0iiprrf3xcks35vkyhpb-npx/bin:/nix/store/lyx73qs96hfazl77arnwllwckq9dy012-nodejs-20.18.1-wrapped/bin:/usr/local/bin:/usr/bin:/bin",
+            'PATH': safe_path,
             'HOME': os.environ.get('HOME', '/tmp'),
             'USER': os.environ.get('USER', 'nobody'),
             'LOGNAME': os.environ.get('LOGNAME', 'nobody'),
@@ -343,7 +372,7 @@ class GLBOptimizer:
             'TMPDIR': tempfile.gettempdir()
         }
         
-        # Add essential variables for Node/NPM tools
+        # Add essential variables for Node/NPM tools (filtered for security)
         essential_vars = ['NODE_PATH', 'NPM_CONFIG_PREFIX', 'PKG_CONFIG_PATH', 'NPM_CONFIG_CACHE', 
                          'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_CACHE_HOME']
         for var in essential_vars:
@@ -359,7 +388,8 @@ class GLBOptimizer:
             safe_env['XDG_CACHE_HOME'] = os.path.join(safe_env['HOME'], '.cache')
         
         # Add Replit-specific environment variables if present
-        for var in ['REPLIT_DOMAINS', 'REPLIT_DB_URL']:
+        replit_vars = ['REPLIT_DOMAINS', 'REPL_ID', 'REPLIT_DB_URL']
+        for var in replit_vars:
             if var in os.environ:
                 safe_env[var] = os.environ[var]
         

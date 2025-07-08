@@ -384,6 +384,15 @@ Changelog:
   - **ROBUST ERROR HANDLING**: try/except/finally pattern ensures original exceptions always propagate correctly
   - **ENHANCED DEBUGGING**: Users and developers always see the real problem, not cleanup side effects
   - **OPERATIONAL MONITORING**: Both optimization failures and cleanup issues are tracked separately for comprehensive monitoring
+- July 08, 2025. **DYNAMIC ENVIRONMENT PATH FIX**: Eliminated hardcoded Nix store dependencies for cross-platform deployment compatibility:
+  - **ADAPTIVE PATH DISCOVERY**: Dynamically extracts Node.js paths from current environment instead of hardcoded Nix store paths
+  - **PROJECT-AWARE INCLUSION**: Automatically includes local `node_modules/.bin` when present for project dependencies
+  - **CROSS-PLATFORM COMPATIBILITY**: Works seamlessly in Docker, Kubernetes, standard Linux, macOS, and CI/CD environments
+  - **EXISTENCE-BASED VALIDATION**: Only includes directories that actually exist on the filesystem
+  - **FALLBACK RELIABILITY**: Always includes standard system directories (/usr/local/bin, /usr/bin, /bin) as safety net
+  - **ZERO HARDCODED DEPENDENCIES**: Complete elimination of brittle environment-specific paths
+  - **ENHANCED LOGGING**: Comprehensive PATH construction logging for debugging and monitoring
+  - **DEPLOYMENT PORTABILITY**: Same codebase works across development, staging, production without environment-specific modifications
 - July 07, 2025. **ADVANCED SUBPROCESS SECURITY**: Implemented minimal safe environment for subprocess execution:
   - **MINIMAL PATH RESTRICTION**: Restricted PATH to /usr/local/bin:/usr/bin:/bin only
   - **ENVIRONMENT FILTERING**: Blocks dangerous variables like LD_PRELOAD that could inject malicious code
