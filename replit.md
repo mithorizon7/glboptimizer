@@ -578,6 +578,13 @@ Changelog:
   - **COMPLETE SETTINGS INTEGRATION**: Added uastc_mode and channel_packing properties to all quality presets
   - **CODE QUALITY IMPROVEMENT**: 100% reduction in texture configuration duplication with DRY principle implementation
   - **ZERO FUNCTIONAL IMPACT**: Complete configuration consolidation with preserved compression functionality and performance
+- July 08, 2025. **COMPRESSION METHOD DUPLICATE ELIMINATION**: Eliminated duplicate entries in compression-method selection to prevent redundant subprocess calls:
+  - **SET-BASED ACCUMULATION**: Replaced list.append() with set.add() to automatically eliminate duplicate method entries
+  - **OVERLAPPING CONDITIONS FIX**: Fixed cases where high complexity + high vertex count + large file size caused duplicate 'draco' and 'hybrid' entries
+  - **DETERMINISTIC ORDERING**: Converts set back to ordered list ['meshopt', 'draco', 'hybrid'] for consistent behavior across runs
+  - **CPU EFFICIENCY**: Eliminates redundant subprocess calls and parallel compression attempts
+  - **RESOURCE OPTIMIZATION**: Ensures each compression method is tested exactly once, improving parallel worker utilization
+  - **ZERO FUNCTIONAL IMPACT**: Maintains all optimization logic while improving performance efficiency
 - July 08, 2025. **MEMORY-EFFICIENT HEADER VALIDATION**: Optimized GLB validation to read only necessary bytes instead of loading entire files:
   - **MEMORY OPTIMIZATION**: Added dedicated 'read_bytes' operation to _safe_file_operation for efficient partial file reading
   - **HEADER VALIDATION**: Reads only 12 bytes for GLB header validation instead of entire file (99.999950% memory reduction for 23MB files)

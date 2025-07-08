@@ -1661,28 +1661,32 @@ class GLBOptimizer:
     
     def _select_compression_methods(self, analysis):
         """Select optimal compression methods based on model analysis"""
-        methods = []
+        methods = set()  # Use set to automatically eliminate duplicates
         complexity = analysis.get('complexity', 'unknown')
         vertex_count = analysis.get('vertices', 0)
         
         # Always test meshopt as baseline
-        methods.append('meshopt')
+        methods.add('meshopt')
         
         # For high-complexity or high-vertex models, Draco often performs better
         if (complexity in ['high', 'unknown'] or 
             vertex_count > 50000 or 
             self.quality_level == 'maximum_compression'):
-            methods.append('draco')
+            methods.add('draco')
         
         # Test hybrid approach for complex models or when maximum compression is needed
         if (complexity == 'high' or 
             vertex_count > 100000 or 
             analysis.get('file_size', 0) > 5_000_000 or
             self.quality_level in ['balanced', 'maximum_compression']):
-            methods.append('hybrid')
+            methods.add('hybrid')
         
-        self.logger.info(f"Selected compression methods based on analysis: {methods}")
-        return methods
+        # Convert set back to list with deterministic order for consistent behavior
+        methods_list = ['meshopt', 'draco', 'hybrid']
+        selected_methods = [method for method in methods_list if method in methods]
+        
+        self.logger.info(f"Selected compression methods based on analysis: {selected_methods}")
+        return selected_methods
     
     def _compress_with_ktx2(self, input_path, output_path):
         """Compress textures using KTX2/Basis Universal compression"""
