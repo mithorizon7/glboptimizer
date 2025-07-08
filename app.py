@@ -15,6 +15,7 @@ import tasks
 from database import SessionLocal, init_database
 from models import OptimizationTask, PerformanceMetric, UserSession, SystemMetric
 from analytics import get_analytics_dashboard_data
+from issue_logger import issue_logger, track_errors, track_performance
 
 # Load environment variables
 load_dotenv()
@@ -305,24 +306,38 @@ def index():
 
 
 @main_routes.route('/upload', methods=['POST'])
+@track_errors('upload')
+@track_performance('upload', threshold_ms=2000)
 def upload_file():
     logger.info("Upload endpoint called")
     logger.info(f"Request method: {request.method}")
     logger.info(f"Request files: {list(request.files.keys())}")
     logger.info(f"Request form: {dict(request.form)}")
+    
+    # Log user action
+    issue_logger.log_user_action('file_upload_attempt', {
+        'files': list(request.files.keys()),
+        'form_data': dict(request.form)
+    })
     try:
         if 'file' not in request.files:
+            issue_logger.log_issue('error', 'upload', 'No file in request', severity='medium')
             return jsonify({'error': 'No file selected'}), 400
         
         file = request.files['file']
         if file.filename == '':
+            issue_logger.log_issue('error', 'upload', 'Empty filename provided', severity='medium')
             return jsonify({'error': 'No file selected'}), 400
         
         if not allowed_file(file.filename):
+            issue_logger.log_issue('error', 'upload', f'Invalid file type: {file.filename}', 
+                                  severity='medium', file_info={'filename': file.filename})
             return jsonify({'error': 'Invalid file type. Only GLB files are allowed.'}), 400
         
         # Check file size before reading content
         if hasattr(file, 'content_length') and file.content_length > config.MAX_CONTENT_LENGTH:
+            issue_logger.log_issue('error', 'upload', f'File too large: {file.content_length} bytes', 
+                                  severity='medium', file_info={'filename': file.filename, 'size': file.content_length})
             return jsonify({'error': f'File too large. Maximum size is {config.MAX_CONTENT_LENGTH // (1024*1024)}MB.'}), 400
         
         # Additional security: Basic file content validation for GLB files
@@ -716,6 +731,45 @@ def create_app():
     app.after_request(add_security_headers)
         
     logger.info("Flask application created with factory pattern")
+    # Add issue monitoring routes
+    @app.route('/admin/issues')
+    def admin_issues():
+        """Admin dashboard for monitoring user issues and site problems"""
+        try:
+            summary = issue_logger.get_issue_summary(hours=24)
+            recent_issues = issue_logger.get_recent_issues(hours=24)[:50]
+            critical_issues = issue_logger.get_recent_issues(hours=168, severity='critical')
+            
+            return jsonify({
+                'summary': summary,
+                'recent_issues': recent_issues,
+                'critical_issues': critical_issues,
+                'timestamp': datetime.now(timezone.utc).isoformat()
+            })
+        except Exception as e:
+            issue_logger.log_error('admin_dashboard', e)
+            return jsonify({'error': 'Failed to load issues dashboard'}), 500
+
+    @app.route('/admin/issues/api')
+    def admin_issues_api():
+        """API endpoint for issue monitoring data"""
+        try:
+            hours = request.args.get('hours', 24, type=int)
+            severity = request.args.get('severity')
+            component = request.args.get('component')
+            
+            summary = issue_logger.get_issue_summary(hours=hours)
+            recent_issues = issue_logger.get_recent_issues(hours=hours, severity=severity, component=component)
+            
+            return jsonify({
+                'summary': summary,
+                'issues': recent_issues[:100],
+                'timestamp': datetime.now(timezone.utc).isoformat()
+            })
+        except Exception as e:
+            issue_logger.log_error('admin_api', e)
+            return jsonify({'error': 'Failed to fetch issue data'}), 500
+
     return app
 
 # Create the app instance for imports
