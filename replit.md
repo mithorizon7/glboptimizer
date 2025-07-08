@@ -578,6 +578,15 @@ Changelog:
   - **COMPLETE SETTINGS INTEGRATION**: Added uastc_mode and channel_packing properties to all quality presets
   - **CODE QUALITY IMPROVEMENT**: 100% reduction in texture configuration duplication with DRY principle implementation
   - **ZERO FUNCTIONAL IMPACT**: Complete configuration consolidation with preserved compression functionality and performance
+- July 08, 2025. **FUNCTION REFACTORING**: Broke down large monolithic _run_gltf_transform_textures function into focused, testable helper functions:
+  - **MODULAR ARCHITECTURE**: Split 149-line function into 5 focused functions with single responsibilities
+  - **HELPER FUNCTIONS CREATED**: _compress_with_ktx2 (56 lines), _compress_with_webp (23 lines), _select_best_texture_result (29 lines), _cleanup_temp_texture_files (9 lines)
+  - **THIN ORCHESTRATOR**: Main function reduced to 30-line coordinator that shows high-level workflow clearly
+  - **ENHANCED TESTABILITY**: Individual compression methods can now be unit tested in isolation
+  - **IMPROVED MAINTAINABILITY**: Bugs can be isolated to specific compression logic without affecting other methods
+  - **BETTER REUSABILITY**: Helper functions can be reused in other contexts or extended independently
+  - **REDUCED COMPLEXITY**: Each function handles one specific aspect (I/O, compression logic, or result scoring)
+  - **ZERO FUNCTIONAL IMPACT**: Complete refactoring with preserved functionality and performance
 - July 08, 2025. **IMPORT CONSOLIDATION**: Moved all duplicate import statements to module top for improved performance and static analysis:
   - **DUPLICATE IMPORTS ELIMINATED**: Removed inner-function imports of os, tempfile, and json that were already imported at module level
   - **RUNTIME PERFORMANCE**: Eliminated micro-overhead from repeated imports during function execution
