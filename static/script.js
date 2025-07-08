@@ -689,6 +689,7 @@ class ModelViewer3D {
         this.optimizedControls = null;
         this.setupAdvancedGLTFLoader();
         this.ktx2LoaderInitialized = false;
+        this.meshoptInitialized = false;
         this.cameraSynced = false;
         this.isSynced = false;
     }
@@ -697,14 +698,26 @@ class ModelViewer3D {
         // Initialize GLTFLoader with full compression support
         this.loader = new GLTFLoader();
         
-        // Setup Meshopt decoder for EXT_meshopt_compression
+        // Setup enhanced Meshopt decoder for EXT_meshopt_compression
         try {
-            const { MeshoptDecoder } = await import('/static/libs/meshopt/meshopt_decoder.module.js');
+            const { MeshoptDecoder } = await import('/static/libs/meshopt/meshopt_decoder_enhanced.js');
             await MeshoptDecoder.init();
             this.loader.setMeshoptDecoder(MeshoptDecoder);
-            console.log('✓ Meshopt decoder loaded and initialized');
+            this.meshoptInitialized = true;
+            console.log('✓ Enhanced Meshopt decoder loaded and initialized');
         } catch (error) {
-            console.warn('Meshopt decoder failed to load, using fallback:', error);
+            console.warn('Enhanced Meshopt decoder failed, trying basic fallback:', error);
+            try {
+                // Try the basic decoder as fallback
+                const { MeshoptDecoder: BasicDecoder } = await import('/static/libs/meshopt/meshopt_decoder.module.js');
+                await BasicDecoder.init();
+                this.loader.setMeshoptDecoder(BasicDecoder);
+                this.meshoptInitialized = true;
+                console.log('✓ Basic Meshopt decoder loaded as fallback');
+            } catch (fallbackError) {
+                console.error('All Meshopt decoders failed:', fallbackError);
+                this.meshoptInitialized = false;
+            }
         }
         
         // Setup DRACO decoder for KHR_draco_mesh_compression fallback
@@ -727,13 +740,13 @@ class ModelViewer3D {
         optimizedContainer.innerHTML = '';
         
         // Initialize original viewer
-        this.setupViewer(originalContainer, 'original').then(() => {
-            this.loadModel(originalUrl, 'original');
+        this.setupViewer(originalContainer, 'original').then(async () => {
+            await this.loadModel(originalUrl, 'original');
         });
         
         // Initialize optimized viewer
-        this.setupViewer(optimizedContainer, 'optimized').then(() => {
-            this.loadModel(optimizedUrl, 'optimized');
+        this.setupViewer(optimizedContainer, 'optimized').then(async () => {
+            await this.loadModel(optimizedUrl, 'optimized');
         });
     }
     
@@ -829,7 +842,7 @@ class ModelViewer3D {
         return { scene, camera, renderer, controls };
     }
     
-    loadModel(url, type) {
+    async loadModel(url, type) {
         const container = type === 'original' ? 
             document.getElementById('original-viewer') : 
             document.getElementById('optimized-viewer');
@@ -837,10 +850,14 @@ class ModelViewer3D {
         // Show loading indicator
         this.showLoading(container, type);
         
+        // Ensure decoders are initialized before loading compressed files
+        await this.ensureDecodersInitialized(type);
+        
         this.loader.load(
             url,
             (gltf) => {
                 this.onModelLoaded(gltf, type);
+                console.log(`${type} model loaded successfully`);
             },
             (progress) => {
                 // Progress callback
@@ -862,6 +879,45 @@ class ModelViewer3D {
                 this.showError(container, `Failed to load ${type} model: ${error.message || 'Unknown error'}`);
             }
         );
+    }
+    
+    async ensureDecodersInitialized(type) {
+        // Re-initialize Meshopt decoder if not already done
+        if (!this.meshoptInitialized) {
+            try {
+                const { MeshoptDecoder } = await import('/static/libs/meshopt/meshopt_decoder_enhanced.js');
+                await MeshoptDecoder.init();
+                this.loader.setMeshoptDecoder(MeshoptDecoder);
+                this.meshoptInitialized = true;
+                console.log(`✓ Enhanced Meshopt decoder re-initialized for ${type} model loading`);
+            } catch (error) {
+                console.warn(`Meshopt decoder re-initialization failed for ${type}:`, error);
+                try {
+                    // Force re-initialization with basic decoder
+                    const { MeshoptDecoder: BasicDecoder } = await import('/static/libs/meshopt/meshopt_decoder.module.js');
+                    await BasicDecoder.init();
+                    this.loader.setMeshoptDecoder(BasicDecoder);
+                    this.meshoptInitialized = true;
+                    console.log(`✓ Basic Meshopt decoder forced initialization for ${type}`);
+                } catch (fallbackError) {
+                    console.error(`All Meshopt decoder attempts failed for ${type}:`, fallbackError);
+                }
+            }
+        } else {
+            console.log(`✓ Meshopt decoder already initialized for ${type} model`);
+        }
+        
+        // Ensure KTX2 loader is properly configured with GPU support
+        if (this.ktx2Loader && !this.ktx2LoaderInitialized) {
+            // Get the renderer based on type
+            const renderer = type === 'original' ? this.originalRenderer : this.optimizedRenderer;
+            if (renderer) {
+                this.ktx2Loader.detectSupport(renderer);
+                this.loader.setKTX2Loader(this.ktx2Loader);
+                this.ktx2LoaderInitialized = true;
+                console.log(`✓ KTX2 loader initialized with GPU support for ${type} model`);
+            }
+        }
     }
     
     onModelLoaded(gltf, type) {
