@@ -17,7 +17,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Dict, Any, Optional, Set
 import threading
-from config import Config, OptimizationConfig
+from config import Config, OptimizationConfig, GLBConstants, OptimizationThresholds
 
 # Global standalone functions for parallel processing
 def run_gltfpack_geometry_parallel(input_path, output_path):
@@ -100,7 +100,7 @@ def run_gltf_transform_optimize_parallel(input_path, output_path):
                 input_path, output_path,
                 '--compress', 'meshopt',
                 '--instance',
-                '--simplify', '0.8',
+                '--simplify', str(OptimizationThresholds.SIMPLIFY_RATIOS['high']),
                 '--weld', '0.0001'
             ]
             
@@ -592,10 +592,10 @@ class GLBOptimizer:
                     'category': category
                 }
             
-            # Memory efficient: read only GLB header bytes (12 bytes) instead of entire file
-            header_data = self._safe_file_operation(file_path, 'read_bytes', 12)
+            # Memory efficient: read only GLB header bytes instead of entire file
+            header_data = self._safe_file_operation(file_path, 'read_bytes', GLBConstants.HEADER_LENGTH)
             
-            if len(header_data) < 12:
+            if len(header_data) < GLBConstants.HEADER_LENGTH:
                 error_context = "The optimization produced a corrupted file." if mode == "full" else "This does not appear to be a valid GLB file."
                 category = "Output Error" if mode == "full" else "Format Error"
                 return {
@@ -607,7 +607,7 @@ class GLBOptimizer:
             
             # Validate magic number (bytes 0-3)
             magic = header_data[0:4]
-            if magic != b'glTF':
+            if magic != GLBConstants.MAGIC_NUMBER:
                 if mode == "full":
                     error_msg = 'The optimization produced an invalid GLB file.'
                     category = 'Output Error'
@@ -622,8 +622,8 @@ class GLBOptimizer:
                 }
             
             # Validate version (bytes 4-7) - use struct.unpack for consistency
-            version = struct.unpack('<I', header_data[4:8])[0]
-            if version != 2:
+            version = struct.unpack('<I', header_data[GLBConstants.VERSION_OFFSET:GLBConstants.VERSION_OFFSET+4])[0]
+            if version != GLBConstants.SUPPORTED_VERSION:
                 if mode == "full":
                     error_msg = f'The optimization produced GLB version {version}, but only version 2 is supported.'
                     category = 'Output Error'
@@ -638,7 +638,7 @@ class GLBOptimizer:
                 }
             
             # Validate file length consistency (bytes 8-11)
-            stated_length = struct.unpack('<I', header_data[8:12])[0]
+            stated_length = struct.unpack('<I', header_data[GLBConstants.LENGTH_OFFSET:GLBConstants.LENGTH_OFFSET+4])[0]
             
             if stated_length != file_size:
                 self.logger.warning(f"GLB length mismatch: header says {stated_length}, file is {file_size}")
@@ -647,7 +647,7 @@ class GLBOptimizer:
             # Mode-specific advanced validation
             if mode == "full":
                 # Additional validation for output files: check chunk structure
-                if file_size < 20:  # 12 bytes header + 8 bytes minimum chunk header
+                if file_size < GLBConstants.MIN_FILE_WITH_CHUNK:  # 12 bytes header + 8 bytes minimum chunk header
                     return {
                         'success': False,
                         'error': 'GLB file has no chunks',
@@ -657,9 +657,9 @@ class GLBOptimizer:
                 
                 # Memory efficient: read first chunk header (8 bytes at offset 12)
                 # Read total 20 bytes (12 header + 8 chunk header) instead of entire file
-                header_and_chunk_data = self._safe_file_operation(file_path, 'read_bytes', 20)
-                chunk_header = header_and_chunk_data[12:20]
-                if len(chunk_header) < 8:
+                header_and_chunk_data = self._safe_file_operation(file_path, 'read_bytes', GLBConstants.MIN_FILE_WITH_CHUNK)
+                chunk_header = header_and_chunk_data[GLBConstants.HEADER_LENGTH:GLBConstants.MIN_FILE_WITH_CHUNK]
+                if len(chunk_header) < GLBConstants.CHUNK_HEADER_LENGTH:
                     return {
                         'success': False,
                         'error': 'Cannot read first chunk header',
@@ -667,11 +667,11 @@ class GLBOptimizer:
                         'category': 'Output Error'
                     }
                 
-                chunk_length = struct.unpack('<I', chunk_header[0:4])[0]
-                chunk_type = chunk_header[4:8]
+                chunk_length = struct.unpack('<I', chunk_header[GLBConstants.CHUNK_LENGTH_OFFSET:GLBConstants.CHUNK_LENGTH_OFFSET+4])[0]
+                chunk_type = chunk_header[GLBConstants.CHUNK_TYPE_OFFSET:GLBConstants.CHUNK_TYPE_OFFSET+4]
                 
                 # First chunk should be JSON
-                if chunk_type != b'JSON':
+                if chunk_type != GLBConstants.JSON_CHUNK_TYPE:
                     return {
                         'success': False,
                         'error': f'First chunk is not JSON: {chunk_type}',
@@ -1315,9 +1315,9 @@ class GLBOptimizer:
         """Step 3: Advanced geometry compression with meshopt and aggressive optimization"""
         # Quality-based simplification levels
         simplify_ratio = {
-            'high': '0.8',  # 80% triangle count (preserve quality)
-            'balanced': '0.6',  # 60% triangle count (balance quality/size)
-            'maximum_compression': '0.4'  # 40% triangle count (maximum compression)
+            'high': str(OptimizationThresholds.SIMPLIFY_RATIOS['high']),  # 80% triangle count (preserve quality)
+            'balanced': str(OptimizationThresholds.SIMPLIFY_RATIOS['balanced']),  # 60% triangle count (balance quality/size)
+            'maximum_compression': str(OptimizationThresholds.SIMPLIFY_RATIOS['maximum_compression'])  # 40% triangle count (maximum compression)
         }.get(self.quality_level, '0.7')
         
         # Advanced meshopt compression with aggressive settings
@@ -1328,7 +1328,7 @@ class GLBOptimizer:
             '--meshopt',  # Enable meshopt compression
             '--quantize',  # Quantize vertex attributes
             '--simplify', simplify_ratio,  # Polygon simplification
-            '--simplify-error', '0.01',  # Low error threshold for quality
+            '--simplify-error', str(OptimizationThresholds.SIMPLIFY_ERROR_THRESHOLD),  # Low error threshold for quality
             '--attributes',  # Optimize vertex attributes
             '--indices',  # Optimize index buffers
             '--normals',  # Optimize normal vectors
@@ -1563,20 +1563,20 @@ class GLBOptimizer:
             'high': {
                 'compress': 'meshopt',  # Use meshopt for better compatibility
                 'instance': True,       # Instance repeated geometry
-                'simplify': '0.8',      # Light simplification
+                'simplify': str(OptimizationThresholds.SIMPLIFY_RATIOS['high']),      # Light simplification
                 'weld': '0.0001'        # Precise vertex welding
             },
             'balanced': {
                 'compress': 'draco',    # Use Draco for better compression
                 'instance': True,
-                'simplify': '0.6',      # Moderate simplification  
+                'simplify': str(OptimizationThresholds.SIMPLIFY_RATIOS['balanced']),      # Moderate simplification  
                 'weld': '0.001'         # Moderate vertex welding
             },
             'maximum_compression': {
                 'compress': 'draco',    # Use Draco for maximum compression
                 'instance': True,
-                'simplify': '0.4',      # Aggressive simplification
-                'weld': '0.01',         # Aggressive vertex welding
+                'simplify': str(OptimizationThresholds.SIMPLIFY_RATIOS['maximum_compression']),      # Aggressive simplification
+                'weld': str(OptimizationThresholds.SIMPLIFY_ERROR_THRESHOLD),         # Aggressive vertex welding
                 'quantize': '16'        # Quantize positions
             }
         }
@@ -1670,14 +1670,14 @@ class GLBOptimizer:
         
         # For high-complexity or high-vertex models, Draco often performs better
         if (complexity in ['high', 'unknown'] or 
-            vertex_count > 50000 or 
+            vertex_count > OptimizationThresholds.HIGH_VERTEX_COUNT_THRESHOLD or 
             self.quality_level == 'maximum_compression'):
             methods.add('draco')
         
         # Test hybrid approach for complex models or when maximum compression is needed
         if (complexity == 'high' or 
-            vertex_count > 100000 or 
-            analysis.get('file_size', 0) > 5_000_000 or
+            vertex_count > OptimizationThresholds.VERY_HIGH_VERTEX_COUNT or 
+            analysis.get('file_size', 0) > OptimizationThresholds.LARGE_FILE_SIZE_THRESHOLD or
             self.quality_level in ['balanced', 'maximum_compression']):
             methods.add('hybrid')
         
@@ -1784,7 +1784,7 @@ class GLBOptimizer:
             webp_size = successful_methods['webp']
             
             # Use KTX2 unless WebP is significantly smaller (>20% difference)
-            if webp_size < ktx2_size * 0.8:
+            if webp_size < ktx2_size * OptimizationThresholds.WEBP_SIZE_ADVANTAGE_THRESHOLD:
                 selected_method = 'webp'
                 self.logger.info(f"Selected WebP (significantly smaller): {webp_size} vs {ktx2_size}")
             else:
@@ -1966,7 +1966,7 @@ class GLBOptimizer:
                     'compression_ratio': round(compression_ratio, 1)
                 },
                 'estimated_performance_gains': {
-                    'load_time_improvement': f"{min(compression_ratio * 0.8, 85):.0f}%",
+                    'load_time_improvement': f"{min(compression_ratio * OptimizationThresholds.LOAD_TIME_COMPRESSION_FACTOR, OptimizationThresholds.MAX_LOAD_TIME_IMPROVEMENT):.0f}%",
                     'bandwidth_savings': f"{compression_ratio:.0f}%",
                     'gpu_memory_savings': f"{self._estimate_gpu_memory_savings(original_size, compressed_size):.0f}%"
                 },

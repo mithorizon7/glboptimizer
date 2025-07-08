@@ -8,6 +8,63 @@ import json
 from typing import Dict, Any
 from pathlib import Path
 
+# GLB File Format Constants
+class GLBConstants:
+    """GLB file format specification constants"""
+    
+    # GLB Header Structure (12 bytes total)
+    HEADER_LENGTH = 12                    # Total GLB header size
+    MAGIC_NUMBER = b'glTF'               # GLB magic number (4 bytes)
+    VERSION_OFFSET = 4                   # Version field offset (4 bytes)
+    LENGTH_OFFSET = 8                    # File length offset (4 bytes)
+    SUPPORTED_VERSION = 2                # GLB version 2.0
+    
+    # GLB Chunk Structure  
+    CHUNK_HEADER_LENGTH = 8              # Chunk header size (length + type)
+    CHUNK_LENGTH_OFFSET = 0              # Chunk length field offset
+    CHUNK_TYPE_OFFSET = 4                # Chunk type field offset
+    JSON_CHUNK_TYPE = b'JSON'            # First chunk must be JSON
+    BINARY_CHUNK_TYPE = b'BIN\x00'       # Binary chunk type
+    
+    # Validation Constants
+    MIN_FILE_WITH_CHUNK = HEADER_LENGTH + CHUNK_HEADER_LENGTH  # 20 bytes minimum
+    MIN_VALID_GLB_SIZE = 12              # Minimum for valid GLB header
+
+# Optimization Thresholds and Ratios
+class OptimizationThresholds:
+    """Centralized optimization thresholds and magic numbers"""
+    
+    # Compression Method Selection Thresholds
+    HIGH_VERTEX_COUNT_THRESHOLD = 50_000     # Threshold for Draco compression consideration
+    VERY_HIGH_VERTEX_COUNT = 100_000         # Threshold for hybrid compression
+    LARGE_FILE_SIZE_THRESHOLD = 5_000_000    # 5MB threshold for advanced compression
+    
+    # Geometry Simplification Ratios
+    SIMPLIFY_RATIOS = {
+        'high': 0.8,                # 80% triangle count (preserve quality)
+        'balanced': 0.6,            # 60% triangle count (balance quality/size)
+        'maximum_compression': 0.4   # 40% triangle count (maximum compression)
+    }
+    
+    # Error Thresholds
+    SIMPLIFY_ERROR_THRESHOLD = 0.01     # Low error threshold for quality preservation
+    
+    # Texture Compression Thresholds
+    WEBP_SIZE_ADVANTAGE_THRESHOLD = 0.8  # WebP must be 20% smaller than KTX2 to be selected
+    
+    # Performance Estimation Constants
+    LOAD_TIME_COMPRESSION_FACTOR = 0.8   # Load time improvement factor
+    MAX_LOAD_TIME_IMPROVEMENT = 85       # Maximum load time improvement percentage
+    
+    # Memory Estimation Constants
+    TEXTURE_MEMORY_MULTIPLIER = 4        # Uncompressed texture memory multiplier
+    KTX2_MEMORY_REDUCTION = 0.75         # 75% memory reduction with KTX2
+    
+    # File Size Categories (bytes)
+    SMALL_MODEL_THRESHOLD = 1_000_000    # 1MB
+    MEDIUM_MODEL_THRESHOLD = 10_000_000  # 10MB
+    LARGE_MODEL_THRESHOLD = 50_000_000   # 50MB
+
 class OptimizationConfig:
     """Centralized optimization configuration with environment variable support"""
     
