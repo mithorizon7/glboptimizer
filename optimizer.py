@@ -292,7 +292,10 @@ class GLBOptimizer:
             glb_temp_patterns = ['.glb.tmp', '.gltfpack_temp.glb', '.ktx2.tmp', '.webp.tmp']
             is_glb_temp = any(pattern in abs_path.lower() for pattern in glb_temp_patterns)
             
-            if not (has_valid_extension or is_glb_temp):
+            # Allow gltfpack temporary files (pattern: .tmp.#### where #### is process ID)
+            is_gltfpack_temp = re.search(r'\.tmp\.\d+$', abs_path.lower()) is not None
+            
+            if not (has_valid_extension or is_glb_temp or is_gltfpack_temp):
                 raise ValueError(f"Temporary file has disallowed extension: {abs_path}")
         else:
             # Non-temp files must be .glb
