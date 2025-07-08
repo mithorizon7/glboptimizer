@@ -750,7 +750,7 @@ class ModelViewer3D {
         
         // Create camera
         const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
-        camera.position.set(0, 0, 5);
+        camera.position.set(0, 0, 3); // Start closer
         
         // Create renderer with modern Three.js r178 settings
         const renderer = new THREE.WebGLRenderer({ 
@@ -801,8 +801,8 @@ class ModelViewer3D {
         controls.enableDamping = true;
         controls.dampingFactor = 0.05;
         controls.screenSpacePanning = false;
-        controls.minDistance = 0.5;
-        controls.maxDistance = 50;
+        controls.minDistance = 0.1;
+        controls.maxDistance = 20;
         controls.maxPolarAngle = Math.PI;
         controls.target.set(0, 0, 0);
         
@@ -936,13 +936,13 @@ class ModelViewer3D {
         // Center the model
         model.position.sub(center);
         
-        // Scale to fit in view
+        // Scale to fit in view - make models larger and closer
         const maxSize = Math.max(size.x, size.y, size.z);
-        const scale = 2.5 / maxSize;  // Slightly smaller scale to ensure visibility
+        const scale = 4 / maxSize;  // Larger scale for better visibility
         model.scale.setScalar(scale);
         
-        // Adjust camera position based on model size
-        const distance = Math.max(maxSize * 2.5, 5); // Ensure minimum distance of 5 units
+        // Adjust camera position based on model size - much closer
+        const distance = Math.max(maxSize * 1.5, 3); // Closer distance, minimum 3 units
         camera.position.set(0, 0, distance);
         camera.lookAt(0, 0, 0);
         
