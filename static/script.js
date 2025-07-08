@@ -796,9 +796,10 @@ class ModelViewer3D {
         controls.enableDamping = true;
         controls.dampingFactor = 0.05;
         controls.screenSpacePanning = false;
-        controls.minDistance = 1;
-        controls.maxDistance = 100;
+        controls.minDistance = 0.5;
+        controls.maxDistance = 50;
         controls.maxPolarAngle = Math.PI;
+        controls.target.set(0, 0, 0);
         
         // Store references
         if (type === 'original') {
@@ -926,11 +927,20 @@ class ModelViewer3D {
         
         // Scale to fit in view
         const maxSize = Math.max(size.x, size.y, size.z);
-        const scale = 3 / maxSize;
+        const scale = 2.5 / maxSize;  // Slightly smaller scale to ensure visibility
         model.scale.setScalar(scale);
         
-        // Adjust camera position
-        camera.position.set(0, 0, maxSize * 1.5);
+        // Adjust camera position based on model size
+        const distance = Math.max(maxSize * 2.5, 5); // Ensure minimum distance of 5 units
+        camera.position.set(0, 0, distance);
+        camera.lookAt(0, 0, 0);
+        
+        // Update controls target
+        const controls = type === 'original' ? this.originalControls : this.optimizedControls;
+        if (controls) {
+            controls.target.set(0, 0, 0);
+            controls.update();
+        }
         
         // Enable animations if present
         if (gltf.animations && gltf.animations.length > 0) {
@@ -946,7 +956,17 @@ class ModelViewer3D {
             animate();
         }
         
+        // Debug information
         console.log(`${type} model loaded successfully`);
+        console.log(`${type} model info:`, {
+            position: model.position.toArray(),
+            scale: model.scale.toArray(),
+            box: box,
+            center: center.toArray(),
+            size: size.toArray(),
+            maxSize: maxSize,
+            cameraDistance: distance
+        });
     }
     
     showLoading(container, type) {
