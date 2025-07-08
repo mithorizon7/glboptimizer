@@ -61,7 +61,7 @@ class OptimizationConfig:
                 'tex_coord': 8
             },
             'gltfpack_level': 'medium',
-            'enable_ktx2': False,  # Disabled for stability
+            'enable_ktx2': True,  # FIXED: Enable KTX2 for balanced quality
             'enable_draco': True,
             'enable_meshopt': True
             },
@@ -83,7 +83,7 @@ class OptimizationConfig:
                 'tex_coord': 6
             },
             'gltfpack_level': 'aggressive',
-            'enable_ktx2': False,  # Disabled for stability
+            'enable_ktx2': True,  # FIXED: Enable KTX2 for maximum compression
             'enable_draco': True,
             'enable_meshopt': True
             }
