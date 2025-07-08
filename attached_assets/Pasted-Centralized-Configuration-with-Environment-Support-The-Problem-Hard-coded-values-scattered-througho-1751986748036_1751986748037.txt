@@ -1,0 +1,103 @@
+Centralized Configuration with Environment Support
+The Problem:
+Hard-coded values scattered throughout make it difficult to tune for different environments.
+Why This Matters:
+You need different settings for dev/staging/production without code changes.
+How to Fix:
+Create a comprehensive configuration system:
+pythonimport json
+from typing import Dict, Any
+
+class OptimizationConfig:
+    """Centralized configuration with environment variable support"""
+    
+    # File limits
+    MAX_FILE_SIZE = int(os.environ.get('GLB_MAX_FILE_SIZE', 500 * 1024 * 1024))
+    MIN_FILE_SIZE = int(os.environ.get('GLB_MIN_FILE_SIZE', 1024))
+    
+    # Timeouts
+    SUBPROCESS_TIMEOUT = int(os.environ.get('GLB_SUBPROCESS_TIMEOUT', 300))
+    PARALLEL_TIMEOUT = int(os.environ.get('GLB_PARALLEL_TIMEOUT', 60))
+    
+    # Quality presets
+    QUALITY_PRESETS = {
+        'high': {
+            'simplify_ratio': 0.8,
+            'texture_quality': 95,
+            'compression_level': 7,
+            'ktx2_quality': '255',
+            'webp_quality': '95',
+            'draco_compression_level': '7',
+            'draco_quantization_bits': {
+                'position': 12,
+                'normal': 8,
+                'color': 8,
+                'tex_coord': 10
+            }
+        },
+        'balanced': {
+            'simplify_ratio': 0.6,
+            'texture_quality': 85,
+            'compression_level': 8,
+            'ktx2_quality': '128',
+            'webp_quality': '85',
+            'draco_compression_level': '8',
+            'draco_quantization_bits': {
+                'position': 10,
+                'normal': 6,
+                'color': 6,
+                'tex_coord': 8
+            }
+        },
+        'maximum_compression': {
+            'simplify_ratio': 0.4,
+            'texture_quality': 75,
+            'compression_level': 10,
+            'ktx2_quality': '64',
+            'webp_quality': '75',
+            'draco_compression_level': '10',
+            'draco_quantization_bits': {
+                'position': 8,
+                'normal': 4,
+                'color': 4,
+                'tex_coord': 6
+            }
+        }
+    }
+    
+    @classmethod
+    def from_env(cls) -> 'OptimizationConfig':
+        """Load configuration from environment"""
+        config = cls()
+        
+        # Check for config file override
+        config_file = os.environ.get('GLB_CONFIG_FILE')
+        if config_file and os.path.exists(config_file):
+            with open(config_file, 'r') as f:
+                overrides = json.load(f)
+                for key, value in overrides.items():
+                    setattr(config, key, value)
+        
+        return config
+    
+    @classmethod
+    def get_quality_settings(cls, quality_level: str) -> Dict[str, Any]:
+        """Get settings for quality level"""
+        return cls.QUALITY_PRESETS.get(quality_level, cls.QUALITY_PRESETS['balanced'])
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Export configuration for logging"""
+        return {
+            'max_file_size': self.MAX_FILE_SIZE,
+            'min_file_size': self.MIN_FILE_SIZE,
+            'subprocess_timeout': self.SUBPROCESS_TIMEOUT,
+            'parallel_timeout': self.PARALLEL_TIMEOUT,
+            'quality_presets': self.QUALITY_PRESETS
+        }
+
+# Usage in optimizer
+def __init__(self, quality_level='high'):
+    self.config = OptimizationConfig.from_env()
+    self.quality_level = quality_level
+    self.quality_settings = self.config.get_quality_settings(quality_level)
+    self.logger.info(f"Initialized with config: {self.config.to_dict()}")
