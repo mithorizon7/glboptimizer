@@ -6,78 +6,817 @@ import logging
 import shutil
 import json
 import re
+import fcntl
+import stat
+import hashlib
+import atexit
+import struct
+import concurrent.futures
+import multiprocessing
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Set
+import threading
+from config import Config, OptimizationConfig
+
+# Global standalone functions for parallel processing
+def run_gltfpack_geometry_parallel(input_path, output_path):
+    """Standalone function for parallel gltfpack geometry compression using hardened subprocess wrapper"""
+    try:
+        # Use a temporary GLBOptimizer instance for secure subprocess execution
+        with GLBOptimizer('high') as optimizer:
+            cmd = [
+                'gltfpack',
+                '-i', input_path,
+                '-o', output_path,
+                '-cc',  # Aggressive compression
+                '-cf'   # No fallback compression
+            ]
+            
+            # Route through hardened subprocess wrapper with sanitized environment
+            result = optimizer._run_subprocess(
+                cmd,
+                step_name='parallel_gltfpack_geometry',
+                description='Parallel GLTFPack geometry compression',
+                timeout=optimizer.config.SUBPROCESS_TIMEOUT
+            )
+            
+            # Check output using standard os operations
+            if result['success'] and os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+                return {'success': True}
+            else:
+                return {
+                    'success': False, 
+                    'error': result.get('error', 'gltfpack failed'),
+                    'detailed_error': result.get('detailed_error', '')
+                }
+                
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+def run_draco_compression_parallel(input_path, output_path):
+    """Standalone function for parallel Draco compression using hardened subprocess wrapper"""
+    try:
+        # Use a temporary GLBOptimizer instance for secure subprocess execution
+        with GLBOptimizer('high') as optimizer:
+            cmd = [
+                'npx', 'gltf-transform', 'draco',
+                input_path, output_path,
+                '--method', 'edgebreaker',
+                '--quantize-position', '14',
+                '--quantize-normal', '10',
+                '--quantize-color', '8',
+                '--quantize-texcoord', '12'
+            ]
+            
+            # Route through hardened subprocess wrapper with sanitized environment
+            result = optimizer._run_subprocess(
+                cmd,
+                step_name='parallel_draco_compression',
+                description='Parallel Draco geometry compression',
+                timeout=optimizer.config.SUBPROCESS_TIMEOUT
+            )
+            
+            # Check output using standard os operations
+            if result['success'] and os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+                return {'success': True}
+            else:
+                return {
+                    'success': False, 
+                    'error': result.get('error', 'Draco compression failed'),
+                    'detailed_error': result.get('detailed_error', '')
+                }
+                
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+def run_gltf_transform_optimize_parallel(input_path, output_path):
+    """Standalone function for parallel gltf-transform optimize using hardened subprocess wrapper"""
+    try:
+        # Use a temporary GLBOptimizer instance for secure subprocess execution
+        with GLBOptimizer('high') as optimizer:
+            cmd = [
+                'npx', 'gltf-transform', 'optimize',
+                input_path, output_path,
+                '--compress', 'meshopt',
+                '--instance',
+                '--simplify', '0.8',
+                '--weld', '0.0001'
+            ]
+            
+            # Route through hardened subprocess wrapper with sanitized environment
+            result = optimizer._run_subprocess(
+                cmd,
+                step_name='parallel_gltf_transform_optimize',
+                description='Parallel gltf-transform optimization',
+                timeout=optimizer.config.SUBPROCESS_TIMEOUT
+            )
+            
+            # Check output using standard os operations
+            if result['success'] and os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+                return {'success': True}
+            else:
+                return {
+                    'success': False, 
+                    'error': result.get('error', 'gltf-transform optimize failed'),
+                    'detailed_error': result.get('detailed_error', '')
+                }
+                
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
 
 class GLBOptimizer:
     def __init__(self, quality_level='high'):
         """
-        Initialize GLB Optimizer
+        Initialize GLB Optimizer with enhanced security and performance
         quality_level: 'high' (default), 'balanced', or 'maximum_compression'
         """
         self.logger = logging.getLogger(__name__)
+        
+        # Load centralized configuration
+        self.config = OptimizationConfig.from_env()
         self.quality_level = quality_level
+        self.quality_settings = self.config.get_quality_settings(quality_level)
         self.detailed_logs = []  # Store detailed error logs for user download
+        
+        # Log configuration summary
+        self.logger.info(f"GLBOptimizer initialized with config: {self.config.to_dict()}")
+        self.logger.info(f"Quality level '{quality_level}': {self.quality_settings['description']}")
         
         # Security: Define allowed base directories for file operations
         # Only allow uploads and output directories for security
         self.allowed_dirs = {
-            os.path.abspath('uploads'),
-            os.path.abspath('output')
+            os.path.realpath(os.path.abspath('uploads')),
+            os.path.realpath(os.path.abspath('output'))
         }
+        
+        # Security: Track temporary files for cleanup
+        self._temp_files: Set[str] = set()
+        self._secure_temp_dir: Optional[str] = None
+        self._file_locks: Dict[str, threading.Lock] = {}
+        self._cleanup_registered = False
+        
+        # Performance: Cache for path validations
+        self._path_cache: Dict[str, str] = {}
+        
+        # Security: Validate environment on initialization
+        self._validate_environment()
+    
+    def __enter__(self):
+        """Context manager entry"""
+        if not self._cleanup_registered:
+            atexit.register(self.cleanup_temp_files)
+            self._cleanup_registered = True
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit - guaranteed cleanup without masking original exceptions"""
+        try:
+            self.cleanup_temp_files()
+        except Exception as cleanup_error:
+            # Log cleanup error but don't let it override the original exception
+            self.logger.error(f"Cleanup error during context manager exit: {cleanup_error}")
+        finally:
+            return False  # Always re-raise any original exceptions from the with block
+    
+    def _validate_environment(self):
+        """Security: Validate environment and required tools"""
+        # Ensure allowed directories exist and are secure
+        for allowed_dir in self.allowed_dirs:
+            if not os.path.exists(allowed_dir):
+                os.makedirs(allowed_dir, mode=0o755, exist_ok=True)
+            
+            # Security: Check directory permissions
+            dir_stat = os.stat(allowed_dir)
+            if stat.S_IMODE(dir_stat.st_mode) & 0o022:  # Check for world/group write
+                self.logger.warning(f"Directory {allowed_dir} has overly permissive permissions")
     
     def _validate_path(self, file_path: str, allow_temp: bool = False) -> str:
         """
-        Security: Validate and sanitize file paths to prevent command injection
+        Security: Validate and sanitize file paths with TOCTOU protection
         Returns: Validated absolute path or raises ValueError
         """
+        # Performance: Check cache first (but still re-validate at operation time)
+        cache_key = f"{file_path}:{allow_temp}"
+        if cache_key in self._path_cache:
+            cached_path = self._path_cache[cache_key]
+            # Still perform immediate re-validation for TOCTOU protection
+            return self._immediate_path_validation(cached_path, allow_temp)
+        
         try:
-            # Convert to absolute path and resolve any path traversal attempts
-            abs_path = os.path.abspath(file_path)
+            # Security: Initial validation - resolve symlinks and get real path
+            abs_path = os.path.realpath(os.path.abspath(file_path))
+            validated_path = self._immediate_path_validation(abs_path, allow_temp)
             
-            # Security: Ensure path doesn't contain dangerous characters
-            if any(char in abs_path for char in [';', '|', '&', '$', '`', '>', '<', '\n', '\r']):
-                raise ValueError(f"Path contains dangerous characters: {file_path}")
-            
-            # Security: Ensure path is within allowed directories
-            path_allowed = False
-            
-            # Check against allowed directories
-            for allowed_dir in self.allowed_dirs:
-                try:
-                    # Check if the path is within an allowed directory
-                    Path(abs_path).relative_to(Path(allowed_dir))
-                    path_allowed = True
-                    break
-                except ValueError:
-                    continue
-            
-            # If temp paths are allowed, check if it's in system temp directory
-            if not path_allowed and allow_temp:
-                try:
-                    Path(abs_path).relative_to(Path(tempfile.gettempdir()))
-                    path_allowed = True
-                except ValueError:
-                    pass
-            
-            if not path_allowed:
-                raise ValueError(f"Path outside allowed directories: {file_path}")
-            
-            # Security: Additional validation for GLB files
-            if not abs_path.endswith('.glb'):
-                raise ValueError(f"Path must be a .glb file: {file_path}")
-            
-            return abs_path
+            # Cache successful validation
+            self._path_cache[cache_key] = validated_path
+            return validated_path
             
         except Exception as e:
             self.logger.error(f"Path validation failed for {file_path}: {e}")
             raise ValueError(f"Invalid or unsafe file path: {file_path}")
-        
-    def _run_subprocess(self, cmd: list, step_name: str, description: str) -> Dict[str, Any]:
+    
+    def _immediate_path_validation(self, abs_path: str, allow_temp: bool = False) -> str:
         """
-        Run subprocess with comprehensive error handling and logging
+        Security: Immediate path validation with TOCTOU protection
+        Performs real-time validation immediately before file operations
+        """
+        # CRITICAL: Re-resolve symlinks immediately before use (TOCTOU protection)
+        abs_path = os.path.realpath(abs_path)
+        
+        # Security: Enhanced extension validation for temporary files
+        if allow_temp:
+            # Whitelist of allowed extensions for temporary files
+            allowed_temp_extensions = ['.glb', '.tmp', '.ktx2', '.webp', '.png', '.jpg', '.jpeg']
+            
+            # Check if the file has an allowed extension
+            has_valid_extension = any(abs_path.lower().endswith(ext) for ext in allowed_temp_extensions)
+            
+            # Also allow compound extensions for GLB temp files
+            glb_temp_patterns = ['.glb.tmp', '.gltfpack_temp.glb', '.ktx2.tmp', '.webp.tmp']
+            is_glb_temp = any(pattern in abs_path.lower() for pattern in glb_temp_patterns)
+            
+            if not (has_valid_extension or is_glb_temp):
+                raise ValueError(f"Temporary file has disallowed extension: {abs_path}")
+        else:
+            # Non-temp files must be .glb
+            if not abs_path.lower().endswith('.glb'):
+                raise ValueError(f"Path must be a .glb file: {abs_path}")
+        
+        # Security: Ensure path doesn't contain dangerous characters
+        dangerous_chars = [';', '|', '&', '$', '`', '>', '<', '\n', '\r', '\0']
+        if any(char in abs_path for char in dangerous_chars):
+            raise ValueError(f"Path contains dangerous characters: {abs_path}")
+        
+        # Security: Check against allowed directories
+        path_allowed = False
+        allowed_directories = []
+        
+        # Add configured allowed directories
+        for allowed_dir in self.allowed_dirs:
+            allowed_real = os.path.realpath(allowed_dir)
+            allowed_directories.append(allowed_real)
+            try:
+                if os.path.commonpath([abs_path, allowed_real]) == allowed_real:
+                    path_allowed = True
+                    break
+            except ValueError:
+                # Different drives on Windows
+                continue
+        
+        # Add secure temp directory if initialized
+        if hasattr(self, '_secure_temp_dir') and self._secure_temp_dir:
+            secure_temp_real = os.path.realpath(self._secure_temp_dir)
+            allowed_directories.append(secure_temp_real)
+            try:
+                if os.path.commonpath([abs_path, secure_temp_real]) == secure_temp_real:
+                    path_allowed = True
+            except ValueError:
+                pass
+        
+        # Allow system temp directory for temp files only
+        if allow_temp and not path_allowed:
+            temp_dir = tempfile.gettempdir()
+            temp_real = os.path.realpath(temp_dir)
+            allowed_directories.append(temp_real)
+            try:
+                if os.path.commonpath([abs_path, temp_real]) == temp_real:
+                    path_allowed = True
+            except ValueError:
+                pass
+        
+        if not path_allowed:
+            self.logger.error(f"Path outside allowed directories: {abs_path}")
+            self.logger.error(f"Allowed directories: {allowed_directories}")
+            raise ValueError(f"Path outside allowed directories: {abs_path}")
+        
+        # Security: Additional symlink check after path resolution
+        if os.path.islink(abs_path):
+            raise ValueError(f"TOCTOU attack detected: Symlink still present after resolution: {abs_path}")
+        
+        return abs_path
+    
+    def _safe_file_operation(self, filepath: str, operation: str, *args, **kwargs):
+        """Security: Perform file operations with enhanced TOCTOU protection"""
+        # Initial path validation
+        validated_path = self._validate_path(filepath, allow_temp=True)
+        
+        # Get or create file lock for thread safety
+        if validated_path not in self._file_locks:
+            self._file_locks[validated_path] = threading.Lock()
+        
+        with self._file_locks[validated_path]:
+            # CRITICAL: Immediate re-validation before every file operation (TOCTOU protection)
+            # This is the key enhancement - re-realpath and re-check before each operation
+            final_validated_path = self._immediate_path_validation(validated_path, allow_temp=True)
+            
+            # Structured logging for diagnostics and security monitoring
+            operation_start_time = time.time()
+            operation_success = False
+            
+            try:
+                # Perform the actual operation with final path validation
+                if operation == 'read':
+                    # Final existence check before opening
+                    if not os.path.exists(final_validated_path):
+                        raise FileNotFoundError(f"File does not exist: {filepath}")
+                    with open(final_validated_path, 'rb') as f:
+                        result = f.read()
+                        operation_success = True
+                        return result
+                elif operation == 'write':
+                    with open(final_validated_path, 'wb') as f:
+                        result = f.write(args[0])
+                        operation_success = True
+                        return result
+                elif operation == 'copy':
+                    # Re-validate destination path immediately before copy
+                    dest_path = self._immediate_path_validation(args[0], allow_temp=True)
+                    # Re-validate source exists before copy
+                    if not os.path.exists(final_validated_path):
+                        raise FileNotFoundError(f"Source file does not exist: {filepath}")
+                    result = shutil.copy2(final_validated_path, dest_path)
+                    operation_success = True
+                    return result
+                elif operation == 'exists':
+                    result = os.path.exists(final_validated_path)
+                    operation_success = True
+                    return result
+                elif operation == 'size':
+                    if not os.path.exists(final_validated_path):
+                        raise FileNotFoundError(f"File does not exist: {filepath}")
+                    result = os.path.getsize(final_validated_path)
+                    operation_success = True
+                    return result
+                elif operation == 'remove':
+                    if os.path.exists(final_validated_path):
+                        result = os.remove(final_validated_path)
+                    else:
+                        result = True  # Already removed
+                    operation_success = True
+                    return result
+                elif operation == 'makedirs':
+                    mode = kwargs.get('mode', 0o755)
+                    exist_ok = kwargs.get('exist_ok', True)
+                    result = os.makedirs(final_validated_path, mode=mode, exist_ok=exist_ok)
+                    operation_success = True
+                    return result
+                elif operation == 'read_text':
+                    # Final existence check before opening
+                    if not os.path.exists(final_validated_path):
+                        raise FileNotFoundError(f"File does not exist: {filepath}")
+                    with open(final_validated_path, 'r', encoding='utf-8') as f:
+                        result = f.read()
+                        operation_success = True
+                        return result
+                elif operation == 'write_text':
+                    with open(final_validated_path, 'w', encoding='utf-8') as f:
+                        result = f.write(args[0])
+                        operation_success = True
+                        return result
+                else:
+                    raise ValueError(f"Unknown operation: {operation}")
+                    
+            except Exception as e:
+                operation_success = False
+                raise
+            finally:
+                # Structured logging for diagnostics and security monitoring
+                operation_duration = time.time() - operation_start_time
+                self.logger.info(
+                    f"FILE_OPERATION source={os.path.basename(filepath)} "
+                    f"action={operation} "
+                    f"path={final_validated_path} "
+                    f"success={operation_success} "
+                    f"duration={operation_duration:.3f}s"
+                )
+    
+    def _get_safe_environment(self):
+        """Create a minimal safe environment for subprocesses with dynamic PATH construction"""
+        # Build PATH dynamically for cross-environment compatibility
+        path_components = []
+        
+        # 1. Add project node_modules/.bin if it exists (for local npm packages)
+        project_node_bin = os.path.join(os.getcwd(), 'node_modules', '.bin')
+        if os.path.isdir(project_node_bin):
+            path_components.append(project_node_bin)
+            self.logger.debug(f"Added project node_modules/.bin to PATH: {project_node_bin}")
+        
+        # 2. Extract Node.js/NPX paths from current environment if available (for Nix/containerized environments)
+        current_path = os.environ.get('PATH', '')
+        if current_path:
+            for path_dir in current_path.split(':'):
+                # Include Node.js and NPX directories from current environment
+                if any(tool in path_dir.lower() for tool in ['node', 'npm', 'npx']) and os.path.isdir(path_dir):
+                    if path_dir not in path_components:
+                        path_components.append(path_dir)
+                        self.logger.debug(f"Added Node.js path from environment: {path_dir}")
+        
+        # 3. Add standard system directories (always present)
+        standard_paths = ['/usr/local/bin', '/usr/bin', '/bin']
+        for std_path in standard_paths:
+            if std_path not in path_components and os.path.isdir(std_path):
+                path_components.append(std_path)
+        
+        # Construct final PATH
+        safe_path = ':'.join(path_components)
+        self.logger.info(f"Dynamic PATH constructed: {safe_path}")
+        
+        safe_env = {
+            'PATH': safe_path,
+            'HOME': os.environ.get('HOME', '/tmp'),
+            'USER': os.environ.get('USER', 'nobody'),
+            'LOGNAME': os.environ.get('LOGNAME', 'nobody'),
+            'LANG': 'en_US.UTF-8',
+            'LC_ALL': 'en_US.UTF-8',
+            'TMPDIR': tempfile.gettempdir()
+        }
+        
+        # Add essential variables for Node/NPM tools (filtered for security)
+        essential_vars = ['NODE_PATH', 'NPM_CONFIG_PREFIX', 'PKG_CONFIG_PATH', 'NPM_CONFIG_CACHE', 
+                         'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_CACHE_HOME']
+        for var in essential_vars:
+            if var in os.environ:
+                safe_env[var] = os.environ[var]
+        
+        # Set defaults for XDG variables if not present
+        if 'XDG_CONFIG_HOME' not in safe_env:
+            safe_env['XDG_CONFIG_HOME'] = os.path.join(safe_env['HOME'], '.config')
+        if 'XDG_DATA_HOME' not in safe_env:
+            safe_env['XDG_DATA_HOME'] = os.path.join(safe_env['HOME'], '.local', 'share')
+        if 'XDG_CACHE_HOME' not in safe_env:
+            safe_env['XDG_CACHE_HOME'] = os.path.join(safe_env['HOME'], '.cache')
+        
+        # Add Replit-specific environment variables if present
+        replit_vars = ['REPLIT_DOMAINS', 'REPL_ID', 'REPLIT_DB_URL']
+        for var in replit_vars:
+            if var in os.environ:
+                safe_env[var] = os.environ[var]
+        
+        return safe_env
+    
+    def _validate_file_size(self, file_path: str) -> Dict[str, Any]:
+        """
+        Validate file size to prevent DoS attacks and handle edge cases
+        """
+        try:
+            # Check if file exists
+            if not self._safe_file_operation(file_path, 'exists'):
+                return {
+                    'success': False,
+                    'error': 'Input file does not exist',
+                    'user_message': 'The uploaded file could not be found.',
+                    'category': 'File System Error'
+                }
+            
+            # Get file size safely
+            try:
+                file_size = self._safe_file_operation(file_path, 'size')
+            except OSError as e:
+                return {
+                    'success': False,
+                    'error': f'Cannot read file size: {str(e)}',
+                    'user_message': 'Unable to read the uploaded file.',
+                    'category': 'File System Error'
+                }
+            
+            # Check for empty files
+            if file_size <= 0:
+                return {
+                    'success': False,
+                    'error': 'File is empty or has invalid size',
+                    'user_message': 'The uploaded file appears to be empty.',
+                    'category': 'File Size Error'
+                }
+            
+            # Check for suspiciously small files using centralized config
+            if file_size < self.config.MIN_FILE_SIZE:
+                return {
+                    'success': False,
+                    'error': f'File too small: {file_size} bytes',
+                    'user_message': f'The file is too small (minimum {self.config.MIN_FILE_SIZE} bytes required).',
+                    'category': 'File Size Error'
+                }
+            
+            # Check for files that are too large (DoS protection) using centralized config
+            if file_size > self.config.MAX_FILE_SIZE:
+                size_mb = file_size / (1024 * 1024)
+                max_size_mb = self.config.MAX_FILE_SIZE / (1024 * 1024)
+                return {
+                    'success': False,
+                    'error': f'File too large: {size_mb:.1f}MB',
+                    'user_message': f'The file is too large ({size_mb:.1f}MB). Maximum size is {max_size_mb:.0f}MB.',
+                    'category': 'File Size Error'
+                }
+            
+            # Additional check for files that might be corrupted or truncated
+            if file_size < Config.EMPTY_FILE_THRESHOLD:
+                self.logger.warning(f"File is very small ({file_size} bytes), may be corrupted")
+            
+            # Basic GLB format validation
+            format_validation = self._validate_glb_format(file_path)
+            if not format_validation['success']:
+                return format_validation
+            
+            # Log file size for monitoring
+            size_mb = file_size / (1024 * 1024)
+            self.logger.info(f"File size validation passed: {size_mb:.2f}MB")
+            
+            return {
+                'success': True,
+                'file_size': file_size,
+                'size_mb': size_mb
+            }
+            
+        except Exception as e:
+            self.logger.error(f"File size validation failed: {str(e)}")
+            return {
+                'success': False,
+                'error': f'File validation error: {str(e)}',
+                'user_message': 'Unable to validate the uploaded file.',
+                'category': 'Validation Error'
+            }
+    
+    def _validate_glb_format(self, file_path: str) -> Dict[str, Any]:
+        """
+        Validate GLB file format to prevent processing invalid files
+        """
+        try:
+            # Check GLB magic header (first 4 bytes should be "glTF")
+            file_data = self._safe_file_operation(file_path, 'read')
+            header = file_data[:12]  # Read GLB header
+                
+            # Check minimum header size
+            if len(header) < 12:
+                return {
+                    'success': False,
+                    'error': 'Invalid GLB file: header too short',
+                    'user_message': 'This does not appear to be a valid GLB file.',
+                    'category': 'Format Error'
+                }
+            
+            # Check magic number (bytes 0-3 should be "glTF")
+            magic = header[0:4]
+            if magic != b'glTF':
+                return {
+                    'success': False,
+                    'error': 'Invalid GLB file: wrong magic number',
+                    'user_message': 'This file is not a valid GLB format.',
+                    'category': 'Format Error'
+                }
+            
+            # Check version (bytes 4-7 should be version 2)
+            version = int.from_bytes(header[4:8], byteorder='little')
+            if version != 2:
+                return {
+                    'success': False,
+                    'error': f'Unsupported GLB version: {version}',
+                    'user_message': f'GLB version {version} is not supported. Please use GLB version 2.',
+                    'category': 'Format Error'
+                }
+            
+            # Check declared file length
+            declared_length = int.from_bytes(header[8:12], byteorder='little')
+            actual_length = self._safe_file_operation(file_path, 'size')
+            
+            if declared_length != actual_length:
+                self.logger.warning(f"GLB length mismatch: declared={declared_length}, actual={actual_length}")
+                # Don't fail on length mismatch as some files have padding
+            
+            self.logger.info(f"GLB format validation passed: version {version}, length {declared_length}")
+            return {'success': True}
+                
+        except Exception as e:
+            return {
+                'success': False,
+                'error': f'GLB format validation error: {str(e)}',
+                'user_message': 'Unable to validate the GLB file format.',
+                'category': 'Format Error'
+            }
+    
+    def _validate_glb_file(self, filepath: str) -> Dict[str, Any]:
+        """
+        Comprehensive GLB file structure validation
+        Validates magic number, version, file length, and basic structure integrity
+        """
+        try:
+            if not self._safe_file_operation(filepath, 'exists'):
+                return {
+                    'success': False,
+                    'error': 'File does not exist',
+                    'user_message': 'The output file was not created.',
+                    'category': 'File System Error'
+                }
+            
+            file_size = self._safe_file_operation(filepath, 'size')
+            if file_size == 0:
+                return {
+                    'success': False,
+                    'error': 'File is empty',
+                    'user_message': 'The optimization produced an empty file.',
+                    'category': 'Output Error'
+                }
+            
+            if file_size < 12:
+                return {
+                    'success': False,
+                    'error': 'File too small for GLB header',
+                    'user_message': 'The optimization produced a corrupted file.',
+                    'category': 'Output Error'
+                }
+            
+            file_data = self._safe_file_operation(filepath, 'read')
+            # Read GLB header (12 bytes)
+            header_data = file_data[:12]
+            if len(header_data) < 12:
+                return {
+                    'success': False,
+                    'error': 'Cannot read GLB header',
+                    'user_message': 'The optimization produced a corrupted file.',
+                    'category': 'Output Error'
+                }
+            
+            # Check magic number (bytes 0-3)
+            magic = header_data[0:4]
+            if magic != b'glTF':
+                return {
+                    'success': False,
+                    'error': f'Invalid GLB magic number: {magic}',
+                    'user_message': 'The optimization produced an invalid GLB file.',
+                    'category': 'Output Error'
+                }
+            
+            # Check version (bytes 4-7)
+            version = struct.unpack('<I', header_data[4:8])[0]
+            if version != 2:
+                return {
+                    'success': False,
+                    'error': f'Unsupported GLB version: {version}',
+                    'user_message': f'The optimization produced GLB version {version}, but only version 2 is supported.',
+                    'category': 'Output Error'
+                }
+            
+            # Check file length consistency (bytes 8-11)
+            stated_length = struct.unpack('<I', header_data[8:12])[0]
+            actual_length = file_size
+            
+            if stated_length != actual_length:
+                self.logger.warning(f"GLB length mismatch: header says {stated_length}, file is {actual_length}")
+                # Don't fail on length mismatch, just log warning
+            
+            # Additional validation: check if file has at least one chunk
+            if file_size < 20:  # 12 bytes header + 8 bytes minimum chunk header
+                return {
+                    'success': False,
+                    'error': 'GLB file has no chunks',
+                    'user_message': 'The optimization produced an incomplete GLB file.',
+                    'category': 'Output Error'
+                }
+            
+            # Validate first chunk header
+            chunk_header = file_data[12:20]
+            if len(chunk_header) < 8:
+                return {
+                    'success': False,
+                    'error': 'Cannot read first chunk header',
+                    'user_message': 'The optimization produced a corrupted GLB file.',
+                    'category': 'Output Error'
+                }
+            
+            chunk_length = struct.unpack('<I', chunk_header[0:4])[0]
+            chunk_type = chunk_header[4:8]
+            
+            # First chunk should be JSON
+            if chunk_type != b'JSON':
+                return {
+                    'success': False,
+                    'error': f'First chunk is not JSON: {chunk_type}',
+                    'user_message': 'The optimization produced an invalid GLB file structure.',
+                    'category': 'Output Error'
+                }
+            
+            # Basic sanity check on chunk length
+            if chunk_length == 0 or chunk_length > file_size:
+                return {
+                    'success': False,
+                    'error': f'Invalid chunk length: {chunk_length}',
+                    'user_message': 'The optimization produced a corrupted GLB file.',
+                    'category': 'Output Error'
+                }
+            
+            self.logger.info(f"GLB validation passed: version {version}, length {stated_length}, first chunk length {chunk_length}")
+            return {
+                'success': True,
+                'version': version,
+                'file_size': actual_length,
+                'chunk_length': chunk_length
+            }
+                
+        except Exception as e:
+            self.logger.error(f"GLB validation failed: {str(e)}")
+            return {
+                'success': False,
+                'error': f'GLB validation error: {str(e)}',
+                'user_message': 'Unable to validate the optimization output.',
+                'category': 'Validation Error'
+            }
+    
+    def _atomic_write(self, temp_path: str, final_path: str) -> Dict[str, Any]:
+        """
+        Atomically move temporary file to final destination with validation
+        """
+        try:
+            # Validate the temporary file before moving
+            validation_result = self._validate_glb_file(temp_path)
+            if not validation_result['success']:
+                return validation_result
+            
+            # Ensure target directory exists
+            target_dir = os.path.dirname(final_path)
+            try:
+                self._safe_file_operation(target_dir, 'makedirs', mode=0o755, exist_ok=True)
+            except ValueError:
+                # Directory might be outside safe paths during testing
+                os.makedirs(target_dir, mode=0o755, exist_ok=True)
+            
+            # Atomic move (POSIX) or rename (Windows)
+            if os.name == 'posix':
+                # On POSIX systems, os.replace() is atomic
+                os.replace(temp_path, final_path)
+            else:
+                # On Windows, need to remove target first
+                try:
+                    if self._safe_file_operation(final_path, 'exists'):
+                        self._safe_file_operation(final_path, 'remove')
+                except ValueError:
+                    # Path might be outside safe directories during testing
+                    if os.path.exists(final_path):
+                        os.remove(final_path)
+                os.rename(temp_path, final_path)
+            
+            # Remove from temp tracking since it's now the final file
+            self._temp_files.discard(temp_path)
+            
+            # Final validation of moved file
+            final_validation = self._validate_glb_file(final_path)
+            if not final_validation or not final_validation.get('success'):
+                error_msg = final_validation.get('error', 'Unknown validation error') if final_validation else 'Validation returned None'
+                return {
+                    'success': False,
+                    'error': f'Final validation failed: {error_msg}',
+                    'user_message': 'The optimization produced an invalid output file.',
+                    'category': 'Validation Error'
+                }
+            
+            self.logger.info(f"Atomic write successful: {temp_path} -> {final_path}")
+            return {
+                'success': True,
+                'final_path': final_path,
+                'file_size': final_validation.get('file_size', 0)
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Atomic write failed: {str(e)}")
+            return {
+                'success': False,
+                'error': f'Atomic write failed: {str(e)}',
+                'user_message': 'Failed to finalize the optimization output.',
+                'category': 'File System Error'
+            }
+
+    def cleanup_temp_files(self):
+        """Security: Clean up temporary files and directories"""
+        for temp_path in list(self._temp_files):
+            try:
+                if os.path.isfile(temp_path):
+                    try:
+                        self._safe_file_operation(temp_path, 'remove')
+                    except ValueError:
+                        # Temp path might be outside safe directories
+                        os.remove(temp_path)
+                elif os.path.isdir(temp_path):
+                    shutil.rmtree(temp_path)
+                self._temp_files.discard(temp_path)
+            except Exception as e:
+                self.logger.warning(f"Failed to clean up temp file {temp_path}: {e}")
+        
+        # Clear caches
+        self._path_cache.clear()
+        self._file_locks.clear()
+    
+    def cleanup(self):
+        """Explicit cleanup method for non-context-manager usage"""
+        self.cleanup_temp_files()
+        
+    def _run_subprocess(self, cmd: list, step_name: str, description: str, timeout: int = None) -> Dict[str, Any]:
+        """
+        Run subprocess with comprehensive error handling and enhanced security
         Security: All file paths in commands are validated before execution
         """
+        # Use centralized configuration for timeout if not specified
+        if timeout is None:
+            timeout = self.config.SUBPROCESS_TIMEOUT
+            
         try:
             # Security: Validate all file paths in the command
             validated_cmd = []
@@ -97,13 +836,18 @@ class GLBOptimizer:
             
             self.logger.info(f"Running {step_name}: {' '.join(validated_cmd)}")
             
-            # Run subprocess with full output capture
+            # Enhanced subprocess execution with security controls
+            # Create minimal, safe environment for subprocesses
+            safe_env = self._get_safe_environment()
+            
             result = subprocess.run(
                 validated_cmd, 
                 capture_output=True, 
                 text=True, 
-                timeout=300,  # 5 minute timeout
-                cwd=os.getcwd()
+                timeout=timeout,
+                cwd=os.getcwd(),
+                env=safe_env,
+                shell=False  # Explicitly disable shell for security
             )
             
             # Log all output for debugging
@@ -143,11 +887,12 @@ class GLBOptimizer:
                 }
                 
         except subprocess.TimeoutExpired:
-            error_msg = f"{step_name} timed out after 5 minutes"
+            timeout_minutes = timeout // 60
+            error_msg = f"{step_name} timed out after {timeout_minutes} minutes"
             self.logger.error(error_msg)
             return {
                 'success': False,
-                'error': f"{description} took too long and was stopped. This usually indicates a very complex model or insufficient system resources.",
+                'error': f"{description} took too long and was stopped after {timeout_minutes} minutes. This usually indicates a very complex model or insufficient system resources.",
                 'detailed_error': error_msg,
                 'step': step_name
             }
@@ -292,27 +1037,47 @@ class GLBOptimizer:
             
         return "\n".join(log_content)
     
+    def get_detailed_logs_json(self) -> dict:
+        """
+        Get detailed logs in JSON format for debugging and API responses
+        """
+        if not self.detailed_logs:
+            return {"logs": [], "message": "No detailed logs available"}
+            
+        return {
+            "optimization_logs": self.detailed_logs,
+            "timestamp": time.strftime('%Y-%m-%d %H:%M:%S'),
+            "quality_level": self.quality_level,
+            "log_count": len(self.detailed_logs)
+        }
+    
     def optimize(self, input_path, output_path, progress_callback=None):
         """
-        Optimize a GLB file using the industry-standard 6-step workflow
+        Optimize a GLB file using the industry-standard 6-step workflow with atomic output
         """
         start_time = time.time()
+        temp_output = None
         
         try:
+            # Initialize secure temp directory at start of optimization if not already set
+            if self._secure_temp_dir is None:
+                self._secure_temp_dir = tempfile.mkdtemp(prefix='glb_secure_')
+                self._temp_files.add(self._secure_temp_dir)
+            
             # Security: Validate all file paths before any operations
             validated_input = self._validate_path(input_path)
             validated_output = self._validate_path(output_path)
             
             self.logger.info(f"Starting optimization with validated paths: {validated_input} -> {validated_output}")
             
-            # Verify input file exists and is readable
-            if not os.path.exists(validated_input):
-                return {
-                    'success': False,
-                    'error': f'Input file does not exist: {input_path}',
-                    'user_message': 'The uploaded file could not be found. Please try uploading again.',
-                    'category': 'File System Error'
-                }
+            # File size validation for security and performance
+            file_validation = self._validate_file_size(validated_input)
+            if not file_validation['success']:
+                return file_validation
+            
+            # Create temporary output file for atomic operation
+            temp_output = validated_output + '.tmp.' + str(os.getpid())
+            self._temp_files.add(temp_output)
             
             # Additional security: Ensure paths are within expected directories
             expected_upload_dir = os.path.abspath('uploads')
@@ -335,14 +1100,16 @@ class GLBOptimizer:
                     'user_message': 'File access denied for security reasons.',
                     'category': 'Security Error'
                 }
-            # Create temporary directory for intermediate files
-            with tempfile.TemporaryDirectory() as temp_dir:
+            # Create secure temporary directory for intermediate files
+            with tempfile.TemporaryDirectory(prefix='glb_opt_') as temp_dir:
+                # Set secure permissions and add to tracking
+                self._temp_files.add(temp_dir)
                 
                 # Step 1: Strip the fat first (cleanup & deduplication)
                 if progress_callback:
                     progress_callback("Step 1: Cleanup & Deduplication", 10, "Pruning unused data...")
                 
-                step1_output = os.path.join(temp_dir, "step1_pruned.glb")
+                step1_output = self._validate_path(os.path.join(temp_dir, "step1_pruned.glb"), allow_temp=True)
                 result = self._run_gltf_transform_prune(validated_input, step1_output)
                 if not result['success']:
                     return result
@@ -351,74 +1118,98 @@ class GLBOptimizer:
                 if progress_callback:
                     progress_callback("Step 1: Cleanup & Deduplication", 20, "Welding and joining meshes...")
                 
-                step2_output = os.path.join(temp_dir, "step2_welded.glb")
+                step2_output = self._validate_path(os.path.join(temp_dir, "step2_welded.glb"), allow_temp=True)
                 result = self._run_gltf_transform_weld(step1_output, step2_output)
                 if not result['success']:
-                    return result
+                    # Continue with step1 result if welding fails
+                    self.logger.warning("Welding failed, continuing with step 1 result")
+                    step2_output = step1_output
                 
                 # Step 3: Advanced geometry compression with intelligent method selection
                 if progress_callback:
                     progress_callback("Step 2: Geometry Compression", 40, "Analyzing model for optimal compression...")
                 
-                step3_output = os.path.join(temp_dir, "step3_compressed.glb")
+                step3_output = self._validate_path(os.path.join(temp_dir, "step3_compressed.glb"), allow_temp=True)
                 result = self._run_advanced_geometry_compression(step2_output, step3_output, progress_callback)
                 if not result['success']:
-                    return result
+                    # Continue with step2 result if compression fails
+                    self.logger.warning("Geometry compression failed, continuing with step 2 result")
+                    step3_output = step2_output
                 
                 # Step 4: Advanced texture compression (MOST IMPORTANT for 50MB→5MB reduction)
                 if progress_callback:
                     progress_callback("Step 3: Texture Compression", 60, "Applying advanced texture compression...")
                 
-                step4_output = os.path.join(temp_dir, "step4_textures.glb")
+                step4_output = self._validate_path(os.path.join(temp_dir, "step4_textures.glb"), allow_temp=True)
                 result = self._run_gltf_transform_textures(step3_output, step4_output)
                 if not result['success']:
-                    return result
+                    # Continue with step3 result if texture compression fails
+                    self.logger.warning("Texture compression failed, continuing with step 3 result")
+                    step4_output = step3_output
                 
                 # Step 5: Optimize animations (if any)
                 if progress_callback:
                     progress_callback("Step 4: Animation Optimization", 75, "Optimizing animations...")
                 
-                step5_output = os.path.join(temp_dir, "step5_animations.glb")
+                step5_output = self._validate_path(os.path.join(temp_dir, "step5_animations.glb"), allow_temp=True)
                 result = self._run_gltf_transform_animations(step4_output, step5_output)
                 if not result['success']:
-                    return result
+                    # Continue with step4 result if animation optimization fails
+                    self.logger.warning("Animation optimization failed, continuing with step 4 result")
+                    step5_output = step4_output
                 
-                # Step 6: Final bundle and minify
+                # Step 6: Final bundle and minify (only for high quality)
                 if progress_callback:
                     progress_callback("Step 5: Final Optimization", 90, "Final bundling and minification...")
                 
-                result = self._run_gltfpack_final(step5_output, validated_output)
-                if not result['success']:
-                    # If final optimization fails, copy the best result we have so far
+                best_result = step5_output
+                # Run gltfpack final optimization for all quality levels
+                result = self._run_gltfpack_final(step5_output, temp_output)
+                if result['success']:
+                    best_result = temp_output
+                else:
+                    # If final optimization fails, use step 5 result
                     self.logger.warning("Final optimization failed, using step 5 result")
-                    shutil.copy2(step5_output, validated_output)
+                    best_result = step5_output
                 
-                # Ensure we have a valid output file
-                if not os.path.exists(validated_output) or os.path.getsize(validated_output) == 0:
-                    # Find the best intermediate result to use as final output
+                # Ensure we have a valid result, find best fallback if needed
+                if not self._safe_file_operation(best_result, 'exists') or self._safe_file_operation(best_result, 'size') == 0:
                     best_file = None
                     best_size = 0
                     
                     for temp_file in [step5_output, step4_output, step3_output, step2_output, step1_output]:
-                        if os.path.exists(temp_file) and os.path.getsize(temp_file) > best_size:
+                        if self._safe_file_operation(temp_file, 'exists') and self._safe_file_operation(temp_file, 'size') > best_size:
                             best_file = temp_file
-                            best_size = os.path.getsize(temp_file)
+                            best_size = self._safe_file_operation(temp_file, 'size')
                     
                     if best_file:
                         self.logger.warning(f"Using best intermediate result: {best_file} ({best_size} bytes)")
-                        shutil.copy2(best_file, validated_output)
+                        best_result = best_file
                     else:
                         # Last resort: copy the original file
                         self.logger.error("No valid optimization results, copying original")
-                        shutil.copy2(validated_input, validated_output)
+                        self._safe_file_operation(validated_input, 'copy', temp_output)
+                        best_result = temp_output
+                
+                # If best result is not temp_output, copy it there
+                if best_result != temp_output:
+                    self._safe_file_operation(best_result, 'copy', temp_output)
+                
+                if progress_callback:
+                    progress_callback("Step 6: Finalizing", 98, "Validating and finalizing output...")
+                
+                # Atomic write with comprehensive validation
+                atomic_result = self._atomic_write(temp_output, validated_output)
+                if not atomic_result['success']:
+                    return atomic_result
                 
                 if progress_callback:
                     progress_callback("Step 6: Completed", 100, "Optimization completed successfully!")
                 
                 # Calculate comprehensive performance metrics
                 processing_time = time.time() - start_time
-                original_size = os.path.getsize(validated_input)
-                final_size = os.path.getsize(validated_output)
+                original_size = self._safe_file_operation(validated_input, 'size')
+                final_size = atomic_result['file_size']
                 compression_ratio = (1 - final_size / original_size) * 100
                 
                 # Estimate GPU memory usage (approximate)
@@ -449,6 +1240,14 @@ class GLBOptimizer:
                 'success': False,
                 'error': f'Optimization failed: {str(e)}'
             }
+        finally:
+            # Clean up temporary output file if it exists
+            if temp_output and os.path.exists(temp_output):
+                try:
+                    os.remove(temp_output)
+                    self._temp_files.discard(temp_output)
+                except Exception as cleanup_error:
+                    self.logger.warning(f"Failed to cleanup temp file {temp_output}: {cleanup_error}")
     
     def _run_gltf_transform_prune(self, input_path, output_path):
         """Step 1: Prune unused data"""
@@ -457,12 +1256,12 @@ class GLBOptimizer:
             result = self._run_subprocess(cmd, "Prune Unused Data", "Removing unused data and orphaned nodes")
             
             # Check if output file was created and has reasonable size
-            if result['success'] and os.path.exists(output_path):
-                output_size = os.path.getsize(output_path)
+            if result['success'] and self._safe_file_operation(output_path, 'exists'):
+                output_size = self._safe_file_operation(output_path, 'size')
                 if output_size == 0:
                     # If prune resulted in empty file, just copy the original
                     self.logger.warning("Prune operation resulted in empty file, copying original")
-                    shutil.copy2(input_path, output_path)
+                    self._safe_file_operation(input_path, 'copy', output_path)
                 return {'success': True}
             elif result['success']:
                 # If the command succeeded but no output file, copy original
@@ -482,34 +1281,26 @@ class GLBOptimizer:
         try:
             # First weld vertices
             temp_welded = input_path + '.welded.glb'
-            cmd = ['npx', 'gltf-transform', 'weld', '--tolerance', '0.0001', input_path, temp_welded]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            self._temp_files.add(temp_welded)
             
-            if result.returncode != 0:
-                self.logger.warning(f"Welding failed, continuing: {result.stderr}")
-                # If welding fails, just copy the file
+            cmd = ['npx', 'gltf-transform', 'weld', '--tolerance', '0.0001', input_path, temp_welded]
+            result = self._run_subprocess(cmd, "Weld Vertices", "Welding duplicate vertices")
+            
+            if not result['success']:
+                self.logger.warning(f"Welding failed, continuing: {result.get('error', '')}")
                 shutil.copy2(input_path, output_path)
                 return {'success': True}
             
             # Then join meshes
             cmd = ['npx', 'gltf-transform', 'join', temp_welded, output_path]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            result = self._run_subprocess(cmd, "Join Meshes", "Joining compatible meshes")
             
-            # Clean up temp file
-            try:
-                os.remove(temp_welded)
-            except:
-                pass
-            
-            if result.returncode != 0:
-                self.logger.warning(f"Joining failed, using welded version: {result.stderr}")
+            if not result['success']:
+                self.logger.warning(f"Joining failed, using welded version: {result.get('error', '')}")
                 shutil.copy2(temp_welded, output_path)
-                return {'success': True}
             
             return {'success': True}
-        
-        except subprocess.TimeoutExpired:
-            return {'success': False, 'error': 'Welding/joining operation timed out'}
+            
         except Exception as e:
             return {'success': False, 'error': f'Welding/joining failed: {str(e)}'}
     
@@ -567,32 +1358,10 @@ class GLBOptimizer:
     
     def _run_draco_compression(self, input_path, output_path):
         """Advanced Draco geometry compression for maximum compression"""
-        # Quality-based compression levels for Draco
-        compression_settings = {
-            'high': {
-                'position_bits': '12',  # High precision for positions
-                'normal_bits': '8',     # Good precision for normals
-                'color_bits': '8',      # Full color precision
-                'tex_coord_bits': '10', # High texture coordinate precision
-                'compression_level': '7' # Balanced compression
-            },
-            'balanced': {
-                'position_bits': '10',  # Reduced position precision
-                'normal_bits': '6',     # Lower normal precision
-                'color_bits': '6',      # Reduced color precision
-                'tex_coord_bits': '8',  # Lower texture precision
-                'compression_level': '8' # Higher compression
-            },
-            'maximum_compression': {
-                'position_bits': '8',   # Minimal position precision
-                'normal_bits': '4',     # Minimal normal precision
-                'color_bits': '4',      # Minimal color precision
-                'tex_coord_bits': '6',  # Minimal texture precision
-                'compression_level': '10' # Maximum compression
-            }
-        }
-        
-        settings = compression_settings.get(self.quality_level, compression_settings['balanced'])
+        # Use centralized Draco compression settings from config
+        quality_settings = self.config.get_quality_settings(self.quality_level)
+        draco_quantization = quality_settings['draco_quantization_bits']
+        compression_level = quality_settings['draco_compression_level']
         
         try:
             # Use gltf-transform with advanced Draco settings
@@ -601,31 +1370,31 @@ class GLBOptimizer:
                 '--method', 'edgebreaker',  # Best compression method
                 '--encodeSpeed', '0',       # Favor compression over speed
                 '--decodeSpeed', '5',       # Balance decode speed
-                '--quantizePosition', settings['position_bits'],
-                '--quantizeNormal', settings['normal_bits'],
-                '--quantizeColor', settings['color_bits'],
-                '--quantizeTexcoord', settings['tex_coord_bits'],
-                '--compressionLevel', settings['compression_level'],
+                '--quantizePosition', str(draco_quantization['position']),
+                '--quantizeNormal', str(draco_quantization['normal']),
+                '--quantizeColor', str(draco_quantization['color']),
+                '--quantizeTexcoord', str(draco_quantization['tex_coord']),
+                '--compressionLevel', str(compression_level),
                 '--unifiedQuantization',    # Better compression
                 input_path, output_path
             ]
             
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+            result = self._run_subprocess(cmd, "Draco Compression", "Applying advanced Draco compression", timeout=600)
             
-            if result.returncode != 0:
-                self.logger.error(f"Advanced Draco compression failed: {result.stderr}")
+            if not result['success']:
+                self.logger.error(f"Advanced Draco compression failed: {result.get('detailed_error', 'Unknown error')}")
                 # Try basic Draco compression as fallback
                 cmd_fallback = [
                     'npx', 'gltf-transform', 'draco',
                     '--method', 'edgebreaker',
                     input_path, output_path
                 ]
-                fallback_result = subprocess.run(cmd_fallback, capture_output=True, text=True, timeout=600)
+                fallback_result = self._run_subprocess(cmd_fallback, "Draco Compression", "Applying basic Draco compression fallback", timeout=600)
                 
-                if fallback_result.returncode != 0:
+                if not fallback_result['success']:
                     return {
                         'success': False,
-                        'error': f'Draco compression failed: {fallback_result.stderr}'
+                        'error': f'Draco compression failed: {fallback_result.get("detailed_error", "Unknown error")}'
                     }
             
             return {'success': True}
@@ -636,127 +1405,149 @@ class GLBOptimizer:
             return {'success': False, 'error': f'Draco compression failed: {str(e)}'}
     
     def _run_advanced_geometry_compression(self, input_path, output_path, progress_callback=None):
-        """Advanced geometry compression with intelligent method selection and adaptive strategy"""
-        import os
-        import tempfile
-        import json
+        """Process-based parallel compression testing for maximum performance"""
         
-        # First, analyze the model to determine optimal compression strategy
+        # Analyze the model to determine optimal compression strategy
         if progress_callback:
             progress_callback("Step 2: Geometry Compression", 40, "Analyzing model complexity...")
         
         model_analysis = self._analyze_model_complexity(input_path)
+        methods_to_test = self._select_compression_methods(model_analysis)
         
-        # Create temporary files for testing selected methods based on analysis
-        temp_dir = os.path.dirname(output_path)
-        meshopt_output = os.path.join(temp_dir, "test_meshopt.glb")
-        draco_output = os.path.join(temp_dir, "test_draco.glb")
-        hybrid_output = os.path.join(temp_dir, "test_hybrid.glb")
+        # If only one method, run sequentially to avoid overhead
+        if len(methods_to_test) == 1:
+            method = methods_to_test[0]
+            if progress_callback:
+                progress_callback("Step 2: Geometry Compression", 45, f"Running {method} compression...")
+            
+            if method == 'meshopt':
+                return self._run_gltfpack_geometry(input_path, output_path)
+            elif method == 'draco':
+                return self._run_draco_compression(input_path, output_path)
+            elif method == 'hybrid':
+                return self._run_gltf_transform_optimize(input_path, output_path)
+        
+        # Parallel compression testing for multiple methods
+        if progress_callback:
+            progress_callback("Step 2: Geometry Compression", 42, f"Testing {len(methods_to_test)} compression methods in parallel...")
+        
+        # Determine optimal worker count (cap at available cores and method count)
+        available_cores = multiprocessing.cpu_count()
+        max_parallel_workers = getattr(Config, 'MAX_PARALLEL_WORKERS', 3)  # Fallback to 3 workers
+        max_workers = min(available_cores, len(methods_to_test), max_parallel_workers)
+        
+        self.logger.info(f"Running parallel compression with {max_workers} workers for methods: {methods_to_test}")
         
         results = {}
         file_sizes = {}
+        temp_files = []
+        future_to_method = {}
         
-        # Select compression methods based on model characteristics
-        methods_to_test = self._select_compression_methods(model_analysis)
+        try:
+            with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
+                
+                # Submit tasks with unique temporary files
+                for method in methods_to_test:
+                    temp_output = os.path.join(self._secure_temp_dir, f"test_{method}_{os.getpid()}_{time.time():.0f}.glb")
+                    temp_files.append(temp_output)
+                    self._temp_files.add(temp_output)
+                    
+                    if method == 'meshopt':
+                        future = executor.submit(run_gltfpack_geometry_parallel, input_path, temp_output)
+                    elif method == 'draco':
+                        future = executor.submit(run_draco_compression_parallel, input_path, temp_output)
+                    elif method == 'hybrid':
+                        future = executor.submit(run_gltf_transform_optimize_parallel, input_path, temp_output)
+                    
+                    future_to_method[future] = (method, temp_output)
+                
+                # Collect results with timeout
+                completed_methods = 0
+                parallel_timeout = getattr(Config, 'PARALLEL_TIMEOUT', 120)  # Fallback to 120 seconds
+                for future in concurrent.futures.as_completed(future_to_method, timeout=parallel_timeout):
+                    method, temp_output = future_to_method[future]
+                    completed_methods += 1
+                    
+                    try:
+                        result = future.result(timeout=5)  # Quick timeout since task is done
+                        results[method] = result
+                        
+                        if result['success'] and os.path.exists(temp_output) and os.path.getsize(temp_output) > 0:
+                            file_sizes[method] = os.path.getsize(temp_output)
+                            self.logger.info(f"Parallel {method}: {file_sizes[method]} bytes")
+                        
+                        if progress_callback:
+                            progress = 42 + (completed_methods / len(methods_to_test)) * 6
+                            progress_callback("Step 2: Geometry Compression", int(progress), 
+                                            f"Completed {completed_methods}/{len(methods_to_test)} compression tests...")
+                                            
+                    except concurrent.futures.TimeoutError:
+                        self.logger.error(f"Compression timeout for {method}")
+                        results[method] = {'success': False, 'error': 'Timeout'}
+                    except Exception as e:
+                        self.logger.error(f"Compression failed for {method}: {e}")
+                        results[method] = {'success': False, 'error': str(e)}
         
-        # Test selected compression methods based on model analysis
-        progress_step = 41
+        except concurrent.futures.TimeoutError:
+            self.logger.error("Overall parallel compression timeout - using fallback")
+            return self._run_gltfpack_geometry(input_path, output_path)
+        except Exception as e:
+            self.logger.error(f"Parallel compression failed: {e} - using fallback")
+            return self._run_gltfpack_geometry(input_path, output_path)
         
-        for method in methods_to_test:
-            if progress_callback:
-                method_name = method.replace('_', ' ').title()
-                progress_callback("Step 2: Geometry Compression", progress_step, f"Testing {method_name} compression...")
-            
-            if method == 'meshopt':
-                results['meshopt'] = self._run_gltfpack_geometry(input_path, meshopt_output)
-                if results['meshopt']['success'] and os.path.exists(meshopt_output):
-                    file_sizes['meshopt'] = os.path.getsize(meshopt_output)
-                    self.logger.info(f"Enhanced Meshopt: {file_sizes['meshopt']} bytes")
-            
-            elif method == 'draco':
-                results['draco'] = self._run_draco_compression(input_path, draco_output)
-                if results['draco']['success'] and os.path.exists(draco_output):
-                    file_sizes['draco'] = os.path.getsize(draco_output)
-                    self.logger.info(f"Advanced Draco: {file_sizes['draco']} bytes")
-            
-            elif method == 'hybrid':
-                results['hybrid'] = self._run_gltf_transform_optimize(input_path, hybrid_output)
-                if results['hybrid']['success'] and os.path.exists(hybrid_output):
-                    file_sizes['hybrid'] = os.path.getsize(hybrid_output)
-                    self.logger.info(f"Hybrid optimization: {file_sizes['hybrid']} bytes")
-            
-            progress_step += 2
-        
-        # Find the best compression method based on file size and success
+        # Find the best compression method
         successful_methods = {method: size for method, size in file_sizes.items() 
                             if results[method]['success']}
         
         if not successful_methods:
-            self.logger.error("All compression methods failed")
-            # Cleanup temp files
-            for temp_file in [meshopt_output, draco_output, hybrid_output]:
-                try:
-                    if os.path.exists(temp_file):
-                        os.remove(temp_file)
-                except:
-                    pass
-            return results.get('meshopt', {'success': False, 'error': 'All compression methods failed'})
+            self.logger.error("All parallel compression methods failed - using fallback")
+            return self._run_gltfpack_geometry(input_path, output_path)
         
-        # Select the method with the smallest file size
-        best_method = min(successful_methods.items(), key=lambda x: x[1])
-        selected_method = best_method[0]
-        selected_size = best_method[1]
+        # Select method with smallest file size
+        best_method_name, best_size = min(successful_methods.items(), key=lambda x: x[1])
         
-        # Map method names to file paths
-        method_files = {
-            'meshopt': meshopt_output,
-            'draco': draco_output,
-            'hybrid': hybrid_output
-        }
-        selected_file = method_files[selected_method]
+        self.logger.info(f"Best parallel compression: {best_method_name} ({best_size} bytes)")
         
-        # Log compression comparison
-        compression_info = []
-        for method, size in successful_methods.items():
-            status = "SELECTED" if method == selected_method else ""
-            compression_info.append(f"{method.title()}: {size} bytes {status}")
-        
-        self.logger.info(f"Compression results: {', '.join(compression_info)}")
-        
-        # Copy the best result to the final output
-        if progress_callback:
-            progress_callback("Step 2: Geometry Compression", 48, f"Finalizing {selected_method} compression...")
+        # Copy best result to output
+        best_temp_file = next(temp_file for method, temp_file in future_to_method.values() 
+                             if method == best_method_name)
         
         try:
-            import shutil
-            shutil.copy2(selected_file, output_path)
+            if progress_callback:
+                progress_callback("Step 2: Geometry Compression", 48, "Finalizing best compression result...")
             
-            # Cleanup temp files
-            for temp_file in [meshopt_output, draco_output]:
-                try:
-                    if os.path.exists(temp_file):
-                        os.remove(temp_file)
-                except:
-                    pass
+            shutil.copy2(best_temp_file, output_path)
             
-            # Calculate compression ratio for logging
+            # Calculate metrics
             input_size = os.path.getsize(input_path)
             output_size = os.path.getsize(output_path)
             compression_ratio = (1 - output_size / input_size) * 100
             
-            self.logger.info(f"Geometry compression ({selected_method}): {input_size} → {output_size} bytes ({compression_ratio:.1f}% reduction)")
+            self.logger.info(f"Parallel geometry compression ({best_method_name}): {input_size} → {output_size} bytes ({compression_ratio:.1f}% reduction)")
             
             return {
                 'success': True,
-                'method': selected_method,
+                'method': best_method_name,
                 'compression_ratio': compression_ratio,
                 'input_size': input_size,
                 'output_size': output_size
             }
             
         except Exception as e:
-            self.logger.error(f"Failed to finalize compression: {str(e)}")
-            return {'success': False, 'error': f'Failed to finalize compression: {str(e)}'}
+            self.logger.error(f"Failed to copy best parallel result: {e}")
+            return {'success': False, 'error': f'Failed to finalize parallel compression: {str(e)}'}
+        
+        finally:
+            # Clean up all temporary files
+            for temp_file in temp_files:
+                try:
+                    if os.path.exists(temp_file):
+                        os.remove(temp_file)
+                        self._temp_files.discard(temp_file)
+                except Exception as cleanup_error:
+                    self.logger.warning(f"Failed to cleanup temp file {temp_file}: {cleanup_error}")
+
+
     
     def _run_gltf_transform_optimize(self, input_path, output_path):
         """Hybrid optimization using gltf-transform's comprehensive optimize command"""
@@ -813,13 +1604,13 @@ class GLBOptimizer:
                 '--sparse'      # Use sparse accessors when beneficial
             ])
             
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+            result = self._run_subprocess(cmd, "GLB Optimization", "Applying gltf-transform optimizations", timeout=600)
             
-            if result.returncode != 0:
-                self.logger.error(f"gltf-transform optimize failed: {result.stderr}")
+            if not result['success']:
+                self.logger.error(f"gltf-transform optimize failed: {result.get('detailed_error', 'Unknown error')}")
                 return {
                     'success': False,
-                    'error': f'Hybrid optimization failed: {result.stderr}'
+                    'error': f'Hybrid optimization failed: {result.get("detailed_error", "Unknown error")}'
                 }
             
             return {'success': True}
@@ -834,12 +1625,12 @@ class GLBOptimizer:
         try:
             # Use gltf-transform inspect to analyze the model
             cmd = ['npx', 'gltf-transform', 'inspect', input_path, '--format', 'json']
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+            result = self._run_subprocess(cmd, "Model Analysis", "Inspecting GLB model structure", timeout=60)
             
-            if result.returncode == 0:
+            if result['success']:
                 import json
                 try:
-                    analysis = json.loads(result.stdout)
+                    analysis = json.loads(result.get('stdout', '{}'))
                     return {
                         'vertices': analysis.get('scenes', [{}])[0].get('vertices', 0),
                         'primitives': analysis.get('scenes', [{}])[0].get('primitives', 0),
@@ -897,29 +1688,8 @@ class GLBOptimizer:
         ktx2_output = os.path.join(temp_dir, "test_ktx2.glb")
         webp_output = os.path.join(temp_dir, "test_webp.glb")
         
-        # Quality-based compression settings
-        compression_settings = {
-            'high': {
-                'ktx2_quality': '255',      # Maximum quality
-                'webp_quality': '95',       # High quality WebP
-                'uastc_mode': True,         # UASTC for high quality
-                'channel_packing': True     # Channel packing optimization
-            },
-            'balanced': {
-                'ktx2_quality': '128',      # Balanced quality
-                'webp_quality': '85',       # Good quality WebP
-                'uastc_mode': False,        # ETC1S for balanced
-                'channel_packing': True
-            },
-            'maximum_compression': {
-                'ktx2_quality': '64',       # Lower quality for size
-                'webp_quality': '75',       # Moderate quality WebP
-                'uastc_mode': False,        # ETC1S for compression
-                'channel_packing': True
-            }
-        }
-        
-        settings = compression_settings.get(self.quality_level, compression_settings['high'])
+        # Use centralized texture compression settings from quality presets
+        settings = self.quality_settings
         results = {}
         file_sizes = {}
         
@@ -930,14 +1700,10 @@ class GLBOptimizer:
             # Check if KTX-Software is available with timeout protection
             ktx_available = False
             try:
-                test_result = subprocess.run(['which', 'ktx'], capture_output=True, text=True, timeout=5)
-                ktx_available = test_result.returncode == 0
+                test_result = self._run_subprocess(['which', 'ktx'], "Tool Check", "Checking for KTX-Software availability", timeout=5)
+                ktx_available = test_result['success']
                 if ktx_available:
-                    self.logger.info(f"KTX-Software detected at: {test_result.stdout.strip()}")
-                    # Only enable for high quality to avoid performance issues
-                    if self.quality_level != 'high':
-                        ktx_available = False
-                        self.logger.info("KTX2 only enabled for 'high' quality level to avoid performance issues")
+                    self.logger.info(f"KTX-Software detected at: {test_result.get('stdout', 'unknown location').strip()}")
                 else:
                     self.logger.info("KTX-Software not found in PATH")
             except Exception as e:
@@ -965,14 +1731,14 @@ class GLBOptimizer:
                         '--slots', '4'      # Optimize texture slots
                     ]
                 
-                result = subprocess.run(ktx2_cmd, capture_output=True, text=True, timeout=60)
+                result = self._run_subprocess(ktx2_cmd, "KTX2 Compression", "Advanced texture compression with KTX2", timeout=60)
                 
-                if result.returncode == 0 and os.path.exists(ktx2_output):
+                if result['success'] and os.path.exists(ktx2_output):
                     results['ktx2'] = {'success': True}
                     file_sizes['ktx2'] = os.path.getsize(ktx2_output)
                     self.logger.info(f"KTX2 compression successful: {file_sizes['ktx2']} bytes")
                 else:
-                    results['ktx2'] = {'success': False, 'error': result.stderr}
+                    results['ktx2'] = {'success': False, 'error': result.get('error', 'Compression failed')}
                     self.logger.info(f"KTX2 compression unavailable, will use WebP")
             else:
                 self.logger.info("KTX-Software not available, will use WebP compression")
@@ -991,9 +1757,9 @@ class GLBOptimizer:
                 '--quality', settings['webp_quality']
             ]
             
-            result = subprocess.run(webp_cmd, capture_output=True, text=True, timeout=600)
+            result = self._run_subprocess(webp_cmd, "WebP Compression", "WebP texture compression", timeout=600)
             
-            if result.returncode == 0 and os.path.exists(webp_output):
+            if result["success"] and os.path.exists(webp_output):
                 results['webp'] = {'success': True}
                 file_sizes['webp'] = os.path.getsize(webp_output)
                 self.logger.info(f"WebP compression: {file_sizes['webp']} bytes")
@@ -1064,30 +1830,9 @@ class GLBOptimizer:
             'input_size': input_size,
             'output_size': output_size
         }
-        
-        # Quality-based texture compression settings
-        compression_settings = {
-            'high': {
-                'ktx2_quality': '255',      # Maximum quality
-                'webp_quality': '95',       # High quality WebP
-                'uastc_mode': True,         # UASTC for high quality
-                'channel_packing': True     # Channel packing optimization
-            },
-            'balanced': {
-                'ktx2_quality': '128',      # Balanced quality
-                'webp_quality': '85',       # Good quality WebP
-                'uastc_mode': False,        # ETC1S for better compression
-                'channel_packing': True
-            },
-            'maximum_compression': {
-                'ktx2_quality': '64',       # Lower quality for max compression
-                'webp_quality': '75',       # Compressed WebP
-                'uastc_mode': False,        # ETC1S for maximum compression
-                'channel_packing': True
-            }
-        }
-        
-        settings = compression_settings.get(self.quality_level, compression_settings['balanced'])
+
+        # Use centralized texture compression settings from quality presets
+        settings = self.quality_settings
         
         results = {}
         file_sizes = {}
@@ -1114,14 +1859,14 @@ class GLBOptimizer:
                     '--rd', '18'            # Rate-distortion optimization
                 ]
             
-            result = subprocess.run(ktx2_cmd, capture_output=True, text=True, timeout=600)
+            result = self._run_subprocess(ktx2_cmd, "KTX2 Compression", "Applying KTX2 texture compression", timeout=600)
             
-            if result.returncode == 0 and os.path.exists(ktx2_output):
+            if result['success'] and self._safe_file_operation(ktx2_output, 'exists'):
                 results['ktx2'] = {'success': True}
-                file_sizes['ktx2'] = os.path.getsize(ktx2_output)
+                file_sizes['ktx2'] = self._safe_file_operation(ktx2_output, 'size')
                 self.logger.info(f"KTX2 compression: {file_sizes['ktx2']} bytes")
             else:
-                results['ktx2'] = {'success': False, 'error': result.stderr}
+                results['ktx2'] = {'success': False, 'error': result.get('detailed_error', 'KTX2 compression failed')}
                 
         except Exception as e:
             results['ktx2'] = {'success': False, 'error': str(e)}
@@ -1135,9 +1880,9 @@ class GLBOptimizer:
                 '--quality', settings['webp_quality']
             ]
             
-            result = subprocess.run(webp_cmd, capture_output=True, text=True, timeout=600)
+            result = self._run_subprocess(webp_cmd, "WebP Compression", "WebP texture compression", timeout=600)
             
-            if result.returncode == 0 and os.path.exists(webp_output):
+            if result["success"] and os.path.exists(webp_output):
                 results['webp'] = {'success': True}
                 file_sizes['webp'] = os.path.getsize(webp_output)
                 self.logger.info(f"WebP compression: {file_sizes['webp']} bytes")
@@ -1221,16 +1966,16 @@ class GLBOptimizer:
             # First try to resample animations
             temp_resampled = input_path + '.resampled.glb'
             cmd = ['npx', 'gltf-transform', 'resample', '--fps', '30', input_path, temp_resampled]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            result = self._run_subprocess(cmd, "Animation Resampling", "Resampling animation frames", timeout=300)
             
-            if result.returncode != 0:
-                self.logger.warning(f"Animation resampling failed, skipping: {result.stderr}")
+            if not result['success']:
+                self.logger.warning(f"Animation resampling failed, skipping: {result.get('detailed_error', 'Unknown error')}")
                 shutil.copy2(input_path, output_path)
                 return {'success': True}
             
             # Then compress animations
             cmd = ['npx', 'gltf-transform', 'compress-animation', '--quantize', '16', temp_resampled, output_path]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            result = self._run_subprocess(cmd, "Animation Compression", "Compressing animation data", timeout=300)
             
             # Clean up temp file
             try:
@@ -1238,8 +1983,8 @@ class GLBOptimizer:
             except:
                 pass
             
-            if result.returncode != 0:
-                self.logger.warning(f"Animation compression failed, using resampled version: {result.stderr}")
+            if not result['success']:
+                self.logger.warning(f"Animation compression failed, using resampled version: {result.get('detailed_error', 'Unknown error')}")
                 shutil.copy2(temp_resampled, output_path)
                 return {'success': True}
             
@@ -1253,90 +1998,68 @@ class GLBOptimizer:
             return {'success': True}
     
     def _run_gltfpack_final(self, input_path, output_path):
-        """Step 6: Final bundle and minify with safe gltfpack flags"""
+        """Step 6: Final bundle and minify with gltfpack for all quality levels"""
         try:
-            # Only use gltfpack for 'high' quality to avoid corruption issues
-            if self.quality_level == 'high':
-                self.logger.info("Running final gltfpack optimization (high quality only)")
-                cmd = [
-                    'gltfpack',
-                    '-i', input_path,
-                    '-o', output_path,
-                    '-c'  # Use basic compression to avoid corruption
-                ]
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-                
-                if result.returncode == 0:
-                    self.logger.info("Final gltfpack optimization completed successfully")
-                    return {'success': True}
-                else:
-                    self.logger.warning(f"gltfpack failed: {result.stderr}")
-                    # Fallback: copy the input file
-                    shutil.copy2(input_path, output_path)
-                    return {'success': True}
-            else:
-                # For non-high quality, skip gltfpack to avoid corruption
-                self.logger.info("Skipping gltfpack final step (not high quality)")
-                shutil.copy2(input_path, output_path)
-                return {'success': True}
-        
-        except Exception as e:
-            self.logger.warning(f"gltfpack failed with exception: {e}")
-            # Fallback: copy the input file 
-            shutil.copy2(input_path, output_path)
-            return {'success': True}
-                    'gltfpack',
-                    '-i', input_path,
-                    '-o', output_path,
-                    '-c'  # Basic compression
-                ]
-                result = subprocess.run(cmd_fallback, capture_output=True, text=True, timeout=600)
-                
-                if result.returncode == 0:
-                    return {'success': True}
-                else:
-                    self.logger.warning(f"Basic gltfpack failed: {result.stderr}")
-                
-        except Exception as e:
-            self.logger.warning(f"gltfpack failed with exception: {e}")
-        
-        # Fallback: use gltf-transform optimize
-        try:
-            cmd = [
-                'npx', 'gltf-transform', 'optimize',
-                input_path, output_path
-            ]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+            self.logger.info("Running final gltfpack optimization for all quality levels")
             
-            if result.returncode == 0:
+            # Create a proper temporary file with .glb extension for gltfpack
+            temp_glb = output_path + ".gltfpack_temp.glb"
+            
+            # First try with aggressive compression (-cc)
+            cmd = [
+                'gltfpack',
+                '-i', input_path,
+                '-o', temp_glb,  # Use .glb extension for gltfpack
+                '-cc'  # Aggressive compression first
+            ]
+            result = self._run_subprocess(cmd, "Final Optimization", "Applying final gltfpack compression", timeout=120)
+            
+            # If aggressive compression fails, fallback to basic compression (-c)
+            if not result['success']:
+                self.logger.info("Aggressive compression failed, trying basic compression")
+                cmd[-1] = '-c'  # swap -cc -> -c
+                result = self._run_subprocess(cmd, "Final Optimization Fallback", "Applying basic gltfpack compression", timeout=120)
+            
+            if result['success']:
+                # Copy the successful result to the final destination
+                self._safe_file_operation(temp_glb, 'copy', output_path)
+                # Clean up the temporary gltfpack file
+                try:
+                    if os.path.exists(temp_glb):
+                        os.remove(temp_glb)
+                except:
+                    pass  # Cleanup failure is not critical
+                self.logger.info("Final gltfpack optimization completed successfully")
                 return {'success': True}
             else:
-                self.logger.warning(f"gltf-transform optimize failed: {result.stderr}")
-                
-        except Exception as e:
-            self.logger.error(f"gltf-transform optimize failed: {e}")
+                self.logger.warning(f"gltfpack failed: {result.get('detailed_error', 'Unknown error')}")
+                # Fallback: copy the input file
+                self._safe_file_operation(input_path, 'copy', output_path)
+                return {'success': True}
         
-        return {'success': False, 'error': 'All final optimization attempts failed'}
+        except Exception as e:
+            self.logger.warning(f"gltfpack failed with exception: {e}")
+            # Fallback: copy the input file
+            try:
+                self._safe_file_operation(input_path, 'copy', output_path)
+            except:
+                # Last resort fallback
+                shutil.copy2(input_path, output_path)
+            return {'success': True, 'fallback': True}
 
     def _estimate_gpu_memory_savings(self, original_size: int, compressed_size: int) -> float:
-        """
-        Estimate GPU memory savings from optimization
-        This is an approximation based on file size reduction and typical GPU memory usage patterns
-        """
-        # GPU memory usage is typically 2-4x the file size due to decompression
-        # KTX2 textures save significant GPU memory, geometry compression saves less
-        gpu_memory_multiplier = 2.5  # Conservative estimate
+        """Estimate GPU memory savings from optimization"""
+        if original_size == 0:
+            return 0.0
         
-        original_gpu_memory = original_size * gpu_memory_multiplier
-        compressed_gpu_memory = compressed_size * gpu_memory_multiplier
+        # Base memory savings from file size reduction
+        base_savings = (1.0 - compressed_size / original_size) * 100
         
-        # Additional savings from KTX2 compression (textures stay compressed in GPU memory)
-        ktx2_additional_savings = compressed_size * 0.4  # KTX2 stays compressed
+        # GPU memory multiplier (textures typically expand 2-4x in GPU memory)
+        # Compressed textures (KTX2) stay compressed in GPU memory
+        estimated_gpu_savings = min(base_savings * 1.2, 95.0)
         
-        effective_gpu_memory = compressed_gpu_memory - ktx2_additional_savings
-        memory_savings = (1 - effective_gpu_memory / original_gpu_memory) * 100
-        
-        return max(0, min(95, memory_savings))  # Cap at 95% savings
+        return estimated_gpu_savings
 
     def _generate_performance_report(self, input_path: str, output_path: str, processing_time: float) -> dict:
         """

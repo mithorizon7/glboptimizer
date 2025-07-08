@@ -578,6 +578,14 @@ Changelog:
   - **COMPLETE SETTINGS INTEGRATION**: Added uastc_mode and channel_packing properties to all quality presets
   - **CODE QUALITY IMPROVEMENT**: 100% reduction in texture configuration duplication with DRY principle implementation
   - **ZERO FUNCTIONAL IMPACT**: Complete configuration consolidation with preserved compression functionality and performance
+- July 08, 2025. **DEAD CODE ELIMINATION**: Removed 129 lines of unreachable duplicate code from _run_gltf_transform_textures function:
+  - **UNREACHABLE CODE REMOVAL**: Eliminated entire duplicate texture compression implementation after return statement (lines 1834-1962)
+  - **FILE SIZE REDUCTION**: Reduced optimizer.py from 2118 to 1989 lines (129 lines removed)
+  - **CLEAN FUNCTION STRUCTURE**: Single return path with no unreachable logic blocks for better maintainability
+  - **BINARY SIZE OPTIMIZATION**: Dead code no longer inflates compiled application size
+  - **ZERO FUNCTIONAL IMPACT**: All functionality preserved, syntax verified, optimization pipeline intact
+  - **DEVELOPER CLARITY**: Eliminated confusion from duplicate texture compression logic that could never execute
+  - **MAINTENANCE IMPROVEMENT**: Future changes only require updates in single active code path
 - July 08, 2025. **DUPLICATE CODE ELIMINATION VERIFICATION**: Confirmed complete removal of all legacy duplicate code blocks:
   - **SINGLE METHOD DEFINITIONS**: Verified only one definition each for _run_gltfpack_final, _run_gltf_transform_animations, and optimize methods
   - **NO QUALITY LEVEL GUARDS**: Eliminated all legacy `if self.quality_level == 'high'` conditional blocks
