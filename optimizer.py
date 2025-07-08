@@ -21,163 +21,107 @@ from config import Config, OptimizationConfig
 
 # Global standalone functions for parallel processing
 def run_gltfpack_geometry_parallel(input_path, output_path):
-    """Standalone function for parallel gltfpack geometry compression"""
+    """Standalone function for parallel gltfpack geometry compression using hardened subprocess wrapper"""
     try:
-        import subprocess
-        import os
-        from pathlib import Path
-        
-        cmd = [
-            'gltfpack',
-            '-i', input_path,
-            '-o', output_path,
-            '-cc',  # Aggressive compression
-            '-cf'   # No fallback compression
-        ]
-        
-        # Build safe environment dynamically
-        project_root = Path.cwd()
-        path_components = []
-        
-        # Add project node_modules if it exists
-        node_modules_bin = project_root / 'node_modules' / '.bin'
-        if node_modules_bin.is_dir():
-            path_components.append(str(node_modules_bin))
-        
-        # Add standard system paths
-        for path in ['/usr/local/bin', '/usr/bin', '/bin']:
-            if os.path.isdir(path):
-                path_components.append(path)
-        
-        safe_env = {
-            'PATH': ':'.join(path_components),
-            'HOME': '/tmp',
-            'LANG': 'C.UTF-8'
-        }
-        
-        result = subprocess.run(
-            cmd, 
-            capture_output=True, 
-            text=True, 
-            timeout=60,
-            env=safe_env
-        )
-        
-        # Check output using standard os operations instead of self._safe_file_operation
-        if result.returncode == 0 and os.path.exists(output_path) and os.path.getsize(output_path) > 0:
-            return {'success': True}
-        else:
-            return {'success': False, 'error': f'gltfpack failed: {result.stderr}'}
+        # Use a temporary GLBOptimizer instance for secure subprocess execution
+        with GLBOptimizer('high') as optimizer:
+            cmd = [
+                'gltfpack',
+                '-i', input_path,
+                '-o', output_path,
+                '-cc',  # Aggressive compression
+                '-cf'   # No fallback compression
+            ]
             
+            # Route through hardened subprocess wrapper with sanitized environment
+            result = optimizer._run_subprocess(
+                cmd,
+                step_name='parallel_gltfpack_geometry',
+                description='Parallel GLTFPack geometry compression',
+                timeout=optimizer.config.SUBPROCESS_TIMEOUT
+            )
+            
+            # Check output using standard os operations
+            if result['success'] and os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+                return {'success': True}
+            else:
+                return {
+                    'success': False, 
+                    'error': result.get('error', 'gltfpack failed'),
+                    'detailed_error': result.get('detailed_error', '')
+                }
+                
     except Exception as e:
         return {'success': False, 'error': str(e)}
 
 def run_draco_compression_parallel(input_path, output_path):
-    """Standalone function for parallel Draco compression"""
+    """Standalone function for parallel Draco compression using hardened subprocess wrapper"""
     try:
-        import subprocess
-        import os
-        from pathlib import Path
-        
-        cmd = [
-            'npx', 'gltf-transform', 'draco',
-            input_path, output_path,
-            '--method', 'edgebreaker',
-            '--quantize-position', '14',
-            '--quantize-normal', '10',
-            '--quantize-color', '8',
-            '--quantize-texcoord', '12'
-        ]
-        
-        # Build safe environment dynamically
-        project_root = Path.cwd()
-        path_components = []
-        
-        # Add project node_modules if it exists
-        node_modules_bin = project_root / 'node_modules' / '.bin'
-        if node_modules_bin.is_dir():
-            path_components.append(str(node_modules_bin))
-        
-        # Add standard system paths
-        for path in ['/usr/local/bin', '/usr/bin', '/bin']:
-            if os.path.isdir(path):
-                path_components.append(path)
-        
-        safe_env = {
-            'PATH': ':'.join(path_components),
-            'HOME': '/tmp',
-            'LANG': 'C.UTF-8',
-            'NODE_PATH': '/usr/local/lib/node_modules'
-        }
-        
-        result = subprocess.run(
-            cmd, 
-            capture_output=True, 
-            text=True, 
-            timeout=60,
-            env=safe_env
-        )
-        
-        # Check output using standard os operations instead of self._safe_file_operation
-        if result.returncode == 0 and os.path.exists(output_path) and os.path.getsize(output_path) > 0:
-            return {'success': True}
-        else:
-            return {'success': False, 'error': f'Draco compression failed: {result.stderr}'}
+        # Use a temporary GLBOptimizer instance for secure subprocess execution
+        with GLBOptimizer('high') as optimizer:
+            cmd = [
+                'npx', 'gltf-transform', 'draco',
+                input_path, output_path,
+                '--method', 'edgebreaker',
+                '--quantize-position', '14',
+                '--quantize-normal', '10',
+                '--quantize-color', '8',
+                '--quantize-texcoord', '12'
+            ]
             
+            # Route through hardened subprocess wrapper with sanitized environment
+            result = optimizer._run_subprocess(
+                cmd,
+                step_name='parallel_draco_compression',
+                description='Parallel Draco geometry compression',
+                timeout=optimizer.config.SUBPROCESS_TIMEOUT
+            )
+            
+            # Check output using standard os operations
+            if result['success'] and os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+                return {'success': True}
+            else:
+                return {
+                    'success': False, 
+                    'error': result.get('error', 'Draco compression failed'),
+                    'detailed_error': result.get('detailed_error', '')
+                }
+                
     except Exception as e:
         return {'success': False, 'error': str(e)}
 
 def run_gltf_transform_optimize_parallel(input_path, output_path):
-    """Standalone function for parallel gltf-transform optimize"""
+    """Standalone function for parallel gltf-transform optimize using hardened subprocess wrapper"""
     try:
-        import subprocess
-        import os
-        from pathlib import Path
-        
-        cmd = [
-            'npx', 'gltf-transform', 'optimize',
-            input_path, output_path,
-            '--compress', 'meshopt',
-            '--instance',
-            '--simplify', '0.8',
-            '--weld', '0.0001'
-        ]
-        
-        # Build safe environment dynamically
-        project_root = Path.cwd()
-        path_components = []
-        
-        # Add project node_modules if it exists
-        node_modules_bin = project_root / 'node_modules' / '.bin'
-        if node_modules_bin.is_dir():
-            path_components.append(str(node_modules_bin))
-        
-        # Add standard system paths
-        for path in ['/usr/local/bin', '/usr/bin', '/bin']:
-            if os.path.isdir(path):
-                path_components.append(path)
-        
-        safe_env = {
-            'PATH': ':'.join(path_components),
-            'HOME': '/tmp',
-            'LANG': 'C.UTF-8',
-            'NODE_PATH': '/usr/local/lib/node_modules'
-        }
-        
-        result = subprocess.run(
-            cmd, 
-            capture_output=True, 
-            text=True, 
-            timeout=60,
-            env=safe_env
-        )
-        
-        # Check output using standard os operations instead of self._safe_file_operation
-        if result.returncode == 0 and os.path.exists(output_path) and os.path.getsize(output_path) > 0:
-            return {'success': True}
-        else:
-            return {'success': False, 'error': f'gltf-transform optimize failed: {result.stderr}'}
+        # Use a temporary GLBOptimizer instance for secure subprocess execution
+        with GLBOptimizer('high') as optimizer:
+            cmd = [
+                'npx', 'gltf-transform', 'optimize',
+                input_path, output_path,
+                '--compress', 'meshopt',
+                '--instance',
+                '--simplify', '0.8',
+                '--weld', '0.0001'
+            ]
             
+            # Route through hardened subprocess wrapper with sanitized environment
+            result = optimizer._run_subprocess(
+                cmd,
+                step_name='parallel_gltf_transform_optimize',
+                description='Parallel gltf-transform optimization',
+                timeout=optimizer.config.SUBPROCESS_TIMEOUT
+            )
+            
+            # Check output using standard os operations
+            if result['success'] and os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+                return {'success': True}
+            else:
+                return {
+                    'success': False, 
+                    'error': result.get('error', 'gltf-transform optimize failed'),
+                    'detailed_error': result.get('detailed_error', '')
+                }
+                
     except Exception as e:
         return {'success': False, 'error': str(e)}
 
@@ -905,11 +849,12 @@ class GLBOptimizer:
                 }
                 
         except subprocess.TimeoutExpired:
-            error_msg = f"{step_name} timed out after 5 minutes"
+            timeout_minutes = timeout // 60
+            error_msg = f"{step_name} timed out after {timeout_minutes} minutes"
             self.logger.error(error_msg)
             return {
                 'success': False,
-                'error': f"{description} took too long and was stopped. This usually indicates a very complex model or insufficient system resources.",
+                'error': f"{description} took too long and was stopped after {timeout_minutes} minutes. This usually indicates a very complex model or insufficient system resources.",
                 'detailed_error': error_msg,
                 'step': step_name
             }
