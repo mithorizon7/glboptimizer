@@ -1231,14 +1231,15 @@ class GLBOptimizer:
                     progress_callback("Step 5: Final Optimization", 90, "Final bundling and minification...")
                 
                 best_result = step5_output
-                # Run gltfpack final optimization for all quality levels
-                result = self._run_gltfpack_final(step5_output, temp_output)
-                if result['success']:
-                    best_result = temp_output
-                else:
-                    # If final optimization fails, use step 5 result
-                    self.logger.warning("Final optimization failed, using step 5 result")
-                    best_result = step5_output
+                # Skip gltfpack final optimization to prevent buffer URI issues
+                self.logger.info("Skipping final gltfpack optimization to prevent buffer URI issues")
+                # result = self._run_gltfpack_final(step5_output, temp_output)
+                # if result['success']:
+                #     best_result = temp_output
+                # else:
+                #     # If final optimization fails, use step 5 result
+                #     self.logger.warning("Final optimization failed, using step 5 result")
+                #     best_result = step5_output
                 
                 # Ensure we have a valid result, find best fallback if needed
                 if not self._safe_file_operation(best_result, 'exists') or self._safe_file_operation(best_result, 'size') == 0:
