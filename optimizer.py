@@ -1997,8 +1997,8 @@ class GLBOptimizer:
             except:
                 pass
             
-            if result.returncode != 0:
-                self.logger.warning(f"Animation compression failed, using resampled version: {result.stderr}")
+            if not result['success']:
+                self.logger.warning(f"Animation compression failed, using resampled version: {result.get('detailed_error', 'Unknown error')}")
                 shutil.copy2(temp_resampled, output_path)
                 return {'success': True}
             
