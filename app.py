@@ -213,8 +213,8 @@ def process_file_synchronously(input_path, output_path, task_id, quality_level, 
         with get_db() as db:
             optimization_task = OptimizationTask(
                 id=task_id,
-                original_filename=os.path.basename(input_path),
-                secure_filename=os.path.basename(input_path),
+                original_filename=Path(input_path).name,
+                secure_filename=Path(input_path).name,
                 quality_level=quality_level,
                 enable_lod=enable_lod,
                 enable_simplification=enable_simplification,

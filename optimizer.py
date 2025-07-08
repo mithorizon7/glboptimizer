@@ -392,7 +392,7 @@ class GLBOptimizer:
                     # Re-validate source exists before copy
                     if not path_exists(final_validated_path):
                         raise FileNotFoundError(f"Source file does not exist: {filepath}")
-                    result = shutil.copy2(final_validated_path, dest_path)
+                    result = ensure_path(dest_path).write_bytes(ensure_path(final_validated_path).read_bytes())
                     operation_success = True
                     return result
                 elif operation == 'exists':
@@ -852,7 +852,7 @@ class GLBOptimizer:
                         # Temp path might be outside safe directories
                         ensure_path(temp_path).unlink()
                 elif ensure_path(temp_path).is_dir():
-                    shutil.rmtree(temp_path)
+                    import shutil; shutil.rmtree(temp_path)  # pathlib doesn't have rmtree equivalent
                 self._temp_files.discard(temp_path)
             except Exception as e:
                 self.logger.warning(f"Failed to clean up temp file {temp_path}: {e}")
@@ -1323,14 +1323,14 @@ class GLBOptimizer:
             elif result['success']:
                 # If the command succeeded but no output file, copy original
                 self.logger.warning("Prune succeeded but no output file, copying original")
-                shutil.copy2(input_path, output_path)
+                ensure_path(output_path).write_bytes(ensure_path(input_path).read_bytes())
                 return {'success': True}
             else:
                 return result
         except Exception as e:
             # Fallback: just copy the original file
             self.logger.warning(f"Prune failed with exception, copying original: {e}")
-            shutil.copy2(input_path, output_path)
+            ensure_path(output_path).write_bytes(ensure_path(input_path).read_bytes())
             return {'success': True}
     
     def _run_gltf_transform_weld(self, input_path, output_path):
@@ -1345,7 +1345,7 @@ class GLBOptimizer:
             
             if not result['success']:
                 self.logger.warning(f"Welding failed, continuing: {result.get('error', '')}")
-                shutil.copy2(input_path, output_path)
+                ensure_path(output_path).write_bytes(ensure_path(input_path).read_bytes())
                 return {'success': True}
             
             # Then join meshes
@@ -1354,7 +1354,7 @@ class GLBOptimizer:
             
             if not result['success']:
                 self.logger.warning(f"Joining failed, using welded version: {result.get('error', '')}")
-                shutil.copy2(temp_welded, output_path)
+                ensure_path(output_path).write_bytes(ensure_path(temp_welded).read_bytes())
             
             return {'success': True}
             
@@ -1573,7 +1573,7 @@ class GLBOptimizer:
             if progress_callback:
                 progress_callback("Step 2: Geometry Compression", 48, "Finalizing best compression result...")
             
-            shutil.copy2(best_temp_file, output_path)
+            ensure_path(output_path).write_bytes(ensure_path(best_temp_file).read_bytes())
             
             # Calculate metrics
             input_size = path_size(input_path)
@@ -1875,7 +1875,7 @@ class GLBOptimizer:
         
         if not selected_method:
             # All methods failed, copy original
-            shutil.copy2(input_path, output_path)
+            ensure_path(output_path).write_bytes(ensure_path(input_path).read_bytes())
             self._cleanup_temp_texture_files(temp_files)
             return {'success': True}
         
@@ -1907,7 +1907,7 @@ class GLBOptimizer:
             
             if not result['success']:
                 self.logger.warning(f"Animation resampling failed, skipping: {result.get('detailed_error', 'Unknown error')}")
-                shutil.copy2(input_path, output_path)
+                ensure_path(output_path).write_bytes(ensure_path(input_path).read_bytes())
                 return {'success': True}
             
             # Then compress animations
@@ -1922,7 +1922,7 @@ class GLBOptimizer:
             
             if not result['success']:
                 self.logger.warning(f"Animation compression failed, using resampled version: {result.get('detailed_error', 'Unknown error')}")
-                shutil.copy2(temp_resampled, output_path)
+                ensure_path(output_path).write_bytes(ensure_path(temp_resampled).read_bytes())
                 return {'success': True}
             
             return {'success': True}
@@ -1931,7 +1931,7 @@ class GLBOptimizer:
             return {'success': False, 'error': 'Animation optimization timed out'}
         except Exception as e:
             self.logger.warning(f"Animation optimization failed, skipping: {str(e)}")
-            shutil.copy2(input_path, output_path)
+            ensure_path(output_path).write_bytes(ensure_path(input_path).read_bytes())
             return {'success': True}
     
     def _run_gltfpack_final(self, input_path, output_path):
@@ -1981,7 +1981,7 @@ class GLBOptimizer:
                 self._safe_file_operation(input_path, 'copy', output_path)
             except:
                 # Last resort fallback
-                shutil.copy2(input_path, output_path)
+                ensure_path(output_path).write_bytes(ensure_path(input_path).read_bytes())
             return {'success': True, 'fallback': True}
 
     def _estimate_gpu_memory_savings(self, original_size: int, compressed_size: int) -> float:
