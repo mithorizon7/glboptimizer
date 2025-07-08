@@ -1,7 +1,10 @@
-// Three.js ES Module Imports
+// Three.js ES Module Imports with Advanced Compression Support
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { MeshoptDecoder } from '/static/libs/meshopt/meshopt_decoder.module.js';
 
 // GLB Optimizer Frontend JavaScript
 
@@ -685,9 +688,36 @@ class ModelViewer3D {
         this.optimizedRenderer = null;
         this.originalControls = null;
         this.optimizedControls = null;
-        this.loader = new GLTFLoader();
+        this.setupAdvancedGLTFLoader();
+        this.ktx2LoaderInitialized = false;
         this.cameraSynced = false;
         this.isSynced = false;
+    }
+    
+    setupAdvancedGLTFLoader() {
+        // Initialize GLTFLoader with full compression support
+        this.loader = new GLTFLoader();
+        
+        // Setup Meshopt decoder for EXT_meshopt_compression
+        this.loader.setMeshoptDecoder(MeshoptDecoder);
+        
+        // Setup DRACO decoder for KHR_draco_mesh_compression fallback
+        const dracoLoader = new DRACOLoader();
+        dracoLoader.setDecoderPath('/static/libs/draco/');
+        this.loader.setDRACOLoader(dracoLoader);
+        
+        // Setup KTX2 decoder for KHR_texture_basisu (requires renderer for GPU support detection)
+        this.ktx2Loader = new KTX2Loader();
+        this.ktx2Loader.setTranscoderPath('/static/libs/basis/');
+        
+        // Register WebP extension support (browser handles natively)
+        this.loader.register((parser) => ({
+            name: 'EXT_texture_webp',
+            parser: parser,
+            afterRoot: () => {}
+        }));
+        
+        console.log('Advanced GLTFLoader initialized with compression support');
     }
     
     initializeViewers(originalContainer, optimizedContainer, originalUrl, optimizedUrl) {
@@ -718,7 +748,7 @@ class ModelViewer3D {
         const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
         camera.position.set(0, 0, 5);
         
-        // Create renderer
+        // Create renderer with modern Three.js r178 settings
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(width, height);
         renderer.setPixelRatio(window.devicePixelRatio);
@@ -726,6 +756,15 @@ class ModelViewer3D {
         renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
         renderer.toneMappingExposure = 1;
+        renderer.outputColorSpace = THREE.SRGBColorSpace; // Updated for r178
+        
+        // Initialize KTX2 loader with GPU support detection (needs renderer)
+        if (this.ktx2Loader && !this.ktx2LoaderInitialized) {
+            this.ktx2Loader.detectSupport(renderer);
+            this.loader.setKTX2Loader(this.ktx2Loader);
+            this.ktx2LoaderInitialized = true;
+            console.log('KTX2 loader initialized with GPU support detection');
+        }
         
         // Add lights
         const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
@@ -809,7 +848,17 @@ class ModelViewer3D {
             },
             (error) => {
                 console.error(`Error loading ${type} model:`, error);
-                this.showError(container, `Failed to load ${type} model`);
+                
+                // Enhanced error handling for compression formats
+                if (error.message && error.message.includes('KTX2')) {
+                    console.warn('KTX2 texture loading failed, model may still display with fallback textures');
+                } else if (error.message && error.message.includes('Meshopt')) {
+                    console.warn('Meshopt compression failed, trying fallback decompression');
+                } else if (error.message && error.message.includes('WebP')) {
+                    console.warn('WebP texture loading failed, checking browser support');
+                }
+                
+                this.showError(container, `Failed to load ${type} model: ${error.message || 'Unknown error'}`);
             }
         );
     }

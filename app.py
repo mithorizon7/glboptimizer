@@ -169,20 +169,28 @@ def add_security_headers(response):
         # Control referrer information
         response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
         
+        # Set proper MIME types for WASM files
+        if request.path.endswith('.wasm'):
+            response.headers['Content-Type'] = 'application/wasm'
+            response.headers['Cross-Origin-Resource-Policy'] = 'same-origin'
+        
         # CORS headers for same-origin requests
         response.headers['Access-Control-Allow-Origin'] = '*'
         response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
         response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
         
-        # Content Security Policy (allowing required external resources)
+        # Content Security Policy (allowing required external resources and WASM)
         response.headers['Content-Security-Policy'] = (
             "default-src 'self'; "
             "script-src 'self' 'unsafe-inline' cdnjs.cloudflare.com cdn.jsdelivr.net unpkg.com; "
             "style-src 'self' 'unsafe-inline' cdnjs.cloudflare.com cdn.jsdelivr.net cdn.replit.com fonts.googleapis.com; "
             "font-src 'self' cdnjs.cloudflare.com fonts.gstatic.com; "
-            "img-src 'self' data:; "
+            "img-src 'self' data: blob:; "
             "object-src 'none'; "
-            "base-uri 'self'"
+            "base-uri 'self'; "
+            "worker-src 'self' blob:; "
+            "connect-src 'self' blob:; "
+            "child-src 'self' blob:"
         )
         
         # HTTPS enforcement (if enabled)

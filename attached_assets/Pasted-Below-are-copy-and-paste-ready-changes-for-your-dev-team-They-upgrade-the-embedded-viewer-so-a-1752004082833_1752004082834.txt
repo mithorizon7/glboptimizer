@@ -1,0 +1,127 @@
+Below are **copy-and-paste-ready changes** for your dev team.
+They upgrade the embedded viewer so *any* GLB you emit (Meshopt, Draco, KTX 2/BasisU, WebP, quantised attributes) renders with full colour and textures.
+
+---
+
+## 1 Update the import-map (index-2.html)
+
+```html
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.178.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.178.0/examples/jsm/"
+  }
+}
+</script>
+```
+
+*Why* – r 178 adds bug-fixed KTX 2 support and matches the decoders we’ll ship.&#x20;
+
+---
+
+## 2 Drop the decoders into static assets
+
+```
+/static/libs/meshopt/meshopt_decoder.module.js
+/static/libs/meshopt/meshopt_decoder.wasm
+
+/static/libs/draco/draco_wasm_wrapper.js
+/static/libs/draco/draco_wasm.wasm
+
+/static/libs/basis/basis_transcoder.js
+/static/libs/basis/basis_transcoder.wasm
+```
+
+*Why* – Meshopt handles `EXT_meshopt_compression`, Draco covers fallback files, BasisU transcodes every KTX 2 texture on the GPU.
+
+---
+
+## 3 Replace the viewer initialisation in script.js
+
+```js
+import * as THREE           from 'three';
+import { GLTFLoader }       from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader }      from 'three/addons/loaders/DRACOLoader.js';
+import { KTX2Loader }       from 'three/addons/loaders/KTX2Loader.js';
+import { MeshoptDecoder }   from '/static/libs/meshopt/meshopt_decoder.module.js';
+
+export async function showModel(target, url) {
+  /* ---------- renderer ---------- */
+  const renderer = new THREE.WebGLRenderer({ antialias: true, canvas: target });
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.physicallyCorrectLights = true;
+
+  /* ---------- camera & scene ---------- */
+  const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
+  camera.position.set(0, 1, 3);
+  const scene = new THREE.Scene();
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.2));
+
+  /* ---------- loaders ---------- */
+  const gltfLoader = new GLTFLoader();
+
+  // geometry
+  gltfLoader.setMeshoptDecoder(MeshoptDecoder);          // EXT_meshopt_compression
+  const draco = new DRACOLoader().setDecoderPath('/static/libs/draco/');
+  gltfLoader.setDRACOLoader(draco);                      // KHR_draco_mesh_compression
+
+  // textures
+  const ktx2 = new KTX2Loader()
+      .setTranscoderPath('/static/libs/basis/')
+      .detectSupport(renderer);
+  gltfLoader.setKTX2Loader(ktx2);                        // KHR_texture_basisu
+
+  // WebP extension (browser decodes natively)
+  gltfLoader.register(parser => ({
+      name: 'EXT_texture_webp', parser, afterRoot: () => {}
+  }));
+
+  /* ---------- load model ---------- */
+  const { scene: model } = await gltfLoader.loadAsync(url);
+  scene.add(model);
+
+  /* ---------- render loop ---------- */
+  renderer.setAnimationLoop(() => {
+    camera.lookAt(0, 0, 0);
+    renderer.render(scene, camera);
+  });
+}
+```
+
+*Why* – this wires every required extension into three.js and guarantees textures appear.
+
+---
+
+## 4 Serve the WASM files correctly
+
+* Configure the static server (or Nginx) to send
+  `Content-Type: application/wasm`
+  and either host them on the same origin or add
+  `Cross-Origin-Resource-Policy: same-origin`.
+
+---
+
+## 5 Hook the new viewer up in the HTML
+
+```html
+<div id="optimized-viewer" class="model-viewer"></div>
+<script type="module">
+  import { showModel } from '/static/script.js';
+  showModel(document.getElementById('optimized-viewer'), '/models/optimized.glb');
+</script>
+```
+
+Do the same for `original-viewer`.
+
+---
+
+### Summary of benefits
+
+* **Full fidelity** – Meshopt, Draco, KTX 2, WebP, quantisation all display.
+* **Tiny download** – keeps the \~10× size savings your optimiser already produces.
+* **Future-proof** – three.js r 178 and these decoders cover every glTF extension you’re likely to emit for the next few years.
+
+---
+
+**Confidence**: high on the exact changes above; moderate that your existing `script.js` doesn’t already import conflicting versions—delete old loader code if present to avoid double-binding.
