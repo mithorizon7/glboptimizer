@@ -728,17 +728,8 @@ class ModelViewer3D {
             console.error('KTX2 decoder failed:', error);
         }
         
-        // Register EXT_texture_webp extension for WebP texture support
-        try {
-            this.loader.register(parser => ({
-                name: 'EXT_texture_webp',
-                parser: parser,
-                afterRoot: () => {}
-            }));
-            console.log('✓ WebP texture extension registered');
-        } catch (error) {
-            console.warn('WebP texture extension registration failed:', error);
-        }
+        // Skip WebP extension registration to avoid sourceDef.uri issues
+        console.log('✓ WebP extension skipped to prevent URI loading issues');
         
         console.log('✓ Advanced GLTFLoader initialized with full compression support');
     }
@@ -894,8 +885,15 @@ class ModelViewer3D {
             (error) => {
                 console.error(`Error loading ${type} model:`, error);
                 
-                // Enhanced error handling for compression formats
-                if (error.message && error.message.includes('KTX2')) {
+                // Enhanced error handling for compression formats and GLB loading issues
+                if (error.message && (error.message.includes('sourceDef.uri') || 
+                    error.message.includes('undefined is not an object') ||
+                    error.message.includes('Cannot read properties of undefined'))) {
+                    console.warn('GLB texture/URI error detected - trying fallback loading approach');
+                    // Try loading without advanced texture extensions
+                    this.loadModelWithFallback(url, type, container);
+                    return;
+                } else if (error.message && error.message.includes('KTX2')) {
                     console.warn('KTX2 texture loading failed, model may still display with fallback textures');
                 } else if (error.message && error.message.includes('Meshopt')) {
                     console.warn('Meshopt compression failed, trying fallback decompression');
@@ -904,6 +902,37 @@ class ModelViewer3D {
                 }
                 
                 this.showError(container, `Failed to load ${type} model: ${error.message || 'Unknown error'}`);
+            }
+        );
+    }
+    
+    async loadModelWithFallback(url, type, container) {
+        console.log(`Attempting fallback loading for ${type} model without advanced texture extensions`);
+        
+        // Create a completely basic GLTFLoader without any advanced extensions
+        const fallbackLoader = new GLTFLoader();
+        
+        // Only add Meshopt decoder which is more stable
+        try {
+            fallbackLoader.setMeshoptDecoder(MeshoptDecoder);
+            console.log('✓ Basic Meshopt decoder added to fallback loader');
+        } catch (error) {
+            console.warn('Meshopt decoder failed for fallback loader:', error);
+        }
+        
+        fallbackLoader.load(
+            url,
+            (gltf) => {
+                this.onModelLoaded(gltf, type);
+                console.log(`${type} model loaded successfully with fallback loader`);
+            },
+            (progress) => {
+                const percent = (progress.loaded / progress.total * 100);
+                this.updateLoadingProgress(container, percent);
+            },
+            (error) => {
+                console.error(`Fallback loading also failed for ${type} model:`, error);
+                this.showError(container, `Failed to load ${type} model even with fallback: ${error.message || 'Unknown error'}`);
             }
         );
     }
