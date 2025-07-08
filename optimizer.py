@@ -179,9 +179,14 @@ class GLBOptimizer:
         return self
     
     def __exit__(self, exc_type, exc_val, exc_tb):
-        """Context manager exit - guaranteed cleanup"""
-        self.cleanup_temp_files()
-        return False
+        """Context manager exit - guaranteed cleanup without masking original exceptions"""
+        try:
+            self.cleanup_temp_files()
+        except Exception as cleanup_error:
+            # Log cleanup error but don't let it override the original exception
+            self.logger.error(f"Cleanup error during context manager exit: {cleanup_error}")
+        finally:
+            return False  # Always re-raise any original exceptions from the with block
     
     def _validate_environment(self):
         """Security: Validate environment and required tools"""

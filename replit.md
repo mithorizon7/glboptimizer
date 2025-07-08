@@ -377,6 +377,13 @@ Changelog:
   - **ZERO FUNCTIONAL IMPACT**: Complete security hardening with preserved optimization functionality and performance
   - **ENTERPRISE-GRADE RELIABILITY**: Production-ready TOCTOU protection meeting enterprise security standards
   - **COMPREHENSIVE TESTING**: Security verification with path traversal protection, directory restrictions, and concurrent access safety
+- July 08, 2025. **CRITICAL CONTEXT MANAGER EXCEPTION HANDLING FIX**: Enhanced `__exit__` method to prevent cleanup errors from masking optimization failures:
+  - **EXCEPTION PRESERVATION**: Original optimization errors are never overridden by cleanup exceptions
+  - **COMPREHENSIVE ERROR LOGGING**: Cleanup errors are logged separately without masking root causes
+  - **PRODUCTION RELIABILITY**: Enhanced debugging capability with proper error attribution and root cause visibility
+  - **ROBUST ERROR HANDLING**: try/except/finally pattern ensures original exceptions always propagate correctly
+  - **ENHANCED DEBUGGING**: Users and developers always see the real problem, not cleanup side effects
+  - **OPERATIONAL MONITORING**: Both optimization failures and cleanup issues are tracked separately for comprehensive monitoring
 - July 07, 2025. **ADVANCED SUBPROCESS SECURITY**: Implemented minimal safe environment for subprocess execution:
   - **MINIMAL PATH RESTRICTION**: Restricted PATH to /usr/local/bin:/usr/bin:/bin only
   - **ENVIRONMENT FILTERING**: Blocks dangerous variables like LD_PRELOAD that could inject malicious code
