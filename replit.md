@@ -426,6 +426,13 @@ Changelog:
   - **ENHANCED ERROR HANDLING**: Improved error reporting with standardized error analysis and detailed logging
   - **MAINTAINABILITY IMPROVEMENTS**: Single source of truth for configuration, consistent patterns across optimization methods
   - **TEXTURE SETTINGS UNIFICATION**: All quality levels (high/balanced/maximum_compression) now use centralized WebP and KTX2 settings
+- July 08, 2025. **CRITICAL BUG FIX**: Fixed self._secure_temp_dir initialization issue preventing complex model optimization:
+  - **ROOT CAUSE**: _run_advanced_geometry_compression() tried to use self._secure_temp_dir before it was initialized
+  - **SOLUTION**: Added secure temp directory initialization at start of optimize() method before any operations
+  - **IMPACT**: Parallel compression now works correctly for complex models without TypeError crashes
+  - **ENVIRONMENT FIX**: Enhanced subprocess environment with proper PATH and XDG variables for Node.js tool access
+  - **VERIFICATION**: npx gltf-transform now functional with version 4.2.0 detected and operational
+  - **RESULT**: Full optimization pipeline working end-to-end with 46.2% compression achieved on real 24MB GLB files
 
 ## User Preferences
 

@@ -904,6 +904,11 @@ class GLBOptimizer:
         temp_output = None
         
         try:
+            # Initialize secure temp directory at start of optimization if not already set
+            if self._secure_temp_dir is None:
+                self._secure_temp_dir = tempfile.mkdtemp(prefix='glb_secure_')
+                self._temp_files.add(self._secure_temp_dir)
+            
             # Security: Validate all file paths before any operations
             validated_input = self._validate_path(input_path)
             validated_output = self._validate_path(output_path)
