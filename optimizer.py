@@ -1306,32 +1306,10 @@ class GLBOptimizer:
     
     def _run_draco_compression(self, input_path, output_path):
         """Advanced Draco geometry compression for maximum compression"""
-        # Quality-based compression levels for Draco
-        compression_settings = {
-            'high': {
-                'position_bits': '12',  # High precision for positions
-                'normal_bits': '8',     # Good precision for normals
-                'color_bits': '8',      # Full color precision
-                'tex_coord_bits': '10', # High texture coordinate precision
-                'compression_level': '7' # Balanced compression
-            },
-            'balanced': {
-                'position_bits': '10',  # Reduced position precision
-                'normal_bits': '6',     # Lower normal precision
-                'color_bits': '6',      # Reduced color precision
-                'tex_coord_bits': '8',  # Lower texture precision
-                'compression_level': '8' # Higher compression
-            },
-            'maximum_compression': {
-                'position_bits': '8',   # Minimal position precision
-                'normal_bits': '4',     # Minimal normal precision
-                'color_bits': '4',      # Minimal color precision
-                'tex_coord_bits': '6',  # Minimal texture precision
-                'compression_level': '10' # Maximum compression
-            }
-        }
-        
-        settings = compression_settings.get(self.quality_level, compression_settings['balanced'])
+        # Use centralized Draco compression settings from config
+        quality_settings = self.config.get_quality_settings(self.quality_level)
+        draco_quantization = quality_settings['draco_quantization_bits']
+        compression_level = quality_settings['draco_compression_level']
         
         try:
             # Use gltf-transform with advanced Draco settings
@@ -1340,11 +1318,11 @@ class GLBOptimizer:
                 '--method', 'edgebreaker',  # Best compression method
                 '--encodeSpeed', '0',       # Favor compression over speed
                 '--decodeSpeed', '5',       # Balance decode speed
-                '--quantizePosition', settings['position_bits'],
-                '--quantizeNormal', settings['normal_bits'],
-                '--quantizeColor', settings['color_bits'],
-                '--quantizeTexcoord', settings['tex_coord_bits'],
-                '--compressionLevel', settings['compression_level'],
+                '--quantizePosition', str(draco_quantization['position']),
+                '--quantizeNormal', str(draco_quantization['normal']),
+                '--quantizeColor', str(draco_quantization['color']),
+                '--quantizeTexcoord', str(draco_quantization['tex_coord']),
+                '--compressionLevel', str(compression_level),
                 '--unifiedQuantization',    # Better compression
                 input_path, output_path
             ]
