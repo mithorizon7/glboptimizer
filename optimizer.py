@@ -1640,114 +1640,38 @@ class GLBOptimizer:
         return methods
     
     def _run_gltf_transform_textures(self, input_path, output_path):
-        """Step 4: Advanced texture compression with KTX2/BasisU and WebP fallback"""
-        import os
-        import tempfile
+        """Step 4: Texture compression DISABLED for Three.js compatibility"""
+        self.logger.info("Texture compression disabled to fix Three.js viewer blank file issue")
         
-        # Setup temp files for testing different compression methods
-        temp_dir = os.path.dirname(output_path)
-        ktx2_output = os.path.join(temp_dir, "test_ktx2.glb")
-        webp_output = os.path.join(temp_dir, "test_webp.glb")
-        
-        # Use centralized texture compression settings
-        settings = self.config.TEXTURE_COMPRESSION_SETTINGS.get(
-            self.quality_level, 
-            self.config.TEXTURE_COMPRESSION_SETTINGS['balanced']
-        )
-        results = {}
-        file_sizes = {}
-        
-        # Method 1: Advanced texture compression attempts (Primary)
         try:
-            self.logger.info("Attempting advanced texture compression...")
+            # Simply copy input to output without any texture modifications
+            self._safe_file_operation(input_path, 'copy', output_path)
             
-            # Check if KTX-Software is available with timeout protection
-            ktx_available = False
-            try:
-                test_result = self._run_subprocess(['which', 'ktx'], "Tool Check", "Checking for KTX-Software availability", timeout=5)
-                ktx_available = test_result['success']
-                if ktx_available:
-                    self.logger.info(f"KTX-Software detected at: {test_result.get('stdout', 'unknown location').strip()}")
-                else:
-                    self.logger.info("KTX-Software not found in PATH")
-            except Exception as e:
-                self.logger.info(f"KTX detection error: {e}")
-                ktx_available = False
+            original_size = self._safe_file_operation(input_path, 'size')
+            final_size = self._safe_file_operation(output_path, 'size')
             
-            if ktx_available:
-                if settings['uastc_mode']:
-                    # UASTC mode for high quality
-                    self.logger.info("Using UASTC mode for high quality compression")
-                    ktx2_cmd = [
-                        'npx', 'gltf-transform', 'uastc',
-                        input_path, ktx2_output,
-                        '--level', '1',     # Fast compression level
-                        '--rdo', '1.0',     # Minimal rate-distortion optimization
-                        '--zstd', '6'       # Fast Zstandard compression
-                    ]
-                else:
-                    # ETC1S mode for better compression ratio
-                    self.logger.info("Using ETC1S mode for balanced compression")
-                    ktx2_cmd = [
-                        'npx', 'gltf-transform', 'etc1s',
-                        input_path, ktx2_output,
-                        '--quality', settings['ktx2_quality'],
-                        '--slots', '4'      # Optimize texture slots
-                    ]
-                
-                result = self._run_subprocess(ktx2_cmd, "KTX2 Compression", "Advanced texture compression with KTX2", timeout=60)
-                
-                if result['success'] and os.path.exists(ktx2_output):
-                    results['ktx2'] = {'success': True}
-                    file_sizes['ktx2'] = os.path.getsize(ktx2_output)
-                    self.logger.info(f"KTX2 compression successful: {file_sizes['ktx2']} bytes")
-                else:
-                    results['ktx2'] = {'success': False, 'error': result.get('error', 'Compression failed')}
-                    self.logger.info(f"KTX2 compression unavailable, will use WebP")
-            else:
-                self.logger.info("KTX-Software not available, will use WebP compression")
-                results['ktx2'] = {'success': False, 'error': 'KTX-Software not installed'}
-                
+            self.logger.info(f"Texture compression skipped: {original_size} → {final_size} bytes (original textures preserved)")
+            
+            return {
+                'success': True,
+                'output_file': output_path,
+                'method': 'original_textures',
+                'compression_stats': {
+                    'method': 'no_compression',
+                    'original_size': original_size,
+                    'compressed_size': final_size,
+                    'compression_ratio': 0.0,
+                    'message': 'Texture compression skipped for Three.js compatibility'
+                }
+            }
+            
         except Exception as e:
-            results['ktx2'] = {'success': False, 'error': str(e)}
-            self.logger.info(f"KTX2 compression unavailable: {e}")
-        
-        # Method 2: WebP compression (fallback and compatibility option)
-        try:
-            self.logger.info("Testing WebP compression...")
-            webp_cmd = [
-                'npx', 'gltf-transform', 'webp',
-                input_path, webp_output,
-                '--quality', settings['webp_quality']
-            ]
-            
-            result = self._run_subprocess(webp_cmd, "WebP Compression", "WebP texture compression", timeout=600)
-            
-            if result["success"] and os.path.exists(webp_output):
-                results['webp'] = {'success': True}
-                file_sizes['webp'] = os.path.getsize(webp_output)
-                self.logger.info(f"WebP compression: {file_sizes['webp']} bytes")
-            else:
-                results['webp'] = {'success': False, 'error': result.stderr}
-                
-        except Exception as e:
-            results['webp'] = {'success': False, 'error': str(e)}
-        
-        # Select the best compression method
-        successful_methods = {method: size for method, size in file_sizes.items() 
-                            if results[method]['success']}
-        
-        if not successful_methods:
-            self.logger.warning("All texture compression methods failed, copying original")
-            shutil.copy2(input_path, output_path)
-            # Cleanup temp files
-            for temp_file in [ktx2_output, webp_output]:
-                try:
-                    if os.path.exists(temp_file):
-                        os.remove(temp_file)
-                except:
-                    pass
-            return {'success': True}
+            self.logger.error(f"Failed to preserve original textures: {e}")
+            return {
+                'success': False,
+                'error': f'Failed to copy file: {str(e)}',
+                'output_file': input_path
+            }
         
         # Prefer KTX2 for compatibility, but select smallest if significantly better
         if 'ktx2' in successful_methods and 'webp' in successful_methods:
