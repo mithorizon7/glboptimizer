@@ -1656,10 +1656,6 @@ class GLBOptimizer:
                 ktx_available = test_result['success']
                 if ktx_available:
                     self.logger.info(f"KTX-Software detected at: {test_result.get('stdout', 'unknown location').strip()}")
-                    # Only enable for high quality to avoid performance issues
-                    if self.quality_level != 'high':
-                        ktx_available = False
-                        self.logger.info("KTX2 only enabled for 'high' quality level to avoid performance issues")
                 else:
                     self.logger.info("KTX-Software not found in PATH")
             except Exception as e:
