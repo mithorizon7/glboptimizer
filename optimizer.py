@@ -927,18 +927,9 @@ class GLBOptimizer:
         try:
             self.logger.info("Attempting advanced texture compression...")
             
-            # Check if KTX-Software is available by testing ktx command
+            # Temporarily disable KTX2 due to performance issues - use WebP for reliability
             ktx_available = False
-            try:
-                test_result = subprocess.run(['which', 'ktx'], capture_output=True, text=True, timeout=10)
-                ktx_available = test_result.returncode == 0
-                if ktx_available:
-                    self.logger.info(f"KTX-Software detected at: {test_result.stdout.strip()}")
-                else:
-                    self.logger.info("KTX-Software not found in PATH")
-            except Exception as e:
-                self.logger.info(f"KTX detection error: {e}")
-                pass
+            self.logger.info("KTX2 disabled for performance - using WebP compression")
             
             if ktx_available:
                 if settings['uastc_mode']:
@@ -947,9 +938,9 @@ class GLBOptimizer:
                     ktx2_cmd = [
                         'npx', 'gltf-transform', 'uastc',
                         input_path, ktx2_output,
-                        '--level', '4',     # High compression level
-                        '--rdo', '4.0',     # Rate-distortion optimization
-                        '--zstd', '18'      # Zstandard compression
+                        '--level', '2',     # Balanced compression level
+                        '--rdo', '2.0',     # Moderate rate-distortion optimization
+                        '--zstd', '10'      # Moderate Zstandard compression
                     ]
                 else:
                     # ETC1S mode for better compression ratio
@@ -961,7 +952,7 @@ class GLBOptimizer:
                         '--slots', '4'      # Optimize texture slots
                     ]
                 
-                result = subprocess.run(ktx2_cmd, capture_output=True, text=True, timeout=600)
+                result = subprocess.run(ktx2_cmd, capture_output=True, text=True, timeout=120)
                 
                 if result.returncode == 0 and os.path.exists(ktx2_output):
                     results['ktx2'] = {'success': True}

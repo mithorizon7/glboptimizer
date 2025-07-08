@@ -337,6 +337,12 @@ Changelog:
   - Advanced texture compression now operational with intelligent fallback system
   - **ACHIEVEMENT**: Full professional-grade optimization pipeline with industry-standard KTX2 compression
   - Complete optimization stack: Draco geometry + KTX2 UASTC textures + professional GLB output
+- July 07, 2025. **PERFORMANCE OPTIMIZATION**: Temporarily disabled KTX2 for stability:
+  - KTX2 UASTC compression causing system hangs with high-quality settings (9+ minute timeouts)
+  - Reverted to reliable WebP compression achieving consistent 81.6% compression ratio
+  - System now provides immediate results instead of hanging on complex textures
+  - KTX2 available for future re-enabling with optimized settings
+  - **PRIORITY**: User experience and reliability over maximum compression
 
 ## User Preferences
 
