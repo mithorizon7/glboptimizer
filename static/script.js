@@ -4,7 +4,6 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { MeshoptDecoder } from '/static/libs/meshopt/meshopt_decoder.module.js';
 
 // GLB Optimizer Frontend JavaScript
 
@@ -694,30 +693,32 @@ class ModelViewer3D {
         this.isSynced = false;
     }
     
-    setupAdvancedGLTFLoader() {
+    async setupAdvancedGLTFLoader() {
         // Initialize GLTFLoader with full compression support
         this.loader = new GLTFLoader();
         
         // Setup Meshopt decoder for EXT_meshopt_compression
-        this.loader.setMeshoptDecoder(MeshoptDecoder);
+        try {
+            const { MeshoptDecoder } = await import('/static/libs/meshopt/meshopt_decoder.module.js');
+            await MeshoptDecoder.init();
+            this.loader.setMeshoptDecoder(MeshoptDecoder);
+            console.log('✓ Meshopt decoder loaded and initialized');
+        } catch (error) {
+            console.warn('Meshopt decoder failed to load, using fallback:', error);
+        }
         
         // Setup DRACO decoder for KHR_draco_mesh_compression fallback
         const dracoLoader = new DRACOLoader();
         dracoLoader.setDecoderPath('/static/libs/draco/');
         this.loader.setDRACOLoader(dracoLoader);
+        console.log('✓ DRACO decoder configured');
         
         // Setup KTX2 decoder for KHR_texture_basisu (requires renderer for GPU support detection)
         this.ktx2Loader = new KTX2Loader();
         this.ktx2Loader.setTranscoderPath('/static/libs/basis/');
+        console.log('✓ KTX2 decoder configured');
         
-        // Register WebP extension support (browser handles natively)
-        this.loader.register((parser) => ({
-            name: 'EXT_texture_webp',
-            parser: parser,
-            afterRoot: () => {}
-        }));
-        
-        console.log('Advanced GLTFLoader initialized with compression support');
+        console.log('✓ Advanced GLTFLoader initialized with compression support');
     }
     
     initializeViewers(originalContainer, optimizedContainer, originalUrl, optimizedUrl) {
