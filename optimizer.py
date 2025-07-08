@@ -36,7 +36,7 @@ def run_gltfpack_geometry_parallel(input_path, output_path):
         
         # Safe environment
         safe_env = {
-            'PATH': '/usr/local/bin:/usr/bin:/bin',
+            'PATH': f"{os.path.join(os.getcwd(), 'node_modules', '.bin')}:/nix/store/s62s2lf3bdqd0iiprrf3xcks35vkyhpb-npx/bin:/nix/store/lyx73qs96hfazl77arnwllwckq9dy012-nodejs-20.18.1-wrapped/bin:/usr/local/bin:/usr/bin:/bin",
             'HOME': '/tmp',
             'LANG': 'C.UTF-8'
         }
@@ -74,7 +74,7 @@ def run_draco_compression_parallel(input_path, output_path):
         ]
         
         safe_env = {
-            'PATH': '/usr/local/bin:/usr/bin:/bin',
+            'PATH': f"{os.path.join(os.getcwd(), 'node_modules', '.bin')}:/nix/store/s62s2lf3bdqd0iiprrf3xcks35vkyhpb-npx/bin:/nix/store/lyx73qs96hfazl77arnwllwckq9dy012-nodejs-20.18.1-wrapped/bin:/usr/local/bin:/usr/bin:/bin",
             'HOME': '/tmp',
             'LANG': 'C.UTF-8',
             'NODE_PATH': '/usr/local/lib/node_modules'
@@ -112,7 +112,7 @@ def run_gltf_transform_optimize_parallel(input_path, output_path):
         ]
         
         safe_env = {
-            'PATH': '/usr/local/bin:/usr/bin:/bin',
+            'PATH': f"{os.path.join(os.getcwd(), 'node_modules', '.bin')}:/nix/store/s62s2lf3bdqd0iiprrf3xcks35vkyhpb-npx/bin:/nix/store/lyx73qs96hfazl77arnwllwckq9dy012-nodejs-20.18.1-wrapped/bin:/usr/local/bin:/usr/bin:/bin",
             'HOME': '/tmp',
             'LANG': 'C.UTF-8',
             'NODE_PATH': '/usr/local/lib/node_modules'
@@ -297,7 +297,7 @@ class GLBOptimizer:
     def _get_safe_environment(self):
         """Create a minimal safe environment for subprocesses"""
         safe_env = {
-            'PATH': '/usr/local/bin:/usr/bin:/bin',
+            'PATH': f"{os.path.join(os.getcwd(), 'node_modules', '.bin')}:/nix/store/s62s2lf3bdqd0iiprrf3xcks35vkyhpb-npx/bin:/nix/store/lyx73qs96hfazl77arnwllwckq9dy012-nodejs-20.18.1-wrapped/bin:/usr/local/bin:/usr/bin:/bin",
             'HOME': os.environ.get('HOME', '/tmp'),
             'USER': os.environ.get('USER', 'nobody'),
             'LOGNAME': os.environ.get('LOGNAME', 'nobody'),
@@ -306,10 +306,20 @@ class GLBOptimizer:
             'TMPDIR': tempfile.gettempdir()
         }
         
-        # Add specific variables needed by Node/NPM tools
-        for var in ['NODE_PATH', 'NPM_CONFIG_PREFIX', 'PKG_CONFIG_PATH', 'NPM_CONFIG_CACHE']:
+        # Add essential variables for Node/NPM tools
+        essential_vars = ['NODE_PATH', 'NPM_CONFIG_PREFIX', 'PKG_CONFIG_PATH', 'NPM_CONFIG_CACHE', 
+                         'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_CACHE_HOME']
+        for var in essential_vars:
             if var in os.environ:
                 safe_env[var] = os.environ[var]
+        
+        # Set defaults for XDG variables if not present
+        if 'XDG_CONFIG_HOME' not in safe_env:
+            safe_env['XDG_CONFIG_HOME'] = os.path.join(safe_env['HOME'], '.config')
+        if 'XDG_DATA_HOME' not in safe_env:
+            safe_env['XDG_DATA_HOME'] = os.path.join(safe_env['HOME'], '.local', 'share')
+        if 'XDG_CACHE_HOME' not in safe_env:
+            safe_env['XDG_CACHE_HOME'] = os.path.join(safe_env['HOME'], '.cache')
         
         # Add Replit-specific environment variables if present
         for var in ['REPLIT_DOMAINS', 'REPLIT_DB_URL']:
