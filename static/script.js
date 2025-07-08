@@ -753,7 +753,11 @@ class ModelViewer3D {
         camera.position.set(0, 0, 5);
         
         // Create renderer with modern Three.js r178 settings
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        const renderer = new THREE.WebGLRenderer({ 
+            antialias: true,
+            alpha: false,
+            powerPreference: "high-performance"
+        });
         renderer.setSize(width, height);
         renderer.setPixelRatio(window.devicePixelRatio);
         renderer.shadowMap.enabled = true;
@@ -761,6 +765,7 @@ class ModelViewer3D {
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
         renderer.toneMappingExposure = 1;
         renderer.outputColorSpace = THREE.SRGBColorSpace; // Updated for r178
+        renderer.setClearColor(0x1a1a2e, 1.0); // Ensure background is rendered
         
         // Initialize KTX2 loader with GPU support detection (needs renderer)
         if (this.ktx2Loader && !this.ktx2LoaderInitialized) {
@@ -835,6 +840,12 @@ class ModelViewer3D {
             renderer.render(scene, camera);
         };
         animate();
+        
+        // Ensure initial render
+        renderer.render(scene, camera);
+        
+        // Ensure initial render
+        renderer.render(scene, camera);
         
         return { scene, camera, renderer, controls };
     }
@@ -935,11 +946,19 @@ class ModelViewer3D {
         camera.position.set(0, 0, distance);
         camera.lookAt(0, 0, 0);
         
-        // Update controls target
+        // Update controls target and force render
         const controls = type === 'original' ? this.originalControls : this.optimizedControls;
+        const renderer = type === 'original' ? this.originalRenderer : this.optimizedRenderer;
+        
         if (controls) {
             controls.target.set(0, 0, 0);
             controls.update();
+        }
+        
+        // Force immediate render after model load
+        if (renderer) {
+            renderer.render(scene, camera);
+            console.log(`${type} model rendered successfully`);
         }
         
         // Enable animations if present
@@ -965,7 +984,19 @@ class ModelViewer3D {
             center: center.toArray(),
             size: size.toArray(),
             maxSize: maxSize,
-            cameraDistance: distance
+            cameraDistance: distance,
+            sceneChildren: scene.children.length,
+            modelVisible: model.visible,
+            rendererInfo: renderer.info
+        });
+        
+        // Ensure model is visible
+        model.visible = true;
+        model.traverse((child) => {
+            if (child.isMesh) {
+                child.visible = true;
+                child.frustumCulled = false; // Prevent culling issues
+            }
         });
     }
     
