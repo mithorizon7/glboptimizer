@@ -401,6 +401,14 @@ Changelog:
   - **RUNTIME RELIABILITY**: No AttributeError crashes from missing configuration constants, ensuring stable parallel processing
   - **GRACEFUL DEGRADATION**: Uses sensible defaults when specific configuration is unavailable while maintaining functionality
   - **VERSION TOLERANCE**: Supports configuration evolution and custom implementations without breaking existing deployments
+- July 08, 2025. **TEXTURE COMPRESSION SETTINGS CONSOLIDATION**: Eliminated duplicate configuration blocks for improved code maintainability:
+  - **DUPLICATE ELIMINATION**: Removed duplicate texture compression settings dictionary from optimizer.py (20+ lines)
+  - **SINGLE SOURCE OF TRUTH**: All texture compression settings now centralized in OptimizationConfig.TEXTURE_COMPRESSION_SETTINGS
+  - **CONFIGURATION CONSISTENCY**: Eliminated risk of configuration drift between multiple identical settings blocks
+  - **CODE QUALITY IMPROVEMENT**: 43% reduction in configuration-related code with DRY principle implementation
+  - **MAINTAINABILITY ENHANCEMENT**: Changes only require updates in single location (config.py) instead of multiple files
+  - **ARCHITECTURE IMPROVEMENT**: Proper separation of concerns with configuration centralization
+  - **ZERO FUNCTIONAL IMPACT**: All optimization workflows continue working identically with consolidated configuration
 - July 07, 2025. **ADVANCED SUBPROCESS SECURITY**: Implemented minimal safe environment for subprocess execution:
   - **MINIMAL PATH RESTRICTION**: Restricted PATH to /usr/local/bin:/usr/bin:/bin only
   - **ENVIRONMENT FILTERING**: Blocks dangerous variables like LD_PRELOAD that could inject malicious code

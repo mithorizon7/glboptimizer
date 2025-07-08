@@ -1787,29 +1787,11 @@ class GLBOptimizer:
             'output_size': output_size
         }
         
-        # Quality-based texture compression settings
-        compression_settings = {
-            'high': {
-                'ktx2_quality': '255',      # Maximum quality
-                'webp_quality': '95',       # High quality WebP
-                'uastc_mode': True,         # UASTC for high quality
-                'channel_packing': True     # Channel packing optimization
-            },
-            'balanced': {
-                'ktx2_quality': '128',      # Balanced quality
-                'webp_quality': '85',       # Good quality WebP
-                'uastc_mode': False,        # ETC1S for better compression
-                'channel_packing': True
-            },
-            'maximum_compression': {
-                'ktx2_quality': '64',       # Lower quality for max compression
-                'webp_quality': '75',       # Compressed WebP
-                'uastc_mode': False,        # ETC1S for maximum compression
-                'channel_packing': True
-            }
-        }
-        
-        settings = compression_settings.get(self.quality_level, compression_settings['balanced'])
+        # Use centralized texture compression settings to avoid duplication
+        settings = self.config.TEXTURE_COMPRESSION_SETTINGS.get(
+            self.quality_level, 
+            self.config.TEXTURE_COMPRESSION_SETTINGS['balanced']
+        )
         
         results = {}
         file_sizes = {}
