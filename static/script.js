@@ -773,7 +773,7 @@ class ModelViewer3D {
         renderer.shadowMap.enabled = true;
         renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        renderer.toneMappingExposure = 1;
+        renderer.toneMappingExposure = 1.3; // Brighter tone mapping for better visibility
         renderer.outputColorSpace = THREE.SRGBColorSpace; // Updated for r178
         renderer.setClearColor(0x1a1a2e, 1.0); // Ensure background is rendered
         
@@ -785,26 +785,18 @@ class ModelViewer3D {
             console.log('KTX2 loader initialized with GPU support detection');
         }
         
-        // Add lights
-        // Enhanced lighting setup for better model visibility
-        const ambientLight = new THREE.AmbientLight(0x404040, 0.8);
-        scene.add(ambientLight);
-        
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
-        directionalLight.position.set(5, 5, 5);
-        directionalLight.castShadow = true;
-        directionalLight.shadow.mapSize.width = 2048;
-        directionalLight.shadow.mapSize.height = 2048;
-        scene.add(directionalLight);
-        
-        // Add fill lighting from the opposite side
-        const fillLight = new THREE.DirectionalLight(0xffffff, 0.4);
-        fillLight.position.set(-3, -2, -3);
-        scene.add(fillLight);
-        
-        const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.4);
-        directionalLight2.position.set(-5, -5, -5);
-        scene.add(directionalLight2);
+        // Enhanced lighting setup for much better model visibility
+        // Brighter fill
+        scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 2.0));
+
+        // Add a "key" light for contrast
+        const key = new THREE.DirectionalLight(0xffffff, 1.5);
+        key.position.set(5, 10, 7);
+        key.castShadow = true;
+        scene.add(key);
+
+        // Soft ambient to fill shadows
+        scene.add(new THREE.AmbientLight(0xffffff, 0.3));
         
         // Create controls
         const controls = new OrbitControls(camera, renderer.domElement);
@@ -867,6 +859,13 @@ class ModelViewer3D {
         
         // Show loading indicator
         this.showLoading(container, type);
+        
+        // For optimized models, try fallback loading first since they use advanced compression
+        if (type === 'optimized') {
+            console.log('Optimized model detected - using fallback loader for better compatibility');
+            this.loadModelWithFallback(url, type, container);
+            return;
+        }
         
         // Ensure decoders are initialized before loading compressed files
         await this.ensureDecodersInitialized(type);
