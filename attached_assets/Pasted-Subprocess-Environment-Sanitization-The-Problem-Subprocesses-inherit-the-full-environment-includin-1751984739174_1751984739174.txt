@@ -1,0 +1,61 @@
+Subprocess Environment Sanitization
+The Problem:
+Subprocesses inherit the full environment, including potentially malicious variables like LD_PRELOAD that can inject code.
+Why This Is Critical:
+An attacker controlling environment variables could execute arbitrary code when your optimizer runs external commands.
+How to Fix:
+Create a minimal, safe environment for all subprocesses:
+pythondef _get_safe_environment(self):
+    """Create a minimal safe environment for subprocesses"""
+    safe_env = {
+        'PATH': '/usr/local/bin:/usr/bin:/bin',
+        'HOME': os.environ.get('HOME', '/tmp'),
+        'USER': os.environ.get('USER', 'nobody'),
+        'LOGNAME': os.environ.get('LOGNAME', 'nobody'),
+        'LANG': 'en_US.UTF-8',
+        'LC_ALL': 'en_US.UTF-8',
+    }
+    
+    # Add specific variables needed by Node/NPM tools
+    for var in ['NODE_PATH', 'NPM_CONFIG_PREFIX', 'PKG_CONFIG_PATH']:
+        if var in os.environ:
+            safe_env[var] = os.environ[var]
+    
+    return safe_env
+
+def _run_subprocess(self, cmd: list, step_name: str, description: str) -> Dict[str, Any]:
+    try:
+        # Get safe environment
+        safe_env = self._get_safe_environment()
+        
+        # Validate all file paths in command
+        validated_cmd = []
+        for arg in cmd:
+            if arg.endswith('.glb') and os.path.sep in arg:
+                validated_path = self._validate_path(arg, allow_temp=True)
+                validated_cmd.append(validated_path)
+            else:
+                validated_cmd.append(arg)
+        
+        self.logger.info(f"Running {step_name}: {' '.join(validated_cmd)}")
+        
+        result = subprocess.run(
+            validated_cmd,
+            capture_output=True,
+            text=True,
+            timeout=self.config.SUBPROCESS_TIMEOUT,
+            cwd=os.getcwd(),
+            env=safe_env,
+            shell=False
+        )
+        
+        # Check for PATH-related failures
+        if result.returncode == 127:
+            self.logger.error(f"{step_name} failed: command not found (PATH too restrictive?)")
+            return {
+                'success': False,
+                'error': 'Required tool not found. This may be a configuration issue.',
+                'step': step_name
+            }
+        
+        # ... rest of existing error handling ...

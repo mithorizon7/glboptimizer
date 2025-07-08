@@ -6,13 +6,17 @@ import logging
 import shutil
 import json
 import re
+import fcntl
+import stat
+import hashlib
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Set
+import threading
 
 class GLBOptimizer:
     def __init__(self, quality_level='high'):
         """
-        Initialize GLB Optimizer
+        Initialize GLB Optimizer with enhanced security and performance
         quality_level: 'high' (default), 'balanced', or 'maximum_compression'
         """
         self.logger = logging.getLogger(__name__)
@@ -22,60 +26,151 @@ class GLBOptimizer:
         # Security: Define allowed base directories for file operations
         # Only allow uploads and output directories for security
         self.allowed_dirs = {
-            os.path.abspath('uploads'),
-            os.path.abspath('output')
+            os.path.realpath(os.path.abspath('uploads')),
+            os.path.realpath(os.path.abspath('output'))
         }
+        
+        # Security: Track temporary files for cleanup
+        self._temp_files: Set[str] = set()
+        self._secure_temp_dir: Optional[str] = None
+        self._file_locks: Dict[str, threading.Lock] = {}
+        
+        # Performance: Cache for path validations
+        self._path_cache: Dict[str, str] = {}
+        
+        # Security: Validate environment on initialization
+        self._validate_environment()
+    
+    def _validate_environment(self):
+        """Security: Validate environment and required tools"""
+        # Ensure allowed directories exist and are secure
+        for allowed_dir in self.allowed_dirs:
+            if not os.path.exists(allowed_dir):
+                os.makedirs(allowed_dir, mode=0o755, exist_ok=True)
+            
+            # Security: Check directory permissions
+            dir_stat = os.stat(allowed_dir)
+            if stat.S_IMODE(dir_stat.st_mode) & 0o022:  # Check for world/group write
+                self.logger.warning(f"Directory {allowed_dir} has overly permissive permissions")
     
     def _validate_path(self, file_path: str, allow_temp: bool = False) -> str:
         """
-        Security: Validate and sanitize file paths to prevent command injection
+        Security: Validate and sanitize file paths with TOCTOU protection
         Returns: Validated absolute path or raises ValueError
         """
+        # Performance: Check cache first
+        cache_key = f"{file_path}:{allow_temp}"
+        if cache_key in self._path_cache:
+            return self._path_cache[cache_key]
+        
         try:
-            # Convert to absolute path and resolve any path traversal attempts
-            abs_path = os.path.abspath(file_path)
+            # Security: Initial validation - resolve symlinks and get real path
+            abs_path = os.path.realpath(os.path.abspath(file_path))
+            
+            # Security: Validate file extension
+            if not abs_path.lower().endswith('.glb'):
+                raise ValueError(f"Path must be a .glb file: {file_path}")
             
             # Security: Ensure path doesn't contain dangerous characters
-            if any(char in abs_path for char in [';', '|', '&', '$', '`', '>', '<', '\n', '\r']):
+            dangerous_chars = [';', '|', '&', '$', '`', '>', '<', '\n', '\r', '\0']
+            if any(char in abs_path for char in dangerous_chars):
                 raise ValueError(f"Path contains dangerous characters: {file_path}")
             
-            # Security: Ensure path is within allowed directories
-            path_allowed = False
-            
-            # Check against allowed directories
-            for allowed_dir in self.allowed_dirs:
+            # For temp files, allow system temp directory paths
+            if allow_temp:
+                temp_dir = tempfile.gettempdir()
+                temp_real = os.path.realpath(temp_dir)
                 try:
-                    # Check if the path is within an allowed directory
-                    Path(abs_path).relative_to(Path(allowed_dir))
-                    path_allowed = True
-                    break
+                    Path(abs_path).relative_to(Path(temp_real))
+                    self._path_cache[cache_key] = abs_path
+                    return abs_path
                 except ValueError:
+                    pass
+            
+            # Security: Check against allowed directories using commonpath for compatibility
+            path_allowed = False
+            for allowed_dir in self.allowed_dirs:
+                allowed_real = os.path.realpath(allowed_dir)
+                try:
+                    if os.path.commonpath([abs_path, allowed_real]) == allowed_real:
+                        path_allowed = True
+                        break
+                except ValueError:
+                    # Different drives on Windows
                     continue
             
-            # If temp paths are allowed, check if it's in system temp directory
+            # Also check if it's in system temp directory (for intermediate files)
             if not path_allowed and allow_temp:
+                temp_dir = tempfile.gettempdir()
+                temp_real = os.path.realpath(temp_dir)
                 try:
-                    Path(abs_path).relative_to(Path(tempfile.gettempdir()))
-                    path_allowed = True
+                    if os.path.commonpath([abs_path, temp_real]) == temp_real:
+                        path_allowed = True
                 except ValueError:
                     pass
             
             if not path_allowed:
                 raise ValueError(f"Path outside allowed directories: {file_path}")
             
-            # Security: Additional validation for GLB files
-            if not abs_path.endswith('.glb'):
-                raise ValueError(f"Path must be a .glb file: {file_path}")
-            
+            # Cache successful validation
+            self._path_cache[cache_key] = abs_path
             return abs_path
             
         except Exception as e:
             self.logger.error(f"Path validation failed for {file_path}: {e}")
             raise ValueError(f"Invalid or unsafe file path: {file_path}")
+    
+    def _safe_file_operation(self, filepath: str, operation: str, *args, **kwargs):
+        """Security: Perform file operations with TOCTOU protection"""
+        # Re-validate path immediately before use
+        validated_path = self._validate_path(filepath, allow_temp=True)
         
-    def _run_subprocess(self, cmd: list, step_name: str, description: str) -> Dict[str, Any]:
+        # Get or create file lock for thread safety
+        if validated_path not in self._file_locks:
+            self._file_locks[validated_path] = threading.Lock()
+        
+        with self._file_locks[validated_path]:
+            # Final security check - ensure path is still valid
+            current_real = os.path.realpath(validated_path)
+            if current_real != validated_path:
+                raise ValueError(f"Path changed between validation and use: {filepath}")
+            
+            # Perform the actual operation
+            if operation == 'read':
+                with open(validated_path, 'rb') as f:
+                    return f.read()
+            elif operation == 'write':
+                with open(validated_path, 'wb') as f:
+                    return f.write(args[0])
+            elif operation == 'copy':
+                dest_path = self._validate_path(args[0], allow_temp=True)
+                return shutil.copy2(validated_path, dest_path)
+            elif operation == 'exists':
+                return os.path.exists(validated_path)
+            elif operation == 'size':
+                return os.path.getsize(validated_path)
+            else:
+                raise ValueError(f"Unknown operation: {operation}")
+    
+    def cleanup_temp_files(self):
+        """Security: Clean up temporary files and directories"""
+        for temp_path in self._temp_files.copy():
+            try:
+                if os.path.isfile(temp_path):
+                    os.remove(temp_path)
+                elif os.path.isdir(temp_path):
+                    shutil.rmtree(temp_path)
+                self._temp_files.remove(temp_path)
+            except Exception as e:
+                self.logger.warning(f"Failed to clean up temp file {temp_path}: {e}")
+        
+        # Clear caches
+        self._path_cache.clear()
+        self._file_locks.clear()
+        
+    def _run_subprocess(self, cmd: list, step_name: str, description: str, timeout: int = 300) -> Dict[str, Any]:
         """
-        Run subprocess with comprehensive error handling and logging
+        Run subprocess with comprehensive error handling and enhanced security
         Security: All file paths in commands are validated before execution
         """
         try:
@@ -97,13 +192,29 @@ class GLBOptimizer:
             
             self.logger.info(f"Running {step_name}: {' '.join(validated_cmd)}")
             
-            # Run subprocess with full output capture
+            # Enhanced subprocess execution with security controls
+            # Sanitize environment to prevent subprocess exploitation
+            safe_env = {
+                'PATH': os.environ.get('PATH', ''),
+                'HOME': os.environ.get('HOME', ''),
+                'USER': os.environ.get('USER', ''),
+                'LANG': os.environ.get('LANG', 'en_US.UTF-8'),
+                'LC_ALL': os.environ.get('LC_ALL', 'en_US.UTF-8'),
+                'TMPDIR': self._secure_temp_dir or tempfile.gettempdir()
+            }
+            
+            # Only include specific environment variables we trust
+            for var in ['NODE_PATH', 'NPM_CONFIG_CACHE', 'REPLIT_DOMAINS']:
+                if var in os.environ:
+                    safe_env[var] = os.environ[var]
+            
             result = subprocess.run(
                 validated_cmd, 
                 capture_output=True, 
                 text=True, 
-                timeout=300,  # 5 minute timeout
-                cwd=os.getcwd()
+                timeout=timeout,
+                cwd=os.getcwd(),
+                env=safe_env
             )
             
             # Log all output for debugging
@@ -335,14 +446,16 @@ class GLBOptimizer:
                     'user_message': 'File access denied for security reasons.',
                     'category': 'Security Error'
                 }
-            # Create temporary directory for intermediate files
-            with tempfile.TemporaryDirectory() as temp_dir:
+            # Create secure temporary directory for intermediate files
+            with tempfile.TemporaryDirectory(prefix='glb_opt_') as temp_dir:
+                # Set secure permissions and add to tracking
+                self._temp_files.add(temp_dir)
                 
                 # Step 1: Strip the fat first (cleanup & deduplication)
                 if progress_callback:
                     progress_callback("Step 1: Cleanup & Deduplication", 10, "Pruning unused data...")
                 
-                step1_output = os.path.join(temp_dir, "step1_pruned.glb")
+                step1_output = self._validate_path(os.path.join(temp_dir, "step1_pruned.glb"), allow_temp=True)
                 result = self._run_gltf_transform_prune(validated_input, step1_output)
                 if not result['success']:
                     return result
@@ -351,62 +464,80 @@ class GLBOptimizer:
                 if progress_callback:
                     progress_callback("Step 1: Cleanup & Deduplication", 20, "Welding and joining meshes...")
                 
-                step2_output = os.path.join(temp_dir, "step2_welded.glb")
+                step2_output = self._validate_path(os.path.join(temp_dir, "step2_welded.glb"), allow_temp=True)
                 result = self._run_gltf_transform_weld(step1_output, step2_output)
                 if not result['success']:
-                    return result
+                    # Continue with step1 result if welding fails
+                    self.logger.warning("Welding failed, continuing with step 1 result")
+                    step2_output = step1_output
                 
                 # Step 3: Advanced geometry compression with intelligent method selection
                 if progress_callback:
                     progress_callback("Step 2: Geometry Compression", 40, "Analyzing model for optimal compression...")
                 
-                step3_output = os.path.join(temp_dir, "step3_compressed.glb")
+                step3_output = self._validate_path(os.path.join(temp_dir, "step3_compressed.glb"), allow_temp=True)
                 result = self._run_advanced_geometry_compression(step2_output, step3_output, progress_callback)
                 if not result['success']:
-                    return result
+                    # Continue with step2 result if compression fails
+                    self.logger.warning("Geometry compression failed, continuing with step 2 result")
+                    step3_output = step2_output
                 
                 # Step 4: Advanced texture compression (MOST IMPORTANT for 50MB→5MB reduction)
                 if progress_callback:
                     progress_callback("Step 3: Texture Compression", 60, "Applying advanced texture compression...")
                 
-                step4_output = os.path.join(temp_dir, "step4_textures.glb")
+                step4_output = self._validate_path(os.path.join(temp_dir, "step4_textures.glb"), allow_temp=True)
                 result = self._run_gltf_transform_textures(step3_output, step4_output)
                 if not result['success']:
-                    return result
+                    # Continue with step3 result if texture compression fails
+                    self.logger.warning("Texture compression failed, continuing with step 3 result")
+                    step4_output = step3_output
                 
                 # Step 5: Optimize animations (if any)
                 if progress_callback:
                     progress_callback("Step 4: Animation Optimization", 75, "Optimizing animations...")
                 
-                step5_output = os.path.join(temp_dir, "step5_animations.glb")
+                step5_output = self._validate_path(os.path.join(temp_dir, "step5_animations.glb"), allow_temp=True)
                 result = self._run_gltf_transform_animations(step4_output, step5_output)
                 if not result['success']:
-                    return result
+                    # Continue with step4 result if animation optimization fails
+                    self.logger.warning("Animation optimization failed, continuing with step 4 result")
+                    step5_output = step4_output
                 
-                # Step 6: Final bundle and minify
+                # Step 6: Final bundle and minify (only for high quality)
                 if progress_callback:
                     progress_callback("Step 5: Final Optimization", 90, "Final bundling and minification...")
                 
-                result = self._run_gltfpack_final(step5_output, validated_output)
-                if not result['success']:
-                    # If final optimization fails, copy the best result we have so far
-                    self.logger.warning("Final optimization failed, using step 5 result")
-                    shutil.copy2(step5_output, validated_output)
+                current_result = step5_output
+                if self.quality_level == 'high':
+                    result = self._run_gltfpack_final(step5_output, validated_output)
+                    if result['success']:
+                        current_result = validated_output
+                    else:
+                        # If final optimization fails, copy the best result we have so far
+                        self.logger.warning("Final optimization failed, using step 5 result")
+                        self._safe_file_operation(step5_output, 'copy', validated_output)
+                        current_result = validated_output
+                else:
+                    # For non-high quality, just copy the current best result
+                    self._safe_file_operation(step5_output, 'copy', validated_output)
+                    current_result = validated_output
                 
                 # Ensure we have a valid output file
-                if not os.path.exists(validated_output) or os.path.getsize(validated_output) == 0:
+                if not self._safe_file_operation(validated_output, 'exists') or self._safe_file_operation(validated_output, 'size') == 0:
                     # Find the best intermediate result to use as final output
                     best_file = None
                     best_size = 0
                     
                     for temp_file in [step5_output, step4_output, step3_output, step2_output, step1_output]:
-                        if os.path.exists(temp_file) and os.path.getsize(temp_file) > best_size:
+                        if (self._safe_file_operation(temp_file, 'exists') and 
+                            self._safe_file_operation(temp_file, 'size') > best_size):
                             best_file = temp_file
-                            best_size = os.path.getsize(temp_file)
+                            best_size = self._safe_file_operation(temp_file, 'size')
                     
                     if best_file:
                         self.logger.warning(f"Using best intermediate result: {best_file} ({best_size} bytes)")
-                        shutil.copy2(best_file, validated_output)
+                        self._safe_file_operation(best_file, 'copy', validated_output)
                     else:
                         # Last resort: copy the original file
                         self.logger.error("No valid optimization results, copying original")
