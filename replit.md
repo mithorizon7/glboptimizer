@@ -578,6 +578,13 @@ Changelog:
   - **COMPLETE SETTINGS INTEGRATION**: Added uastc_mode and channel_packing properties to all quality presets
   - **CODE QUALITY IMPROVEMENT**: 100% reduction in texture configuration duplication with DRY principle implementation
   - **ZERO FUNCTIONAL IMPACT**: Complete configuration consolidation with preserved compression functionality and performance
+- July 08, 2025. **IMPORT CONSOLIDATION**: Moved all duplicate import statements to module top for improved performance and static analysis:
+  - **DUPLICATE IMPORTS ELIMINATED**: Removed inner-function imports of os, tempfile, and json that were already imported at module level
+  - **RUNTIME PERFORMANCE**: Eliminated micro-overhead from repeated imports during function execution
+  - **STATIC ANALYSIS IMPROVEMENT**: All dependencies now visible at module top for linters, IDEs, and analysis tools
+  - **CODE CLEANLINESS**: Functions now use module-level imports directly without redundant import statements
+  - **DEPENDENCY CLARITY**: True dependency edges clearly visible for better code understanding and maintenance
+  - **ZERO FUNCTIONAL IMPACT**: All functionality preserved with improved performance and maintainability
 - July 08, 2025. **DEAD CODE ELIMINATION**: Removed 129 lines of unreachable duplicate code from _run_gltf_transform_textures function:
   - **UNREACHABLE CODE REMOVAL**: Eliminated entire duplicate texture compression implementation after return statement (lines 1834-1962)
   - **FILE SIZE REDUCTION**: Reduced optimizer.py from 2118 to 1989 lines (129 lines removed)

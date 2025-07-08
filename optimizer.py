@@ -1628,7 +1628,6 @@ class GLBOptimizer:
             result = self._run_subprocess(cmd, "Model Analysis", "Inspecting GLB model structure", timeout=60)
             
             if result['success']:
-                import json
                 try:
                     analysis = json.loads(result.get('stdout', '{}'))
                     return {
@@ -1680,9 +1679,6 @@ class GLBOptimizer:
     
     def _run_gltf_transform_textures(self, input_path, output_path):
         """Step 4: Advanced texture compression with KTX2/BasisU and WebP fallback"""
-        import os
-        import tempfile
-        
         # Setup temp files for testing different compression methods
         temp_dir = os.path.dirname(output_path)
         ktx2_output = os.path.join(temp_dir, "test_ktx2.glb")
