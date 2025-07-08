@@ -224,7 +224,8 @@ class GLBOptimizer:
                 is_glb = abs_path.lower().endswith('.glb')
                 is_temp_glb = (abs_path.lower().endswith('.glb.tmp') or 
                               '.glb.tmp.' in abs_path.lower() or
-                              abs_path.lower().endswith('.tmp'))
+                              abs_path.lower().endswith('.tmp') or
+                              abs_path.lower().endswith('.gltfpack_temp.glb'))
                 if not (is_glb or is_temp_glb):
                     raise ValueError(f"Temporary path must be GLB-related: {file_path}")
             
@@ -1968,15 +1969,27 @@ class GLBOptimizer:
             # Only use gltfpack for 'high' quality to avoid corruption issues
             if self.quality_level == 'high':
                 self.logger.info("Running final gltfpack optimization (high quality only)")
+                
+                # Create a proper temporary file with .glb extension for gltfpack
+                temp_glb = output_path + ".gltfpack_temp.glb"
+                
                 cmd = [
                     'gltfpack',
                     '-i', input_path,
-                    '-o', output_path,
+                    '-o', temp_glb,  # Use .glb extension for gltfpack
                     '-c'  # Use basic compression to avoid corruption
                 ]
                 result = self._run_subprocess(cmd, "Final Optimization", "Applying final gltfpack compression", timeout=120)
                 
                 if result['success']:
+                    # Copy the successful result to the final destination
+                    self._safe_file_operation(temp_glb, 'copy', output_path)
+                    # Clean up the temporary gltfpack file
+                    try:
+                        if os.path.exists(temp_glb):
+                            os.remove(temp_glb)
+                    except:
+                        pass  # Cleanup failure is not critical
                     self.logger.info("Final gltfpack optimization completed successfully")
                     return {'success': True}
                 else:
@@ -1993,7 +2006,11 @@ class GLBOptimizer:
         except Exception as e:
             self.logger.warning(f"gltfpack failed with exception: {e}")
             # Fallback: copy the input file
-            shutil.copy2(input_path, output_path)
+            try:
+                self._safe_file_operation(input_path, 'copy', output_path)
+            except:
+                # Last resort fallback
+                shutil.copy2(input_path, output_path)
             return {'success': True, 'fallback': True}
 
     def _estimate_gpu_memory_savings(self, original_size: int, compressed_size: int) -> float:
