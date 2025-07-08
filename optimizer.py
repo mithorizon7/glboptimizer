@@ -232,10 +232,10 @@ class GLBOptimizer:
         # Ensure allowed directories exist and are secure
         for allowed_dir in self.allowed_dirs:
             if not path_exists(allowed_dir):
-                os.makedirs(allowed_dir, mode=0o755, exist_ok=True)
+                ensure_path(allowed_dir).mkdir(mode=0o755, parents=True, exist_ok=True)
             
             # Security: Check directory permissions
-            dir_stat = os.stat(allowed_dir)
+            dir_stat = ensure_path(allowed_dir).stat()
             if stat.S_IMODE(dir_stat.st_mode) & 0o022:  # Check for world/group write
                 self.logger.warning(f"Directory {allowed_dir} has overly permissive permissions")
     
@@ -407,7 +407,8 @@ class GLBOptimizer:
                     return result
                 elif operation == 'remove':
                     if path_exists(final_validated_path):
-                        result = os.remove(final_validated_path)
+                        ensure_path(final_validated_path).unlink()
+                        result = True
                     else:
                         result = True  # Already removed
                     operation_success = True
@@ -415,7 +416,8 @@ class GLBOptimizer:
                 elif operation == 'makedirs':
                     mode = kwargs.get('mode', 0o755)
                     exist_ok = kwargs.get('exist_ok', True)
-                    result = os.makedirs(final_validated_path, mode=mode, exist_ok=exist_ok)
+                    ensure_path(final_validated_path).mkdir(mode=mode, parents=True, exist_ok=exist_ok)
+                    result = True
                     operation_success = True
                     return result
                 elif operation == 'read_text':
@@ -454,7 +456,7 @@ class GLBOptimizer:
         path_components = []
         
         # 1. Add project node_modules/.bin if it exists (for local npm packages)
-        project_node_bin = path_join(os.getcwd(), 'node_modules', '.bin')
+        project_node_bin = path_join(Path.cwd(), 'node_modules', '.bin')
         if project_node_bin.is_dir():
             path_components.append(str(project_node_bin))
             self.logger.debug(f"Added project node_modules/.bin to PATH: {project_node_bin}")
@@ -792,12 +794,12 @@ class GLBOptimizer:
                 self._safe_file_operation(target_dir, 'makedirs', mode=0o755, exist_ok=True)
             except ValueError:
                 # Directory might be outside safe paths during testing
-                os.makedirs(target_dir, mode=0o755, exist_ok=True)
+                ensure_path(target_dir).mkdir(mode=0o755, parents=True, exist_ok=True)
             
             # Atomic move (POSIX) or rename (Windows)
             if os.name == 'posix':
-                # On POSIX systems, os.replace() is atomic
-                os.replace(temp_path, final_path)
+                # On POSIX systems, replace() is atomic
+                ensure_path(temp_path).replace(final_path)
             else:
                 # On Windows, need to remove target first
                 try:
@@ -806,8 +808,8 @@ class GLBOptimizer:
                 except ValueError:
                     # Path might be outside safe directories during testing
                     if path_exists(final_path):
-                        os.remove(final_path)
-                os.rename(temp_path, final_path)
+                        ensure_path(final_path).unlink()
+                ensure_path(temp_path).rename(final_path)
             
             # Remove from temp tracking since it's now the final file
             self._temp_files.discard(temp_path)
@@ -848,7 +850,7 @@ class GLBOptimizer:
                         self._safe_file_operation(temp_path, 'remove')
                     except ValueError:
                         # Temp path might be outside safe directories
-                        os.remove(temp_path)
+                        ensure_path(temp_path).unlink()
                 elif ensure_path(temp_path).is_dir():
                     shutil.rmtree(temp_path)
                 self._temp_files.discard(temp_path)
@@ -900,7 +902,7 @@ class GLBOptimizer:
                 capture_output=True, 
                 text=True, 
                 timeout=timeout,
-                cwd=os.getcwd(),
+                cwd=str(Path.cwd()),
                 env=safe_env,
                 shell=False  # Explicitly disable shell for security
             )
@@ -1131,7 +1133,7 @@ class GLBOptimizer:
                 return file_validation
             
             # Create temporary output file for atomic operation
-            temp_output = validated_output + '.tmp.' + str(os.getpid())
+            temp_output = str(ensure_path(validated_output).with_suffix(f'.tmp.{os.getpid()}'))
             self._temp_files.add(temp_output)
             
             # Additional security: Ensure paths are within expected directories
@@ -1299,7 +1301,7 @@ class GLBOptimizer:
             # Clean up temporary output file if it exists
             if temp_output and path_exists(temp_output):
                 try:
-                    os.remove(temp_output)
+                    ensure_path(temp_output).unlink()
                     self._temp_files.discard(temp_output)
                 except Exception as cleanup_error:
                     self.logger.warning(f"Failed to cleanup temp file {temp_output}: {cleanup_error}")
@@ -1597,7 +1599,7 @@ class GLBOptimizer:
             for temp_file in temp_files:
                 try:
                     if path_exists(temp_file):
-                        os.remove(temp_file)
+                        ensure_path(temp_file).unlink()
                         self._temp_files.discard(temp_file)
                 except Exception as cleanup_error:
                     self.logger.warning(f"Failed to cleanup temp file {temp_file}: {cleanup_error}")
@@ -1851,7 +1853,7 @@ class GLBOptimizer:
         for temp_file in temp_files:
             try:
                 if path_exists(temp_file):
-                    os.remove(temp_file)
+                    ensure_path(temp_file).unlink()
             except:
                 pass
 
@@ -1914,7 +1916,7 @@ class GLBOptimizer:
             
             # Clean up temp file
             try:
-                os.remove(temp_resampled)
+                ensure_path(temp_resampled).unlink()
             except:
                 pass
             
@@ -1961,7 +1963,7 @@ class GLBOptimizer:
                 # Clean up the temporary gltfpack file
                 try:
                     if path_exists(temp_glb):
-                        os.remove(temp_glb)
+                        ensure_path(temp_glb).unlink()
                 except:
                     pass  # Cleanup failure is not critical
                 self.logger.info("Final gltfpack optimization completed successfully")
