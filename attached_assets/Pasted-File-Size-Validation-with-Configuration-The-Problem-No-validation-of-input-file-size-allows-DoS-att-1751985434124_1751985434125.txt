@@ -1,0 +1,53 @@
+File Size Validation with Configuration
+The Problem:
+No validation of input file size allows DoS attacks via huge uploads or errors from empty files.
+Why This Matters:
+Large files can crash your server or cause timeouts. Empty files waste processing resources.
+How to Fix:
+Add configurable size validation:
+pythonclass OptimizationConfig:
+    """Centralized configuration"""
+    MAX_FILE_SIZE = int(os.environ.get('GLB_MAX_FILE_SIZE', 500 * 1024 * 1024))  # 500MB
+    MIN_FILE_SIZE = int(os.environ.get('GLB_MIN_FILE_SIZE', 1024))  # 1KB
+    
+    # ... other config ...
+
+def optimize(self, input_path, output_path, progress_callback=None):
+    try:
+        # Validate file exists and get size
+        if not os.path.exists(input_path):
+            return {
+                'success': False,
+                'error': 'Input file does not exist',
+                'user_message': 'The uploaded file could not be found.',
+                'category': 'File System Error'
+            }
+        
+        file_size = os.path.getsize(input_path)
+        
+        # Explicit checks for edge cases
+        if file_size <= 0:
+            return {
+                'success': False,
+                'error': 'File is empty or has invalid size',
+                'user_message': 'The uploaded file appears to be empty.',
+                'category': 'File Size Error'
+            }
+        
+        if file_size < self.config.MIN_FILE_SIZE:
+            return {
+                'success': False,
+                'error': f'File too small: {file_size} bytes',
+                'user_message': f'The file is too small (minimum {self.config.MIN_FILE_SIZE} bytes).',
+                'category': 'File Size Error'
+            }
+        
+        if file_size > self.config.MAX_FILE_SIZE:
+            return {
+                'success': False,
+                'error': f'File too large: {file_size / 1024 / 1024:.1f}MB',
+                'user_message': f'The file is too large. Maximum size is {self.config.MAX_FILE_SIZE / 1024 / 1024:.0f}MB.',
+                'category': 'File Size Error'
+            }
+        
+        # ... continue with optimization ...

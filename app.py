@@ -223,9 +223,8 @@ def process_file_synchronously(input_path, output_path, task_id, quality_level, 
             db.add(optimization_task)
             db.commit()
         
-        # Initialize optimizer
+        # Initialize optimizer with context manager for guaranteed cleanup
         from optimizer import GLBOptimizer
-        optimizer = GLBOptimizer(quality_level=quality_level)
         
         # Set up progress callback to update database
         def progress_callback(step, progress, message):
@@ -239,12 +238,13 @@ def process_file_synchronously(input_path, output_path, task_id, quality_level, 
             except Exception as e:
                 logger.warning(f"Failed to update progress: {e}")
         
-        # Run optimization
-        result = optimizer.optimize(
-            input_path, 
-            output_path,
-            progress_callback=progress_callback
-        )
+        # Run optimization with context manager
+        with GLBOptimizer(quality_level=quality_level) as optimizer:
+            result = optimizer.optimize(
+                input_path, 
+                output_path,
+                progress_callback=progress_callback
+            )
         success = result.get('success', False)
         
         processing_time = time.time() - start_time

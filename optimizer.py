@@ -9,6 +9,8 @@ import re
 import fcntl
 import stat
 import hashlib
+import atexit
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Dict, Any, Optional, Set
 import threading
@@ -34,12 +36,25 @@ class GLBOptimizer:
         self._temp_files: Set[str] = set()
         self._secure_temp_dir: Optional[str] = None
         self._file_locks: Dict[str, threading.Lock] = {}
+        self._cleanup_registered = False
         
         # Performance: Cache for path validations
         self._path_cache: Dict[str, str] = {}
         
         # Security: Validate environment on initialization
         self._validate_environment()
+    
+    def __enter__(self):
+        """Context manager entry"""
+        if not self._cleanup_registered:
+            atexit.register(self.cleanup_temp_files)
+            self._cleanup_registered = True
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit - guaranteed cleanup"""
+        self.cleanup_temp_files()
+        return False
     
     def _validate_environment(self):
         """Security: Validate environment and required tools"""
@@ -178,19 +193,23 @@ class GLBOptimizer:
 
     def cleanup_temp_files(self):
         """Security: Clean up temporary files and directories"""
-        for temp_path in self._temp_files.copy():
+        for temp_path in list(self._temp_files):
             try:
                 if os.path.isfile(temp_path):
                     os.remove(temp_path)
                 elif os.path.isdir(temp_path):
                     shutil.rmtree(temp_path)
-                self._temp_files.remove(temp_path)
+                self._temp_files.discard(temp_path)
             except Exception as e:
                 self.logger.warning(f"Failed to clean up temp file {temp_path}: {e}")
         
         # Clear caches
         self._path_cache.clear()
         self._file_locks.clear()
+    
+    def cleanup(self):
+        """Explicit cleanup method for non-context-manager usage"""
+        self.cleanup_temp_files()
         
     def _run_subprocess(self, cmd: list, step_name: str, description: str, timeout: int = 300) -> Dict[str, Any]:
         """
