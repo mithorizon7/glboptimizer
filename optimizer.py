@@ -17,7 +17,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Dict, Any, Optional, Set
 import threading
-from config import Config
+from config import Config, OptimizationConfig
 
 # Global standalone functions for parallel processing
 def run_gltfpack_geometry_parallel(input_path, output_path):
@@ -141,8 +141,16 @@ class GLBOptimizer:
         quality_level: 'high' (default), 'balanced', or 'maximum_compression'
         """
         self.logger = logging.getLogger(__name__)
+        
+        # Load centralized configuration
+        self.config = OptimizationConfig.from_env()
         self.quality_level = quality_level
+        self.quality_settings = self.config.get_quality_settings(quality_level)
         self.detailed_logs = []  # Store detailed error logs for user download
+        
+        # Log configuration summary
+        self.logger.info(f"GLBOptimizer initialized with config: {self.config.to_dict()}")
+        self.logger.info(f"Quality level '{quality_level}': {self.quality_settings['description']}")
         
         # Security: Define allowed base directories for file operations
         # Only allow uploads and output directories for security
@@ -344,19 +352,19 @@ class GLBOptimizer:
                     'category': 'File Size Error'
                 }
             
-            # Check for suspiciously small files
-            if file_size < Config.MIN_FILE_SIZE:
+            # Check for suspiciously small files using centralized config
+            if file_size < self.config.MIN_FILE_SIZE:
                 return {
                     'success': False,
                     'error': f'File too small: {file_size} bytes',
-                    'user_message': f'The file is too small (minimum {Config.MIN_FILE_SIZE} bytes required).',
+                    'user_message': f'The file is too small (minimum {self.config.MIN_FILE_SIZE} bytes required).',
                     'category': 'File Size Error'
                 }
             
-            # Check for files that are too large (DoS protection)
-            if file_size > Config.MAX_FILE_SIZE:
+            # Check for files that are too large (DoS protection) using centralized config
+            if file_size > self.config.MAX_FILE_SIZE:
                 size_mb = file_size / (1024 * 1024)
-                max_size_mb = Config.MAX_FILE_SIZE / (1024 * 1024)
+                max_size_mb = self.config.MAX_FILE_SIZE / (1024 * 1024)
                 return {
                     'success': False,
                     'error': f'File too large: {size_mb:.1f}MB',
@@ -650,11 +658,15 @@ class GLBOptimizer:
         """Explicit cleanup method for non-context-manager usage"""
         self.cleanup_temp_files()
         
-    def _run_subprocess(self, cmd: list, step_name: str, description: str, timeout: int = 300) -> Dict[str, Any]:
+    def _run_subprocess(self, cmd: list, step_name: str, description: str, timeout: int = None) -> Dict[str, Any]:
         """
         Run subprocess with comprehensive error handling and enhanced security
         Security: All file paths in commands are validated before execution
         """
+        # Use centralized configuration for timeout if not specified
+        if timeout is None:
+            timeout = self.config.SUBPROCESS_TIMEOUT
+            
         try:
             # Security: Validate all file paths in the command
             validated_cmd = []

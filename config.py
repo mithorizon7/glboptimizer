@@ -4,7 +4,180 @@ Loads settings from environment variables with sensible defaults
 """
 
 import os
+import json
+from typing import Dict, Any
 from pathlib import Path
+
+class OptimizationConfig:
+    """Centralized optimization configuration with environment variable support"""
+    
+    def __init__(self):
+        """Initialize configuration with environment variable support"""
+        # File limits
+        self.MAX_FILE_SIZE = int(os.environ.get('GLB_MAX_FILE_SIZE', str(500 * 1024 * 1024)))  # 500MB default
+        self.MIN_FILE_SIZE = int(os.environ.get('GLB_MIN_FILE_SIZE', '1024'))  # 1KB minimum for valid GLB
+        self.SUBPROCESS_TIMEOUT = int(os.environ.get('GLB_SUBPROCESS_TIMEOUT', '300'))  # 5 minutes
+        self.PARALLEL_TIMEOUT = int(os.environ.get('GLB_PARALLEL_TIMEOUT', '120'))  # 2 minutes
+    
+        # Quality presets with comprehensive settings
+        self.QUALITY_PRESETS = {
+            'high': {
+            'description': 'Prioritizes visual quality with good compression',
+            'simplify_ratio': 0.8,
+            'texture_quality': 95,
+            'compression_level': 7,
+            'ktx2_quality': '255',
+            'ktx2_rdo_lambda': '1.0',
+            'ktx2_rdo_threshold': '1.0',
+            'webp_quality': '95',
+            'webp_lossless': False,
+            'draco_compression_level': '7',
+            'draco_quantization_bits': {
+                'position': 12,
+                'normal': 8,
+                'color': 8,
+                'tex_coord': 10
+            },
+            'gltfpack_level': 'medium',
+            'enable_ktx2': True,
+            'enable_draco': True,
+            'enable_meshopt': True
+            },
+            'balanced': {
+            'description': 'Good balance between quality and file size',
+            'simplify_ratio': 0.6,
+            'texture_quality': 85,
+            'compression_level': 8,
+            'ktx2_quality': '128',
+            'ktx2_rdo_lambda': '2.0',
+            'ktx2_rdo_threshold': '1.25',
+            'webp_quality': '85',
+            'webp_lossless': False,
+            'draco_compression_level': '8',
+            'draco_quantization_bits': {
+                'position': 10,
+                'normal': 6,
+                'color': 6,
+                'tex_coord': 8
+            },
+            'gltfpack_level': 'medium',
+            'enable_ktx2': False,  # Disabled for stability
+            'enable_draco': True,
+            'enable_meshopt': True
+            },
+            'maximum_compression': {
+            'description': 'Maximum compression with acceptable quality loss',
+            'simplify_ratio': 0.4,
+            'texture_quality': 75,
+            'compression_level': 10,
+            'ktx2_quality': '64',
+            'ktx2_rdo_lambda': '4.0',
+            'ktx2_rdo_threshold': '2.0',
+            'webp_quality': '75',
+            'webp_lossless': False,
+            'draco_compression_level': '10',
+            'draco_quantization_bits': {
+                'position': 8,
+                'normal': 4,
+                'color': 4,
+                'tex_coord': 6
+            },
+            'gltfpack_level': 'aggressive',
+            'enable_ktx2': False,  # Disabled for stability
+            'enable_draco': True,
+            'enable_meshopt': True
+            }
+        }
+    
+    @classmethod
+    def from_env(cls) -> 'OptimizationConfig':
+        """Load configuration from environment variables and optional config file"""
+        config = cls()
+        
+        # Check for JSON config file override
+        config_file = os.environ.get('GLB_CONFIG_FILE')
+        if config_file and os.path.exists(config_file):
+            try:
+                with open(config_file, 'r') as f:
+                    overrides = json.load(f)
+                    
+                # Override quality presets if provided
+                if 'quality_presets' in overrides:
+                    config.QUALITY_PRESETS.update(overrides['quality_presets'])
+                
+                # Override other settings
+                for key, value in overrides.items():
+                    if key != 'quality_presets' and hasattr(config, key.upper()):
+                        setattr(config, key.upper(), value)
+                        
+            except (json.JSONDecodeError, FileNotFoundError) as e:
+                print(f"Warning: Could not load config file {config_file}: {e}")
+        
+        return config
+    
+    @classmethod
+    def get_quality_settings(cls, quality_level: str) -> Dict[str, Any]:
+        """Get comprehensive settings for specified quality level"""
+        config = cls()
+        if quality_level not in config.QUALITY_PRESETS:
+            print(f"Warning: Unknown quality level '{quality_level}', using 'balanced'")
+            quality_level = 'balanced'
+        
+        return config.QUALITY_PRESETS[quality_level].copy()
+    
+    @classmethod
+    def get_available_quality_levels(cls) -> Dict[str, str]:
+        """Get available quality levels with descriptions"""
+        config = cls()
+        return {
+            level: settings['description'] 
+            for level, settings in config.QUALITY_PRESETS.items()
+        }
+    
+    @classmethod
+    def validate_settings(cls) -> Dict[str, Any]:
+        """Validate configuration settings and return any issues"""
+        # Create a temporary instance to get current values
+        config = cls() if not hasattr(cls, '_temp_instance') else cls._temp_instance
+        issues = []
+        
+        # Validate file size limits
+        if config.MAX_FILE_SIZE <= config.MIN_FILE_SIZE:
+            issues.append("MAX_FILE_SIZE must be greater than MIN_FILE_SIZE")
+        
+        if config.MIN_FILE_SIZE < 12:  # GLB header minimum
+            issues.append("MIN_FILE_SIZE should be at least 12 bytes for valid GLB")
+        
+        # Validate timeouts
+        if config.SUBPROCESS_TIMEOUT <= 0:
+            issues.append("SUBPROCESS_TIMEOUT must be positive")
+        
+        if config.PARALLEL_TIMEOUT <= 0:
+            issues.append("PARALLEL_TIMEOUT must be positive")
+        
+        # Validate quality presets
+        required_keys = ['simplify_ratio', 'texture_quality', 'compression_level']
+        for level, settings in config.QUALITY_PRESETS.items():
+            for key in required_keys:
+                if key not in settings:
+                    issues.append(f"Quality level '{level}' missing required key '{key}'")
+        
+        return {
+            'valid': len(issues) == 0,
+            'issues': issues,
+            'summary': f"Configuration validation: {len(issues)} issues found"
+        }
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Export configuration for logging (safe for logs)"""
+        return {
+            'max_file_size_mb': self.MAX_FILE_SIZE // (1024 * 1024),
+            'min_file_size_bytes': self.MIN_FILE_SIZE,
+            'subprocess_timeout': self.SUBPROCESS_TIMEOUT,
+            'parallel_timeout': self.PARALLEL_TIMEOUT,
+            'quality_levels': list(self.QUALITY_PRESETS.keys()),
+            'quality_descriptions': self.get_available_quality_levels()
+        }
 
 class Config:
     """Base configuration class with environment variable support"""
