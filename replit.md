@@ -578,6 +578,14 @@ Changelog:
   - **COMPLETE SETTINGS INTEGRATION**: Added uastc_mode and channel_packing properties to all quality presets
   - **CODE QUALITY IMPROVEMENT**: 100% reduction in texture configuration duplication with DRY principle implementation
   - **ZERO FUNCTIONAL IMPACT**: Complete configuration consolidation with preserved compression functionality and performance
+- July 08, 2025. **GLB VALIDATOR UNIFICATION**: Unified two separate GLB validators into single parameterized function:
+  - **LOGIC DUPLICATION ELIMINATION**: Combined _validate_glb_format and _validate_glb_file into unified validate_glb(mode="header"|"full")
+  - **SINGLE SOURCE OF TRUTH**: One validation function handles both input and output validation with consistent logic
+  - **CONSISTENT ERROR HANDLING**: Unified error messages and categorization prevents divergent edge-case handling
+  - **FLEXIBLE VALIDATION MODES**: Header-only validation for input files, comprehensive validation for output files
+  - **BACKWARD COMPATIBILITY**: Legacy methods preserved as thin wrappers for existing code
+  - **MAINTAINABILITY IMPROVEMENT**: Bug fixes and enhancements only need to be applied once
+  - **ZERO FUNCTIONAL IMPACT**: Complete unification with preserved validation functionality and reliability
 - July 08, 2025. **FUNCTION REFACTORING**: Broke down large monolithic _run_gltf_transform_textures function into focused, testable helper functions:
   - **MODULAR ARCHITECTURE**: Split 149-line function into 5 focused functions with single responsibilities
   - **HELPER FUNCTIONS CREATED**: _compress_with_ktx2 (56 lines), _compress_with_webp (23 lines), _select_best_texture_result (29 lines), _cleanup_temp_texture_files (9 lines)

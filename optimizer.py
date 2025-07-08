@@ -537,189 +537,186 @@ class GLBOptimizer:
                 'category': 'Validation Error'
             }
     
-    def _validate_glb_format(self, file_path: str) -> Dict[str, Any]:
+    def validate_glb(self, file_path: str, mode: str = "header") -> Dict[str, Any]:
         """
-        Validate GLB file format to prevent processing invalid files
-        """
-        try:
-            # Check GLB magic header (first 4 bytes should be "glTF")
-            file_data = self._safe_file_operation(file_path, 'read')
-            header = file_data[:12]  # Read GLB header
-                
-            # Check minimum header size
-            if len(header) < 12:
-                return {
-                    'success': False,
-                    'error': 'Invalid GLB file: header too short',
-                    'user_message': 'This does not appear to be a valid GLB file.',
-                    'category': 'Format Error'
-                }
-            
-            # Check magic number (bytes 0-3 should be "glTF")
-            magic = header[0:4]
-            if magic != b'glTF':
-                return {
-                    'success': False,
-                    'error': 'Invalid GLB file: wrong magic number',
-                    'user_message': 'This file is not a valid GLB format.',
-                    'category': 'Format Error'
-                }
-            
-            # Check version (bytes 4-7 should be version 2)
-            version = int.from_bytes(header[4:8], byteorder='little')
-            if version != 2:
-                return {
-                    'success': False,
-                    'error': f'Unsupported GLB version: {version}',
-                    'user_message': f'GLB version {version} is not supported. Please use GLB version 2.',
-                    'category': 'Format Error'
-                }
-            
-            # Check declared file length
-            declared_length = int.from_bytes(header[8:12], byteorder='little')
-            actual_length = self._safe_file_operation(file_path, 'size')
-            
-            if declared_length != actual_length:
-                self.logger.warning(f"GLB length mismatch: declared={declared_length}, actual={actual_length}")
-                # Don't fail on length mismatch as some files have padding
-            
-            self.logger.info(f"GLB format validation passed: version {version}, length {declared_length}")
-            return {'success': True}
-                
-        except Exception as e:
-            return {
-                'success': False,
-                'error': f'GLB format validation error: {str(e)}',
-                'user_message': 'Unable to validate the GLB file format.',
-                'category': 'Format Error'
-            }
-    
-    def _validate_glb_file(self, filepath: str) -> Dict[str, Any]:
-        """
-        Comprehensive GLB file structure validation
-        Validates magic number, version, file length, and basic structure integrity
+        Unified GLB file validation supporting different validation levels
+        
+        Args:
+            file_path: Path to GLB file to validate
+            mode: Validation mode - "header" for basic format validation, "full" for comprehensive validation
+                 
+        Returns:
+            Dictionary with validation results and metadata
         """
         try:
-            if not self._safe_file_operation(filepath, 'exists'):
-                return {
-                    'success': False,
-                    'error': 'File does not exist',
-                    'user_message': 'The output file was not created.',
-                    'category': 'File System Error'
-                }
+            # Mode-specific preliminary checks
+            if mode == "full":
+                # For output validation, check file existence first
+                if not self._safe_file_operation(file_path, 'exists'):
+                    return {
+                        'success': False,
+                        'error': 'File does not exist',
+                        'user_message': 'The output file was not created.',
+                        'category': 'File System Error'
+                    }
+                
+                file_size = self._safe_file_operation(file_path, 'size')
+                if file_size == 0:
+                    return {
+                        'success': False,
+                        'error': 'File is empty',
+                        'user_message': 'The optimization produced an empty file.',
+                        'category': 'Output Error'
+                    }
+            else:
+                # For input validation, get file size for later use
+                file_size = self._safe_file_operation(file_path, 'size')
             
-            file_size = self._safe_file_operation(filepath, 'size')
-            if file_size == 0:
-                return {
-                    'success': False,
-                    'error': 'File is empty',
-                    'user_message': 'The optimization produced an empty file.',
-                    'category': 'Output Error'
-                }
-            
+            # Common validation: minimum header size
             if file_size < 12:
+                error_context = "The optimization produced a corrupted file." if mode == "full" else "This does not appear to be a valid GLB file."
+                category = "Output Error" if mode == "full" else "Format Error"
                 return {
                     'success': False,
                     'error': 'File too small for GLB header',
-                    'user_message': 'The optimization produced a corrupted file.',
-                    'category': 'Output Error'
+                    'user_message': error_context,
+                    'category': category
                 }
             
-            file_data = self._safe_file_operation(filepath, 'read')
-            # Read GLB header (12 bytes)
+            # Read and validate GLB header
+            file_data = self._safe_file_operation(file_path, 'read')
             header_data = file_data[:12]
+            
             if len(header_data) < 12:
+                error_context = "The optimization produced a corrupted file." if mode == "full" else "This does not appear to be a valid GLB file."
+                category = "Output Error" if mode == "full" else "Format Error"
                 return {
                     'success': False,
                     'error': 'Cannot read GLB header',
-                    'user_message': 'The optimization produced a corrupted file.',
-                    'category': 'Output Error'
+                    'user_message': error_context,
+                    'category': category
                 }
             
-            # Check magic number (bytes 0-3)
+            # Validate magic number (bytes 0-3)
             magic = header_data[0:4]
             if magic != b'glTF':
+                if mode == "full":
+                    error_msg = 'The optimization produced an invalid GLB file.'
+                    category = 'Output Error'
+                else:
+                    error_msg = 'This file is not a valid GLB format.'
+                    category = 'Format Error'
                 return {
                     'success': False,
                     'error': f'Invalid GLB magic number: {magic}',
-                    'user_message': 'The optimization produced an invalid GLB file.',
-                    'category': 'Output Error'
+                    'user_message': error_msg,
+                    'category': category
                 }
             
-            # Check version (bytes 4-7)
+            # Validate version (bytes 4-7) - use struct.unpack for consistency
             version = struct.unpack('<I', header_data[4:8])[0]
             if version != 2:
+                if mode == "full":
+                    error_msg = f'The optimization produced GLB version {version}, but only version 2 is supported.'
+                    category = 'Output Error'
+                else:
+                    error_msg = f'GLB version {version} is not supported. Please use GLB version 2.'
+                    category = 'Format Error'
                 return {
                     'success': False,
                     'error': f'Unsupported GLB version: {version}',
-                    'user_message': f'The optimization produced GLB version {version}, but only version 2 is supported.',
-                    'category': 'Output Error'
+                    'user_message': error_msg,
+                    'category': category
                 }
             
-            # Check file length consistency (bytes 8-11)
+            # Validate file length consistency (bytes 8-11)
             stated_length = struct.unpack('<I', header_data[8:12])[0]
-            actual_length = file_size
             
-            if stated_length != actual_length:
-                self.logger.warning(f"GLB length mismatch: header says {stated_length}, file is {actual_length}")
-                # Don't fail on length mismatch, just log warning
+            if stated_length != file_size:
+                self.logger.warning(f"GLB length mismatch: header says {stated_length}, file is {file_size}")
+                # Don't fail on length mismatch as some files have padding
             
-            # Additional validation: check if file has at least one chunk
-            if file_size < 20:  # 12 bytes header + 8 bytes minimum chunk header
+            # Mode-specific advanced validation
+            if mode == "full":
+                # Additional validation for output files: check chunk structure
+                if file_size < 20:  # 12 bytes header + 8 bytes minimum chunk header
+                    return {
+                        'success': False,
+                        'error': 'GLB file has no chunks',
+                        'user_message': 'The optimization produced an incomplete GLB file.',
+                        'category': 'Output Error'
+                    }
+                
+                # Validate first chunk header
+                chunk_header = file_data[12:20]
+                if len(chunk_header) < 8:
+                    return {
+                        'success': False,
+                        'error': 'Cannot read first chunk header',
+                        'user_message': 'The optimization produced a corrupted GLB file.',
+                        'category': 'Output Error'
+                    }
+                
+                chunk_length = struct.unpack('<I', chunk_header[0:4])[0]
+                chunk_type = chunk_header[4:8]
+                
+                # First chunk should be JSON
+                if chunk_type != b'JSON':
+                    return {
+                        'success': False,
+                        'error': f'First chunk is not JSON: {chunk_type}',
+                        'user_message': 'The optimization produced an invalid GLB file structure.',
+                        'category': 'Output Error'
+                    }
+                
+                # Basic sanity check on chunk length
+                if chunk_length == 0 or chunk_length > file_size:
+                    return {
+                        'success': False,
+                        'error': f'Invalid chunk length: {chunk_length}',
+                        'user_message': 'The optimization produced a corrupted GLB file.',
+                        'category': 'Output Error'
+                    }
+                
+                self.logger.info(f"GLB validation passed: version {version}, length {stated_length}, first chunk length {chunk_length}")
                 return {
-                    'success': False,
-                    'error': 'GLB file has no chunks',
-                    'user_message': 'The optimization produced an incomplete GLB file.',
-                    'category': 'Output Error'
+                    'success': True,
+                    'version': version,
+                    'file_size': file_size,
+                    'chunk_length': chunk_length
                 }
-            
-            # Validate first chunk header
-            chunk_header = file_data[12:20]
-            if len(chunk_header) < 8:
+            else:
+                # Header-only validation successful
+                self.logger.info(f"GLB format validation passed: version {version}, length {stated_length}")
                 return {
-                    'success': False,
-                    'error': 'Cannot read first chunk header',
-                    'user_message': 'The optimization produced a corrupted GLB file.',
-                    'category': 'Output Error'
+                    'success': True,
+                    'version': version,
+                    'file_size': file_size
                 }
-            
-            chunk_length = struct.unpack('<I', chunk_header[0:4])[0]
-            chunk_type = chunk_header[4:8]
-            
-            # First chunk should be JSON
-            if chunk_type != b'JSON':
-                return {
-                    'success': False,
-                    'error': f'First chunk is not JSON: {chunk_type}',
-                    'user_message': 'The optimization produced an invalid GLB file structure.',
-                    'category': 'Output Error'
-                }
-            
-            # Basic sanity check on chunk length
-            if chunk_length == 0 or chunk_length > file_size:
-                return {
-                    'success': False,
-                    'error': f'Invalid chunk length: {chunk_length}',
-                    'user_message': 'The optimization produced a corrupted GLB file.',
-                    'category': 'Output Error'
-                }
-            
-            self.logger.info(f"GLB validation passed: version {version}, length {stated_length}, first chunk length {chunk_length}")
-            return {
-                'success': True,
-                'version': version,
-                'file_size': actual_length,
-                'chunk_length': chunk_length
-            }
                 
         except Exception as e:
+            if mode == "full":
+                error_msg = 'Unable to validate the optimization output.'
+                category = 'Output Error'
+            else:
+                error_msg = 'Unable to validate the GLB file format.'
+                category = 'Format Error'
+                
             self.logger.error(f"GLB validation failed: {str(e)}")
             return {
                 'success': False,
                 'error': f'GLB validation error: {str(e)}',
-                'user_message': 'Unable to validate the optimization output.',
-                'category': 'Validation Error'
+                'user_message': error_msg,
+                'category': category
             }
+
+    def _validate_glb_format(self, file_path: str) -> Dict[str, Any]:
+        """Legacy wrapper for header-mode validation - use validate_glb() instead"""
+        return self.validate_glb(file_path, mode="header")
+    
+    def _validate_glb_file(self, filepath: str) -> Dict[str, Any]:
+        """Legacy wrapper for full-mode validation - use validate_glb() instead"""
+        return self.validate_glb(filepath, mode="full")
     
     def _atomic_write(self, temp_path: str, final_path: str) -> Dict[str, Any]:
         """
