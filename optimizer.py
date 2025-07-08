@@ -310,48 +310,86 @@ class GLBOptimizer:
             # This is the key enhancement - re-realpath and re-check before each operation
             final_validated_path = self._immediate_path_validation(validated_path, allow_temp=True)
             
-            # Perform the actual operation with final path validation
-            if operation == 'read':
-                # Final existence check before opening
-                if not os.path.exists(final_validated_path):
-                    raise FileNotFoundError(f"File does not exist: {filepath}")
-                with open(final_validated_path, 'rb') as f:
-                    return f.read()
-            elif operation == 'write':
-                with open(final_validated_path, 'wb') as f:
-                    return f.write(args[0])
-            elif operation == 'copy':
-                # Re-validate destination path immediately before copy
-                dest_path = self._immediate_path_validation(args[0], allow_temp=True)
-                # Re-validate source exists before copy
-                if not os.path.exists(final_validated_path):
-                    raise FileNotFoundError(f"Source file does not exist: {filepath}")
-                return shutil.copy2(final_validated_path, dest_path)
-            elif operation == 'exists':
-                return os.path.exists(final_validated_path)
-            elif operation == 'size':
-                if not os.path.exists(final_validated_path):
-                    raise FileNotFoundError(f"File does not exist: {filepath}")
-                return os.path.getsize(final_validated_path)
-            elif operation == 'remove':
-                if os.path.exists(final_validated_path):
-                    return os.remove(final_validated_path)
-                return True  # Already removed
-            elif operation == 'makedirs':
-                mode = kwargs.get('mode', 0o755)
-                exist_ok = kwargs.get('exist_ok', True)
-                return os.makedirs(final_validated_path, mode=mode, exist_ok=exist_ok)
-            elif operation == 'read_text':
-                # Final existence check before opening
-                if not os.path.exists(final_validated_path):
-                    raise FileNotFoundError(f"File does not exist: {filepath}")
-                with open(final_validated_path, 'r', encoding='utf-8') as f:
-                    return f.read()
-            elif operation == 'write_text':
-                with open(final_validated_path, 'w', encoding='utf-8') as f:
-                    return f.write(args[0])
-            else:
-                raise ValueError(f"Unknown operation: {operation}")
+            # Structured logging for diagnostics and security monitoring
+            operation_start_time = time.time()
+            operation_success = False
+            
+            try:
+                # Perform the actual operation with final path validation
+                if operation == 'read':
+                    # Final existence check before opening
+                    if not os.path.exists(final_validated_path):
+                        raise FileNotFoundError(f"File does not exist: {filepath}")
+                    with open(final_validated_path, 'rb') as f:
+                        result = f.read()
+                        operation_success = True
+                        return result
+                elif operation == 'write':
+                    with open(final_validated_path, 'wb') as f:
+                        result = f.write(args[0])
+                        operation_success = True
+                        return result
+                elif operation == 'copy':
+                    # Re-validate destination path immediately before copy
+                    dest_path = self._immediate_path_validation(args[0], allow_temp=True)
+                    # Re-validate source exists before copy
+                    if not os.path.exists(final_validated_path):
+                        raise FileNotFoundError(f"Source file does not exist: {filepath}")
+                    result = shutil.copy2(final_validated_path, dest_path)
+                    operation_success = True
+                    return result
+                elif operation == 'exists':
+                    result = os.path.exists(final_validated_path)
+                    operation_success = True
+                    return result
+                elif operation == 'size':
+                    if not os.path.exists(final_validated_path):
+                        raise FileNotFoundError(f"File does not exist: {filepath}")
+                    result = os.path.getsize(final_validated_path)
+                    operation_success = True
+                    return result
+                elif operation == 'remove':
+                    if os.path.exists(final_validated_path):
+                        result = os.remove(final_validated_path)
+                    else:
+                        result = True  # Already removed
+                    operation_success = True
+                    return result
+                elif operation == 'makedirs':
+                    mode = kwargs.get('mode', 0o755)
+                    exist_ok = kwargs.get('exist_ok', True)
+                    result = os.makedirs(final_validated_path, mode=mode, exist_ok=exist_ok)
+                    operation_success = True
+                    return result
+                elif operation == 'read_text':
+                    # Final existence check before opening
+                    if not os.path.exists(final_validated_path):
+                        raise FileNotFoundError(f"File does not exist: {filepath}")
+                    with open(final_validated_path, 'r', encoding='utf-8') as f:
+                        result = f.read()
+                        operation_success = True
+                        return result
+                elif operation == 'write_text':
+                    with open(final_validated_path, 'w', encoding='utf-8') as f:
+                        result = f.write(args[0])
+                        operation_success = True
+                        return result
+                else:
+                    raise ValueError(f"Unknown operation: {operation}")
+                    
+            except Exception as e:
+                operation_success = False
+                raise
+            finally:
+                # Structured logging for diagnostics and security monitoring
+                operation_duration = time.time() - operation_start_time
+                self.logger.info(
+                    f"FILE_OPERATION source={os.path.basename(filepath)} "
+                    f"action={operation} "
+                    f"path={final_validated_path} "
+                    f"success={operation_success} "
+                    f"duration={operation_duration:.3f}s"
+                )
     
     def _get_safe_environment(self):
         """Create a minimal safe environment for subprocesses with dynamic PATH construction"""
@@ -998,6 +1036,20 @@ class GLBOptimizer:
             log_content.append("")
             
         return "\n".join(log_content)
+    
+    def get_detailed_logs_json(self) -> dict:
+        """
+        Get detailed logs in JSON format for debugging and API responses
+        """
+        if not self.detailed_logs:
+            return {"logs": [], "message": "No detailed logs available"}
+            
+        return {
+            "optimization_logs": self.detailed_logs,
+            "timestamp": time.strftime('%Y-%m-%d %H:%M:%S'),
+            "quality_level": self.quality_level,
+            "log_count": len(self.detailed_logs)
+        }
     
     def optimize(self, input_path, output_path, progress_callback=None):
         """

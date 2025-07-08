@@ -17,9 +17,13 @@ class GLBOptimizer {
         // Initialize tooltips and quality descriptions after DOM is ready
         setTimeout(() => {
             try {
-                this.initializeTooltips();
-                this.initializeQualityDescriptions();
-                console.log('Tooltips and quality descriptions initialized');
+                if (typeof this.initializeTooltips === 'function') {
+                    this.initializeTooltips();
+                }
+                if (typeof this.initializeQualityDescriptions === 'function') {
+                    this.initializeQualityDescriptions();
+                }
+                console.log('UI features initialized successfully');
             } catch (error) {
                 console.warn('Error initializing UI features:', error);
             }

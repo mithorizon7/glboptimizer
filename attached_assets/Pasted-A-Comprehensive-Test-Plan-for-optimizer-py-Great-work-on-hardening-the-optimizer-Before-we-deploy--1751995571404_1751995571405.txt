@@ -1,0 +1,131 @@
+A Comprehensive Test Plan for optimizer.py
+
+Great work on hardening the optimizer. Before we deploy these changes, please run through the following battery of tests to validate the fixes and ensure everything is working perfectly.
+
+Setup: Prepare the Test Environment
+
+First, ensure your testing environment is clean and ready.
+
+Activate Test Environment: Make sure all testing dependencies from pyproject.toml are installed and you are using the testing configuration (test_config.py).
+
+Prepare Test Assets:
+
+Create a small, valid .glb file (e.g., a simple cube, under 1MB).
+
+Create a medium, valid .glb file with complex textures (like the one the user provided, ~25MB).
+
+Create an invalid file (e.g., a .txt file renamed to .glb).
+
+Create a zero-byte (empty) .glb file.
+
+Run All Existing Tests: Start by running the full existing test suite to ensure no previous functionality has been broken.
+
+Bash
+pytest tests/
+Test Battery 1: Functional & Unit Tests
+
+The goal here is to confirm that each part of the optimizer.py script works correctly in isolation.
+
+1. Test the Full Optimization Pipeline (optimize function):
+
+Action: Run the medium-sized (~25MB) GLB file through the optimize() function for all three quality levels ("high", "balanced", "maximum_compression").
+
+Assert:
+
+The process completes without errors.
+
+The output file is not blank and is a valid GLB file.
+
+The compressed_size is significantly smaller than the original_size.
+
+Verify that the high-quality setting produces a larger file than the maximum compression setting.
+
+2. Test Texture and Color Preservation:
+
+Action: After optimizing the model with textures, manually open the output file in a 3D viewer (like Blender or an online viewer).
+
+Assert:
+
+The model's colors, textures, and "paint" are all present and visually correct.
+
+There is no significant visual degradation compared to the original.
+
+3. Test Security Validations (_validate_path):
+
+Action: Create unit tests in tests/test_optimizer.py that specifically target the _validate_path function.
+
+Assert:
+
+The function correctly blocks paths with ../ (e.g., uploads/../../etc/passwd).
+
+The function correctly blocks paths with dangerous characters (;, |, &).
+
+The function correctly allows valid paths within the uploads/ and output/ directories.
+
+4. Test File Size and Format Validation (_validate_file_size, _validate_glb_format):
+
+Action: Pass your prepared test assets through these validation functions.
+
+Assert:
+
+The invalid (.txt) and empty files are correctly rejected and return {'success': False}.
+
+The valid files are correctly identified and return {'success': True}.
+
+Test Battery 2: Integration & E2E Tests
+
+This ensures the fixed optimizer works correctly within the full application workflow.
+
+1. Full User Journey Test:
+
+Action: Run the application and manually perform a full end-to-end test using the Playwright scripts in tests/test_e2e.py.
+
+Assert:
+
+You can upload a valid GLB file.
+
+The optimization completes successfully.
+
+The 3D preview loads and shows a valid, textured model.
+
+You can successfully download the final, optimized file.
+
+The downloaded file opens correctly and is not blank.
+
+2. Error Handling Test:
+
+Action: Attempt to upload the invalid and empty .glb files you created.
+
+Assert:
+
+The user interface displays a clear, user-friendly error message for each case.
+
+The application does not crash.
+
+Test Battery 3: Stress & Regression Tests
+
+This pushes the limits and ensures old bugs don't come back.
+
+1. Test the Fallback Logic:
+
+Action: In optimizer.py, temporarily comment out a command in one of the optimization steps (e.g., the gltfpack command in _run_gltfpack_final) to force an error.
+
+Assert:
+
+The pipeline doesn't crash.
+
+It correctly falls back and copies the result from the previous successful step.
+
+A valid, non-blank file is still produced.
+
+2. Test for Hanging Processes:
+
+Action: While a large file is optimizing, run ps aux | grep gltf-transform and ps aux | grep gltfpack in the terminal.
+
+Assert:
+
+The processes are running but terminate correctly once the optimization is complete or times out.
+
+No processes are left "hanging" after the task is finished.
+
+By running through this full battery of tests, you can be confident that the optimizer is not only fixed but is also robust, secure, and ready for production.
