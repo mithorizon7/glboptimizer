@@ -60,6 +60,10 @@ class Config:
     COMPRESSION_THREADS = int(os.environ.get('COMPRESSION_THREADS', '0'))  # 0 = auto-detect
     MEMORY_LIMIT_MB = int(os.environ.get('MEMORY_LIMIT_MB', '2048'))
     
+    # Parallel processing configuration
+    MAX_PARALLEL_WORKERS = int(os.environ.get('MAX_PARALLEL_WORKERS', '3'))  # Cap to avoid overload
+    PARALLEL_TIMEOUT = int(os.environ.get('PARALLEL_TIMEOUT', '120'))  # 2 minutes per parallel task
+    
     @classmethod
     def ensure_directories(cls):
         """Create necessary directories if they don't exist"""

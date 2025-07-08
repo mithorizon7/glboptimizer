@@ -11,11 +11,128 @@ import stat
 import hashlib
 import atexit
 import struct
+import concurrent.futures
+import multiprocessing
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Dict, Any, Optional, Set
 import threading
 from config import Config
+
+# Global standalone functions for parallel processing
+def run_gltfpack_geometry_parallel(input_path, output_path):
+    """Standalone function for parallel gltfpack geometry compression"""
+    try:
+        import subprocess
+        import os
+        
+        cmd = [
+            'gltfpack',
+            '-i', input_path,
+            '-o', output_path,
+            '-cc',  # Aggressive compression
+            '-cf'   # No fallback compression
+        ]
+        
+        # Safe environment
+        safe_env = {
+            'PATH': '/usr/local/bin:/usr/bin:/bin',
+            'HOME': '/tmp',
+            'LANG': 'C.UTF-8'
+        }
+        
+        result = subprocess.run(
+            cmd, 
+            capture_output=True, 
+            text=True, 
+            timeout=60,
+            env=safe_env
+        )
+        
+        if result.returncode == 0 and os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+            return {'success': True}
+        else:
+            return {'success': False, 'error': f'gltfpack failed: {result.stderr}'}
+            
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+def run_draco_compression_parallel(input_path, output_path):
+    """Standalone function for parallel Draco compression"""
+    try:
+        import subprocess
+        import os
+        
+        cmd = [
+            'npx', 'gltf-transform', 'draco',
+            input_path, output_path,
+            '--method', 'edgebreaker',
+            '--quantize-position', '14',
+            '--quantize-normal', '10',
+            '--quantize-color', '8',
+            '--quantize-texcoord', '12'
+        ]
+        
+        safe_env = {
+            'PATH': '/usr/local/bin:/usr/bin:/bin',
+            'HOME': '/tmp',
+            'LANG': 'C.UTF-8',
+            'NODE_PATH': '/usr/local/lib/node_modules'
+        }
+        
+        result = subprocess.run(
+            cmd, 
+            capture_output=True, 
+            text=True, 
+            timeout=60,
+            env=safe_env
+        )
+        
+        if result.returncode == 0 and os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+            return {'success': True}
+        else:
+            return {'success': False, 'error': f'Draco compression failed: {result.stderr}'}
+            
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+def run_gltf_transform_optimize_parallel(input_path, output_path):
+    """Standalone function for parallel gltf-transform optimize"""
+    try:
+        import subprocess
+        import os
+        
+        cmd = [
+            'npx', 'gltf-transform', 'optimize',
+            input_path, output_path,
+            '--compress', 'meshopt',
+            '--instance',
+            '--simplify', '0.8',
+            '--weld', '0.0001'
+        ]
+        
+        safe_env = {
+            'PATH': '/usr/local/bin:/usr/bin:/bin',
+            'HOME': '/tmp',
+            'LANG': 'C.UTF-8',
+            'NODE_PATH': '/usr/local/lib/node_modules'
+        }
+        
+        result = subprocess.run(
+            cmd, 
+            capture_output=True, 
+            text=True, 
+            timeout=60,
+            env=safe_env
+        )
+        
+        if result.returncode == 0 and os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+            return {'success': True}
+        else:
+            return {'success': False, 'error': f'gltf-transform optimize failed: {result.stderr}'}
+            
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
 
 class GLBOptimizer:
     def __init__(self, quality_level='high'):
@@ -1139,127 +1256,147 @@ class GLBOptimizer:
             return {'success': False, 'error': f'Draco compression failed: {str(e)}'}
     
     def _run_advanced_geometry_compression(self, input_path, output_path, progress_callback=None):
-        """Advanced geometry compression with intelligent method selection and adaptive strategy"""
-        import os
-        import tempfile
-        import json
+        """Process-based parallel compression testing for maximum performance"""
         
-        # First, analyze the model to determine optimal compression strategy
+        # Analyze the model to determine optimal compression strategy
         if progress_callback:
             progress_callback("Step 2: Geometry Compression", 40, "Analyzing model complexity...")
         
         model_analysis = self._analyze_model_complexity(input_path)
+        methods_to_test = self._select_compression_methods(model_analysis)
         
-        # Create temporary files for testing selected methods based on analysis
-        temp_dir = os.path.dirname(output_path)
-        meshopt_output = os.path.join(temp_dir, "test_meshopt.glb")
-        draco_output = os.path.join(temp_dir, "test_draco.glb")
-        hybrid_output = os.path.join(temp_dir, "test_hybrid.glb")
+        # If only one method, run sequentially to avoid overhead
+        if len(methods_to_test) == 1:
+            method = methods_to_test[0]
+            if progress_callback:
+                progress_callback("Step 2: Geometry Compression", 45, f"Running {method} compression...")
+            
+            if method == 'meshopt':
+                return self._run_gltfpack_geometry(input_path, output_path)
+            elif method == 'draco':
+                return self._run_draco_compression(input_path, output_path)
+            elif method == 'hybrid':
+                return self._run_gltf_transform_optimize(input_path, output_path)
+        
+        # Parallel compression testing for multiple methods
+        if progress_callback:
+            progress_callback("Step 2: Geometry Compression", 42, f"Testing {len(methods_to_test)} compression methods in parallel...")
+        
+        # Determine optimal worker count (cap at available cores and method count)
+        available_cores = multiprocessing.cpu_count()
+        max_workers = min(available_cores, len(methods_to_test), Config.MAX_PARALLEL_WORKERS)
+        
+        self.logger.info(f"Running parallel compression with {max_workers} workers for methods: {methods_to_test}")
         
         results = {}
         file_sizes = {}
+        temp_files = []
+        future_to_method = {}
         
-        # Select compression methods based on model characteristics
-        methods_to_test = self._select_compression_methods(model_analysis)
+        try:
+            with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
+                
+                # Submit tasks with unique temporary files
+                for method in methods_to_test:
+                    temp_output = os.path.join(self._secure_temp_dir, f"test_{method}_{os.getpid()}_{time.time():.0f}.glb")
+                    temp_files.append(temp_output)
+                    self._temp_files.add(temp_output)
+                    
+                    if method == 'meshopt':
+                        future = executor.submit(run_gltfpack_geometry_parallel, input_path, temp_output)
+                    elif method == 'draco':
+                        future = executor.submit(run_draco_compression_parallel, input_path, temp_output)
+                    elif method == 'hybrid':
+                        future = executor.submit(run_gltf_transform_optimize_parallel, input_path, temp_output)
+                    
+                    future_to_method[future] = (method, temp_output)
+                
+                # Collect results with timeout
+                completed_methods = 0
+                for future in concurrent.futures.as_completed(future_to_method, timeout=Config.PARALLEL_TIMEOUT):
+                    method, temp_output = future_to_method[future]
+                    completed_methods += 1
+                    
+                    try:
+                        result = future.result(timeout=5)  # Quick timeout since task is done
+                        results[method] = result
+                        
+                        if result['success'] and os.path.exists(temp_output) and os.path.getsize(temp_output) > 0:
+                            file_sizes[method] = os.path.getsize(temp_output)
+                            self.logger.info(f"Parallel {method}: {file_sizes[method]} bytes")
+                        
+                        if progress_callback:
+                            progress = 42 + (completed_methods / len(methods_to_test)) * 6
+                            progress_callback("Step 2: Geometry Compression", int(progress), 
+                                            f"Completed {completed_methods}/{len(methods_to_test)} compression tests...")
+                                            
+                    except concurrent.futures.TimeoutError:
+                        self.logger.error(f"Compression timeout for {method}")
+                        results[method] = {'success': False, 'error': 'Timeout'}
+                    except Exception as e:
+                        self.logger.error(f"Compression failed for {method}: {e}")
+                        results[method] = {'success': False, 'error': str(e)}
         
-        # Test selected compression methods based on model analysis
-        progress_step = 41
+        except concurrent.futures.TimeoutError:
+            self.logger.error("Overall parallel compression timeout - using fallback")
+            return self._run_gltfpack_geometry(input_path, output_path)
+        except Exception as e:
+            self.logger.error(f"Parallel compression failed: {e} - using fallback")
+            return self._run_gltfpack_geometry(input_path, output_path)
         
-        for method in methods_to_test:
-            if progress_callback:
-                method_name = method.replace('_', ' ').title()
-                progress_callback("Step 2: Geometry Compression", progress_step, f"Testing {method_name} compression...")
-            
-            if method == 'meshopt':
-                results['meshopt'] = self._run_gltfpack_geometry(input_path, meshopt_output)
-                if results['meshopt']['success'] and os.path.exists(meshopt_output):
-                    file_sizes['meshopt'] = os.path.getsize(meshopt_output)
-                    self.logger.info(f"Enhanced Meshopt: {file_sizes['meshopt']} bytes")
-            
-            elif method == 'draco':
-                results['draco'] = self._run_draco_compression(input_path, draco_output)
-                if results['draco']['success'] and os.path.exists(draco_output):
-                    file_sizes['draco'] = os.path.getsize(draco_output)
-                    self.logger.info(f"Advanced Draco: {file_sizes['draco']} bytes")
-            
-            elif method == 'hybrid':
-                results['hybrid'] = self._run_gltf_transform_optimize(input_path, hybrid_output)
-                if results['hybrid']['success'] and os.path.exists(hybrid_output):
-                    file_sizes['hybrid'] = os.path.getsize(hybrid_output)
-                    self.logger.info(f"Hybrid optimization: {file_sizes['hybrid']} bytes")
-            
-            progress_step += 2
-        
-        # Find the best compression method based on file size and success
+        # Find the best compression method
         successful_methods = {method: size for method, size in file_sizes.items() 
                             if results[method]['success']}
         
         if not successful_methods:
-            self.logger.error("All compression methods failed")
-            # Cleanup temp files
-            for temp_file in [meshopt_output, draco_output, hybrid_output]:
-                try:
-                    if os.path.exists(temp_file):
-                        os.remove(temp_file)
-                except:
-                    pass
-            return results.get('meshopt', {'success': False, 'error': 'All compression methods failed'})
+            self.logger.error("All parallel compression methods failed - using fallback")
+            return self._run_gltfpack_geometry(input_path, output_path)
         
-        # Select the method with the smallest file size
-        best_method = min(successful_methods.items(), key=lambda x: x[1])
-        selected_method = best_method[0]
-        selected_size = best_method[1]
+        # Select method with smallest file size
+        best_method_name, best_size = min(successful_methods.items(), key=lambda x: x[1])
         
-        # Map method names to file paths
-        method_files = {
-            'meshopt': meshopt_output,
-            'draco': draco_output,
-            'hybrid': hybrid_output
-        }
-        selected_file = method_files[selected_method]
+        self.logger.info(f"Best parallel compression: {best_method_name} ({best_size} bytes)")
         
-        # Log compression comparison
-        compression_info = []
-        for method, size in successful_methods.items():
-            status = "SELECTED" if method == selected_method else ""
-            compression_info.append(f"{method.title()}: {size} bytes {status}")
-        
-        self.logger.info(f"Compression results: {', '.join(compression_info)}")
-        
-        # Copy the best result to the final output
-        if progress_callback:
-            progress_callback("Step 2: Geometry Compression", 48, f"Finalizing {selected_method} compression...")
+        # Copy best result to output
+        best_temp_file = next(temp_file for method, temp_file in future_to_method.values() 
+                             if method == best_method_name)
         
         try:
-            import shutil
-            shutil.copy2(selected_file, output_path)
+            if progress_callback:
+                progress_callback("Step 2: Geometry Compression", 48, "Finalizing best compression result...")
             
-            # Cleanup temp files
-            for temp_file in [meshopt_output, draco_output]:
-                try:
-                    if os.path.exists(temp_file):
-                        os.remove(temp_file)
-                except:
-                    pass
+            shutil.copy2(best_temp_file, output_path)
             
-            # Calculate compression ratio for logging
+            # Calculate metrics
             input_size = os.path.getsize(input_path)
             output_size = os.path.getsize(output_path)
             compression_ratio = (1 - output_size / input_size) * 100
             
-            self.logger.info(f"Geometry compression ({selected_method}): {input_size} → {output_size} bytes ({compression_ratio:.1f}% reduction)")
+            self.logger.info(f"Parallel geometry compression ({best_method_name}): {input_size} → {output_size} bytes ({compression_ratio:.1f}% reduction)")
             
             return {
                 'success': True,
-                'method': selected_method,
+                'method': best_method_name,
                 'compression_ratio': compression_ratio,
                 'input_size': input_size,
                 'output_size': output_size
             }
             
         except Exception as e:
-            self.logger.error(f"Failed to finalize compression: {str(e)}")
-            return {'success': False, 'error': f'Failed to finalize compression: {str(e)}'}
+            self.logger.error(f"Failed to copy best parallel result: {e}")
+            return {'success': False, 'error': f'Failed to finalize parallel compression: {str(e)}'}
+        
+        finally:
+            # Clean up all temporary files
+            for temp_file in temp_files:
+                try:
+                    if os.path.exists(temp_file):
+                        os.remove(temp_file)
+                        self._temp_files.discard(temp_file)
+                except Exception as cleanup_error:
+                    self.logger.warning(f"Failed to cleanup temp file {temp_file}: {cleanup_error}")
+
+
     
     def _run_gltf_transform_optimize(self, input_path, output_path):
         """Hybrid optimization using gltf-transform's comprehensive optimize command"""
