@@ -1,0 +1,80 @@
+Atomic Output with Enhanced Validation
+The Problem:
+Failed optimizations can leave corrupted partial files, and current validation only checks the magic bytes.
+Why This Matters:
+Users might use corrupted files thinking optimization succeeded, causing failures downstream.
+How to Fix:
+Implement atomic writes with proper GLB validation:
+pythonimport struct
+
+def _validate_glb_file(self, filepath: str) -> bool:
+    """Validate GLB file structure"""
+    try:
+        with open(filepath, 'rb') as f:
+            # Check magic number
+            magic = f.read(4)
+            if magic != b'glTF':
+                return False
+            
+            # Check version
+            version = struct.unpack('<I', f.read(4))[0]
+            if version != 2:
+                return False
+            
+            # Check file length matches header
+            stated_length = struct.unpack('<I', f.read(4))[0]
+            f.seek(0, 2)  # Seek to end
+            actual_length = f.tell()
+            
+            if stated_length != actual_length:
+                self.logger.error(f"GLB length mismatch: header says {stated_length}, file is {actual_length}")
+                return False
+            
+            return True
+            
+    except Exception as e:
+        self.logger.error(f"GLB validation failed: {e}")
+        return False
+
+def optimize(self, input_path, output_path, progress_callback=None):
+    temp_output = None
+    
+    try:
+        # Work on temporary file
+        temp_output = output_path + '.tmp.' + str(os.getpid())
+        self._temp_files.add(temp_output)
+        
+        # ... run optimization steps using temp_output ...
+        
+        # Validate before finalizing
+        if not os.path.exists(temp_output):
+            raise ValueError("Optimization produced no output")
+        
+        if os.path.getsize(temp_output) == 0:
+            raise ValueError("Optimization produced empty file")
+        
+        if not self._validate_glb_file(temp_output):
+            raise ValueError("Optimization produced invalid GLB")
+        
+        # Atomic replace (POSIX) or rename (Windows)
+        if os.name == 'posix':
+            os.replace(temp_output, output_path)
+        else:
+            # Windows: remove target first if exists
+            if os.path.exists(output_path):
+                os.remove(output_path)
+            os.rename(temp_output, output_path)
+        
+        self._temp_files.discard(temp_output)
+        temp_output = None
+        
+        # ... return success ...
+        
+    finally:
+        # Clean up temp file if still exists
+        if temp_output and os.path.exists(temp_output):
+            try:
+                os.remove(temp_output)
+                self._temp_files.discard(temp_output)
+            except:
+                pass

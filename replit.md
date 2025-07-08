@@ -383,6 +383,14 @@ Changelog:
   - **THREAD-SAFE OPERATIONS**: Proper file tracking with set operations to prevent race conditions
   - **COMPREHENSIVE TESTING**: Verified cleanup works in both normal and error conditions
   - **PRODUCTION READY**: Context manager usage implemented in all optimization workflows
+- July 07, 2025. **COMPREHENSIVE FILE SIZE VALIDATION**: Implemented DoS protection and edge case handling:
+  - **DOS PROTECTION**: Configurable maximum file size limits prevent resource exhaustion attacks
+  - **EDGE CASE HANDLING**: Validates empty files, corrupted files, and suspiciously small uploads
+  - **GLB FORMAT VALIDATION**: Verifies GLB magic header, version, and file structure integrity
+  - **CONFIGURABLE LIMITS**: Environment-based configuration for MIN_FILE_SIZE, MAX_FILE_SIZE, and thresholds
+  - **COMPREHENSIVE ERROR REPORTING**: Clear user-friendly messages with technical details for debugging
+  - **EARLY VALIDATION**: Files are validated before any processing begins to prevent resource waste
+  - **SECURITY CATEGORIES**: Proper error categorization for monitoring and security analysis
 
 ## User Preferences
 

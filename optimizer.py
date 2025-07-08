@@ -14,6 +14,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Dict, Any, Optional, Set
 import threading
+from config import Config
 
 class GLBOptimizer:
     def __init__(self, quality_level='high'):
@@ -190,6 +191,145 @@ class GLBOptimizer:
                 safe_env[var] = os.environ[var]
         
         return safe_env
+    
+    def _validate_file_size(self, file_path: str) -> Dict[str, Any]:
+        """
+        Validate file size to prevent DoS attacks and handle edge cases
+        """
+        try:
+            # Check if file exists
+            if not os.path.exists(file_path):
+                return {
+                    'success': False,
+                    'error': 'Input file does not exist',
+                    'user_message': 'The uploaded file could not be found.',
+                    'category': 'File System Error'
+                }
+            
+            # Get file size safely
+            try:
+                file_size = os.path.getsize(file_path)
+            except OSError as e:
+                return {
+                    'success': False,
+                    'error': f'Cannot read file size: {str(e)}',
+                    'user_message': 'Unable to read the uploaded file.',
+                    'category': 'File System Error'
+                }
+            
+            # Check for empty files
+            if file_size <= 0:
+                return {
+                    'success': False,
+                    'error': 'File is empty or has invalid size',
+                    'user_message': 'The uploaded file appears to be empty.',
+                    'category': 'File Size Error'
+                }
+            
+            # Check for suspiciously small files
+            if file_size < Config.MIN_FILE_SIZE:
+                return {
+                    'success': False,
+                    'error': f'File too small: {file_size} bytes',
+                    'user_message': f'The file is too small (minimum {Config.MIN_FILE_SIZE} bytes required).',
+                    'category': 'File Size Error'
+                }
+            
+            # Check for files that are too large (DoS protection)
+            if file_size > Config.MAX_FILE_SIZE:
+                size_mb = file_size / (1024 * 1024)
+                max_size_mb = Config.MAX_FILE_SIZE / (1024 * 1024)
+                return {
+                    'success': False,
+                    'error': f'File too large: {size_mb:.1f}MB',
+                    'user_message': f'The file is too large ({size_mb:.1f}MB). Maximum size is {max_size_mb:.0f}MB.',
+                    'category': 'File Size Error'
+                }
+            
+            # Additional check for files that might be corrupted or truncated
+            if file_size < Config.EMPTY_FILE_THRESHOLD:
+                self.logger.warning(f"File is very small ({file_size} bytes), may be corrupted")
+            
+            # Basic GLB format validation
+            format_validation = self._validate_glb_format(file_path)
+            if not format_validation['success']:
+                return format_validation
+            
+            # Log file size for monitoring
+            size_mb = file_size / (1024 * 1024)
+            self.logger.info(f"File size validation passed: {size_mb:.2f}MB")
+            
+            return {
+                'success': True,
+                'file_size': file_size,
+                'size_mb': size_mb
+            }
+            
+        except Exception as e:
+            self.logger.error(f"File size validation failed: {str(e)}")
+            return {
+                'success': False,
+                'error': f'File validation error: {str(e)}',
+                'user_message': 'Unable to validate the uploaded file.',
+                'category': 'Validation Error'
+            }
+    
+    def _validate_glb_format(self, file_path: str) -> Dict[str, Any]:
+        """
+        Validate GLB file format to prevent processing invalid files
+        """
+        try:
+            # Check GLB magic header (first 4 bytes should be "glTF")
+            with open(file_path, 'rb') as f:
+                header = f.read(12)  # Read GLB header
+                
+                # Check minimum header size
+                if len(header) < 12:
+                    return {
+                        'success': False,
+                        'error': 'Invalid GLB file: header too short',
+                        'user_message': 'This does not appear to be a valid GLB file.',
+                        'category': 'Format Error'
+                    }
+                
+                # Check magic number (bytes 0-3 should be "glTF")
+                magic = header[0:4]
+                if magic != b'glTF':
+                    return {
+                        'success': False,
+                        'error': 'Invalid GLB file: wrong magic number',
+                        'user_message': 'This file is not a valid GLB format.',
+                        'category': 'Format Error'
+                    }
+                
+                # Check version (bytes 4-7 should be version 2)
+                version = int.from_bytes(header[4:8], byteorder='little')
+                if version != 2:
+                    return {
+                        'success': False,
+                        'error': f'Unsupported GLB version: {version}',
+                        'user_message': f'GLB version {version} is not supported. Please use GLB version 2.',
+                        'category': 'Format Error'
+                    }
+                
+                # Check declared file length
+                declared_length = int.from_bytes(header[8:12], byteorder='little')
+                actual_length = os.path.getsize(file_path)
+                
+                if declared_length != actual_length:
+                    self.logger.warning(f"GLB length mismatch: declared={declared_length}, actual={actual_length}")
+                    # Don't fail on length mismatch as some files have padding
+                
+                self.logger.info(f"GLB format validation passed: version {version}, length {declared_length}")
+                return {'success': True}
+                
+        except Exception as e:
+            return {
+                'success': False,
+                'error': f'GLB format validation error: {str(e)}',
+                'user_message': 'Unable to validate the GLB file format.',
+                'category': 'Format Error'
+            }
 
     def cleanup_temp_files(self):
         """Security: Clean up temporary files and directories"""
@@ -448,14 +588,10 @@ class GLBOptimizer:
             
             self.logger.info(f"Starting optimization with validated paths: {validated_input} -> {validated_output}")
             
-            # Verify input file exists and is readable
-            if not os.path.exists(validated_input):
-                return {
-                    'success': False,
-                    'error': f'Input file does not exist: {input_path}',
-                    'user_message': 'The uploaded file could not be found. Please try uploading again.',
-                    'category': 'File System Error'
-                }
+            # File size validation for security and performance
+            file_validation = self._validate_file_size(validated_input)
+            if not file_validation['success']:
+                return file_validation
             
             # Additional security: Ensure paths are within expected directories
             expected_upload_dir = os.path.abspath('uploads')

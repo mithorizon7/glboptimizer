@@ -19,6 +19,11 @@ class Config:
     MAX_CONTENT_LENGTH = int(os.environ.get('MAX_FILE_SIZE_MB', '100')) * 1024 * 1024
     ALLOWED_EXTENSIONS = {'glb'}
     
+    # File size validation configuration
+    MAX_FILE_SIZE = int(os.environ.get('GLB_MAX_FILE_SIZE', str(100 * 1024 * 1024)))  # 100MB default
+    MIN_FILE_SIZE = int(os.environ.get('GLB_MIN_FILE_SIZE', '12'))  # 12 bytes minimum (GLB header)
+    EMPTY_FILE_THRESHOLD = int(os.environ.get('GLB_EMPTY_FILE_THRESHOLD', '100'))  # 100 bytes
+    
     # Optimization Configuration
     DEFAULT_QUALITY_LEVEL = os.environ.get('DEFAULT_QUALITY_LEVEL', 'high')
     ENABLE_LOD_BY_DEFAULT = os.environ.get('ENABLE_LOD_BY_DEFAULT', 'true').lower() in ['true', '1', 'yes']
