@@ -698,26 +698,16 @@ class ModelViewer3D {
         // Initialize GLTFLoader with full compression support
         this.loader = new GLTFLoader();
         
-        // Setup enhanced Meshopt decoder for EXT_meshopt_compression
+        // Setup fixed Meshopt decoder for EXT_meshopt_compression
         try {
-            const { MeshoptDecoder } = await import('/static/libs/meshopt/meshopt_decoder_enhanced.js');
+            const { MeshoptDecoder } = await import('/static/libs/meshopt/meshopt_decoder_fixed.js');
             await MeshoptDecoder.init();
             this.loader.setMeshoptDecoder(MeshoptDecoder);
             this.meshoptInitialized = true;
-            console.log('✓ Enhanced Meshopt decoder loaded and initialized');
+            console.log('✓ Fixed Meshopt decoder loaded and initialized');
         } catch (error) {
-            console.warn('Enhanced Meshopt decoder failed, trying basic fallback:', error);
-            try {
-                // Try the basic decoder as fallback
-                const { MeshoptDecoder: BasicDecoder } = await import('/static/libs/meshopt/meshopt_decoder.module.js');
-                await BasicDecoder.init();
-                this.loader.setMeshoptDecoder(BasicDecoder);
-                this.meshoptInitialized = true;
-                console.log('✓ Basic Meshopt decoder loaded as fallback');
-            } catch (fallbackError) {
-                console.error('All Meshopt decoders failed:', fallbackError);
-                this.meshoptInitialized = false;
-            }
+            console.error('Fixed Meshopt decoder failed:', error);
+            this.meshoptInitialized = false;
         }
         
         // Setup DRACO decoder for KHR_draco_mesh_compression fallback
@@ -781,15 +771,21 @@ class ModelViewer3D {
         }
         
         // Add lights
-        const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+        // Enhanced lighting setup for better model visibility
+        const ambientLight = new THREE.AmbientLight(0x404040, 0.8);
         scene.add(ambientLight);
         
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
         directionalLight.position.set(5, 5, 5);
         directionalLight.castShadow = true;
         directionalLight.shadow.mapSize.width = 2048;
         directionalLight.shadow.mapSize.height = 2048;
         scene.add(directionalLight);
+        
+        // Add fill lighting from the opposite side
+        const fillLight = new THREE.DirectionalLight(0xffffff, 0.4);
+        fillLight.position.set(-3, -2, -3);
+        scene.add(fillLight);
         
         const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.4);
         directionalLight2.position.set(-5, -5, -5);
@@ -882,29 +878,15 @@ class ModelViewer3D {
     }
     
     async ensureDecodersInitialized(type) {
-        // Re-initialize Meshopt decoder if not already done
-        if (!this.meshoptInitialized) {
-            try {
-                const { MeshoptDecoder } = await import('/static/libs/meshopt/meshopt_decoder_enhanced.js');
-                await MeshoptDecoder.init();
-                this.loader.setMeshoptDecoder(MeshoptDecoder);
-                this.meshoptInitialized = true;
-                console.log(`✓ Enhanced Meshopt decoder re-initialized for ${type} model loading`);
-            } catch (error) {
-                console.warn(`Meshopt decoder re-initialization failed for ${type}:`, error);
-                try {
-                    // Force re-initialization with basic decoder
-                    const { MeshoptDecoder: BasicDecoder } = await import('/static/libs/meshopt/meshopt_decoder.module.js');
-                    await BasicDecoder.init();
-                    this.loader.setMeshoptDecoder(BasicDecoder);
-                    this.meshoptInitialized = true;
-                    console.log(`✓ Basic Meshopt decoder forced initialization for ${type}`);
-                } catch (fallbackError) {
-                    console.error(`All Meshopt decoder attempts failed for ${type}:`, fallbackError);
-                }
-            }
-        } else {
-            console.log(`✓ Meshopt decoder already initialized for ${type} model`);
+        // Ensure Meshopt decoder is properly initialized for each model
+        try {
+            const { MeshoptDecoder } = await import('/static/libs/meshopt/meshopt_decoder_fixed.js');
+            await MeshoptDecoder.init();
+            this.loader.setMeshoptDecoder(MeshoptDecoder);
+            this.meshoptInitialized = true;
+            console.log(`✓ Fixed Meshopt decoder ensured for ${type} model loading`);
+        } catch (error) {
+            console.error(`Fixed Meshopt decoder initialization failed for ${type}:`, error);
         }
         
         // Ensure KTX2 loader is properly configured with GPU support

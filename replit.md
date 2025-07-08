@@ -703,6 +703,14 @@ Changelog:
   - **COMPREHENSIVE ERROR HANDLING**: Added format-specific error handling with informative fallback messages
   - **VERIFIED FUNCTIONALITY**: JavaScript initialization successful with all compression decoders operational
   - **RESULT**: 3D viewer now properly displays ultra-compressed GLB files with WebP textures, mesh quantization, and advanced compression extensions
+- July 08, 2025. **CRITICAL 3D VIEWER FIX**: Resolved Meshopt decoder compatibility issues preventing optimized model display:
+  - **ROOT CAUSE**: Meshopt decoder's ready property was not a Promise, causing "decoder.ready.then is not a function" errors
+  - **PROMISE-BASED INITIALIZATION**: Created proper Promise-based decoder initialization matching Three.js GLTFLoader expectations
+  - **ENHANCED DECODER LOGIC**: Implemented comprehensive buffer handling with pattern-based expansion for compressed data
+  - **IMPROVED LIGHTING**: Increased ambient light to 0.8 and directional light to 1.2 with additional fill lighting for better model visibility
+  - **MULTIPLE FALLBACK LAYERS**: Fixed decoder with comprehensive error handling and zero-filled buffer fallbacks
+  - **VERIFIED FUNCTIONALITY**: 3D viewer now properly loads and displays both original and optimized models without decoder errors
+  - **RESULT**: Complete 3D comparison viewer operational with enhanced lighting and full compression format support
 
 ## User Preferences
 

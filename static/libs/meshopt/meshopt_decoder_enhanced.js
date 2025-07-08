@@ -6,13 +6,17 @@
  */
 
 export class MeshoptDecoder {
-    static ready = false;
+    static ready = null;
     static wasmModule = null;
+    static initialized = false;
     
     static async init() {
         if (this.ready) {
             return this.ready;
         }
+        
+        // Create a Promise for the ready property
+        this.ready = new Promise(async (resolve) => {
         
         try {
             // Check if we can load the real meshopt decoder from CDN
@@ -28,24 +32,28 @@ export class MeshoptDecoder {
                 if (realDecoder && realDecoder.MeshoptDecoder) {
                     await realDecoder.MeshoptDecoder.init();
                     this.realDecoder = realDecoder.MeshoptDecoder;
-                    this.ready = true;
+                    this.initialized = true;
                     console.log('✓ Real Meshopt decoder loaded successfully');
-                    return this.ready;
+                    resolve();
+                    return;
                 }
             }
         } catch (error) {
             console.warn('Real Meshopt decoder unavailable, using fallback:', error);
         }
         
-        // Fallback initialization
-        this.ready = true;
-        console.log('✓ Meshopt decoder initialized (fallback mode)');
+            // Fallback initialization
+            this.initialized = true;
+            console.log('✓ Meshopt decoder initialized (fallback mode)');
+            resolve();
+        });
+        
         return this.ready;
     }
     
     static decode(buffer, count, size, mode, filter) {
         // Use real decoder if available
-        if (this.realDecoder) {
+        if (this.realDecoder && this.initialized) {
             try {
                 return this.realDecoder.decode(buffer, count, size, mode, filter);
             } catch (error) {
