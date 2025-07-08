@@ -367,6 +367,14 @@ Changelog:
   - **DIRECTORY PERMISSIONS**: Automatic validation and securing of upload/output directories
   - **GRACEFUL DEGRADATION**: Optimization continues even if individual steps fail
   - **COMPREHENSIVE LOGGING**: Enhanced error analysis and detailed security violation reporting
+- July 07, 2025. **ADVANCED SUBPROCESS SECURITY**: Implemented minimal safe environment for subprocess execution:
+  - **MINIMAL PATH RESTRICTION**: Restricted PATH to /usr/local/bin:/usr/bin:/bin only
+  - **ENVIRONMENT FILTERING**: Blocks dangerous variables like LD_PRELOAD that could inject malicious code
+  - **WHITELISTED VARIABLES**: Only allows specific Node.js and system variables needed for operation
+  - **SHELL DISABLED**: Explicitly disabled shell=True in all subprocess calls to prevent command injection
+  - **SECURE DEFAULTS**: Uses safe fallback values for HOME, USER, LANG, and TMPDIR
+  - **REPLIT COMPATIBILITY**: Maintains compatibility with Replit-specific environment variables
+  - **ENHANCED ERROR HANDLING**: Improved PATH-related error detection and reporting
 
 ## User Preferences
 

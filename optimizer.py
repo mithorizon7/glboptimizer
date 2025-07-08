@@ -152,6 +152,30 @@ class GLBOptimizer:
             else:
                 raise ValueError(f"Unknown operation: {operation}")
     
+    def _get_safe_environment(self):
+        """Create a minimal safe environment for subprocesses"""
+        safe_env = {
+            'PATH': '/usr/local/bin:/usr/bin:/bin',
+            'HOME': os.environ.get('HOME', '/tmp'),
+            'USER': os.environ.get('USER', 'nobody'),
+            'LOGNAME': os.environ.get('LOGNAME', 'nobody'),
+            'LANG': 'en_US.UTF-8',
+            'LC_ALL': 'en_US.UTF-8',
+            'TMPDIR': tempfile.gettempdir()
+        }
+        
+        # Add specific variables needed by Node/NPM tools
+        for var in ['NODE_PATH', 'NPM_CONFIG_PREFIX', 'PKG_CONFIG_PATH', 'NPM_CONFIG_CACHE']:
+            if var in os.environ:
+                safe_env[var] = os.environ[var]
+        
+        # Add Replit-specific environment variables if present
+        for var in ['REPLIT_DOMAINS', 'REPLIT_DB_URL']:
+            if var in os.environ:
+                safe_env[var] = os.environ[var]
+        
+        return safe_env
+
     def cleanup_temp_files(self):
         """Security: Clean up temporary files and directories"""
         for temp_path in self._temp_files.copy():
@@ -193,20 +217,8 @@ class GLBOptimizer:
             self.logger.info(f"Running {step_name}: {' '.join(validated_cmd)}")
             
             # Enhanced subprocess execution with security controls
-            # Sanitize environment to prevent subprocess exploitation
-            safe_env = {
-                'PATH': os.environ.get('PATH', ''),
-                'HOME': os.environ.get('HOME', ''),
-                'USER': os.environ.get('USER', ''),
-                'LANG': os.environ.get('LANG', 'en_US.UTF-8'),
-                'LC_ALL': os.environ.get('LC_ALL', 'en_US.UTF-8'),
-                'TMPDIR': self._secure_temp_dir or tempfile.gettempdir()
-            }
-            
-            # Only include specific environment variables we trust
-            for var in ['NODE_PATH', 'NPM_CONFIG_CACHE', 'REPLIT_DOMAINS']:
-                if var in os.environ:
-                    safe_env[var] = os.environ[var]
+            # Create minimal, safe environment for subprocesses
+            safe_env = self._get_safe_environment()
             
             result = subprocess.run(
                 validated_cmd, 
@@ -214,7 +226,8 @@ class GLBOptimizer:
                 text=True, 
                 timeout=timeout,
                 cwd=os.getcwd(),
-                env=safe_env
+                env=safe_env,
+                shell=False  # Explicitly disable shell for security
             )
             
             # Log all output for debugging
