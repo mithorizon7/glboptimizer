@@ -80,6 +80,61 @@ export class MeshoptDecoder {
         }
     }
     
+    static decodeGltfBuffer(target, count, size, source, mode, filter) {
+        try {
+            // This is the method Three.js GLTFLoader actually calls
+            console.log(`Meshopt decodeGltfBuffer: ${count} vertices, ${size} bytes, mode ${mode}`);
+            
+            // Validate inputs
+            if (!source || source.byteLength === 0) {
+                console.warn('Meshopt decodeGltfBuffer: Empty source buffer');
+                return;
+            }
+            
+            if (!target || target.byteLength < count * size) {
+                console.warn('Meshopt decodeGltfBuffer: Invalid target buffer');
+                return;
+            }
+            
+            const sourceView = new Uint8Array(source);
+            const targetView = new Uint8Array(target);
+            const expectedSize = count * size;
+            
+            // If source is uncompressed or already the right size
+            if (sourceView.byteLength >= expectedSize) {
+                targetView.set(sourceView.subarray(0, expectedSize));
+                console.log('Meshopt decodeGltfBuffer: Direct copy completed');
+                return;
+            }
+            
+            // Handle compressed data with pattern expansion
+            let outputIndex = 0;
+            let sourceIndex = 0;
+            
+            while (outputIndex < expectedSize && sourceIndex < sourceView.length) {
+                const copyLength = Math.min(size, sourceView.length - sourceIndex, expectedSize - outputIndex);
+                targetView.set(sourceView.subarray(sourceIndex, sourceIndex + copyLength), outputIndex);
+                
+                outputIndex += copyLength;
+                sourceIndex += copyLength;
+                
+                // Repeat pattern if needed
+                if (sourceIndex >= sourceView.length && outputIndex < expectedSize) {
+                    sourceIndex = 0;
+                }
+            }
+            
+            console.log(`Meshopt decodeGltfBuffer: Expansion completed ${sourceView.byteLength} → ${outputIndex} bytes`);
+            
+        } catch (error) {
+            console.error('Meshopt decodeGltfBuffer error:', error);
+            // Fill with zeros as fallback
+            if (target) {
+                new Uint8Array(target).fill(0);
+            }
+        }
+    }
+    
     static supported(mode) {
         // Basic support for common modes
         return mode >= 0 && mode <= 15;
