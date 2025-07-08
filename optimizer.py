@@ -324,6 +324,15 @@ class GLBOptimizer:
                         result = f.read()
                         operation_success = True
                         return result
+                elif operation == 'read_bytes':
+                    # Read only specified number of bytes from start of file (memory efficient)
+                    if not os.path.exists(final_validated_path):
+                        raise FileNotFoundError(f"File does not exist: {filepath}")
+                    num_bytes = args[0] if args else 12  # Default to 12 bytes for GLB header
+                    with open(final_validated_path, 'rb') as f:
+                        result = f.read(num_bytes)
+                        operation_success = True
+                        return result
                 elif operation == 'write':
                     with open(final_validated_path, 'wb') as f:
                         result = f.write(args[0])
@@ -583,9 +592,8 @@ class GLBOptimizer:
                     'category': category
                 }
             
-            # Read and validate GLB header
-            file_data = self._safe_file_operation(file_path, 'read')
-            header_data = file_data[:12]
+            # Memory efficient: read only GLB header bytes (12 bytes) instead of entire file
+            header_data = self._safe_file_operation(file_path, 'read_bytes', 12)
             
             if len(header_data) < 12:
                 error_context = "The optimization produced a corrupted file." if mode == "full" else "This does not appear to be a valid GLB file."
@@ -647,8 +655,10 @@ class GLBOptimizer:
                         'category': 'Output Error'
                     }
                 
-                # Validate first chunk header
-                chunk_header = file_data[12:20]
+                # Memory efficient: read first chunk header (8 bytes at offset 12)
+                # Read total 20 bytes (12 header + 8 chunk header) instead of entire file
+                header_and_chunk_data = self._safe_file_operation(file_path, 'read_bytes', 20)
+                chunk_header = header_and_chunk_data[12:20]
                 if len(chunk_header) < 8:
                     return {
                         'success': False,
