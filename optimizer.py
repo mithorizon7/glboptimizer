@@ -215,8 +215,18 @@ class GLBOptimizer:
             abs_path = os.path.realpath(os.path.abspath(file_path))
             
             # Security: Validate file extension
-            if not abs_path.lower().endswith('.glb'):
+            if not allow_temp and not abs_path.lower().endswith('.glb'):
                 raise ValueError(f"Path must be a .glb file: {file_path}")
+            
+            # For temp files, allow GLB or temporary extensions
+            if allow_temp:
+                # Allow .glb files or temporary files that are GLB-based
+                is_glb = abs_path.lower().endswith('.glb')
+                is_temp_glb = (abs_path.lower().endswith('.glb.tmp') or 
+                              '.glb.tmp.' in abs_path.lower() or
+                              abs_path.lower().endswith('.tmp'))
+                if not (is_glb or is_temp_glb):
+                    raise ValueError(f"Temporary path must be GLB-related: {file_path}")
             
             # Security: Ensure path doesn't contain dangerous characters
             dangerous_chars = [';', '|', '&', '$', '`', '>', '<', '\n', '\r', '\0']
