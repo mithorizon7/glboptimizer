@@ -88,6 +88,28 @@ class OptimizationConfig:
             'enable_meshopt': True
             }
         }
+        
+        # Texture compression settings for centralized management
+        self.TEXTURE_COMPRESSION_SETTINGS = {
+            'high': {
+                'ktx2_quality': '255',      # Maximum quality
+                'webp_quality': '95',       # High quality WebP
+                'uastc_mode': True,         # UASTC for high quality
+                'channel_packing': True     # Channel packing optimization
+            },
+            'balanced': {
+                'ktx2_quality': '128',      # Balanced quality
+                'webp_quality': '85',       # Good quality WebP
+                'uastc_mode': False,        # ETC1S for balanced
+                'channel_packing': True
+            },
+            'maximum_compression': {
+                'ktx2_quality': '64',       # Lower quality for size
+                'webp_quality': '75',       # Moderate quality WebP
+                'uastc_mode': False,        # ETC1S for compression
+                'channel_packing': True
+            }
+        }
     
     @classmethod
     def from_env(cls) -> 'OptimizationConfig':

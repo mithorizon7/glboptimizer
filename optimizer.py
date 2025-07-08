@@ -1114,34 +1114,26 @@ class GLBOptimizer:
         try:
             # First weld vertices
             temp_welded = input_path + '.welded.glb'
-            cmd = ['npx', 'gltf-transform', 'weld', '--tolerance', '0.0001', input_path, temp_welded]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            self._temp_files.add(temp_welded)
             
-            if result.returncode != 0:
-                self.logger.warning(f"Welding failed, continuing: {result.stderr}")
-                # If welding fails, just copy the file
+            cmd = ['npx', 'gltf-transform', 'weld', '--tolerance', '0.0001', input_path, temp_welded]
+            result = self._run_subprocess(cmd, "Weld Vertices", "Welding duplicate vertices")
+            
+            if not result['success']:
+                self.logger.warning(f"Welding failed, continuing: {result.get('error', '')}")
                 shutil.copy2(input_path, output_path)
                 return {'success': True}
             
             # Then join meshes
             cmd = ['npx', 'gltf-transform', 'join', temp_welded, output_path]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            result = self._run_subprocess(cmd, "Join Meshes", "Joining compatible meshes")
             
-            # Clean up temp file
-            try:
-                os.remove(temp_welded)
-            except:
-                pass
-            
-            if result.returncode != 0:
-                self.logger.warning(f"Joining failed, using welded version: {result.stderr}")
+            if not result['success']:
+                self.logger.warning(f"Joining failed, using welded version: {result.get('error', '')}")
                 shutil.copy2(temp_welded, output_path)
-                return {'success': True}
             
             return {'success': True}
-        
-        except subprocess.TimeoutExpired:
-            return {'success': False, 'error': 'Welding/joining operation timed out'}
+            
         except Exception as e:
             return {'success': False, 'error': f'Welding/joining failed: {str(e)}'}
     
@@ -1549,29 +1541,11 @@ class GLBOptimizer:
         ktx2_output = os.path.join(temp_dir, "test_ktx2.glb")
         webp_output = os.path.join(temp_dir, "test_webp.glb")
         
-        # Quality-based compression settings
-        compression_settings = {
-            'high': {
-                'ktx2_quality': '255',      # Maximum quality
-                'webp_quality': '95',       # High quality WebP
-                'uastc_mode': True,         # UASTC for high quality
-                'channel_packing': True     # Channel packing optimization
-            },
-            'balanced': {
-                'ktx2_quality': '128',      # Balanced quality
-                'webp_quality': '85',       # Good quality WebP
-                'uastc_mode': False,        # ETC1S for balanced
-                'channel_packing': True
-            },
-            'maximum_compression': {
-                'ktx2_quality': '64',       # Lower quality for size
-                'webp_quality': '75',       # Moderate quality WebP
-                'uastc_mode': False,        # ETC1S for compression
-                'channel_packing': True
-            }
-        }
-        
-        settings = compression_settings.get(self.quality_level, compression_settings['high'])
+        # Use centralized texture compression settings
+        settings = self.config.TEXTURE_COMPRESSION_SETTINGS.get(
+            self.quality_level, 
+            self.config.TEXTURE_COMPRESSION_SETTINGS['balanced']
+        )
         results = {}
         file_sizes = {}
         
@@ -1617,14 +1591,14 @@ class GLBOptimizer:
                         '--slots', '4'      # Optimize texture slots
                     ]
                 
-                result = subprocess.run(ktx2_cmd, capture_output=True, text=True, timeout=60)
+                result = self._run_subprocess(ktx2_cmd, "KTX2 Compression", "Advanced texture compression with KTX2", timeout=60)
                 
-                if result.returncode == 0 and os.path.exists(ktx2_output):
+                if result['success'] and os.path.exists(ktx2_output):
                     results['ktx2'] = {'success': True}
                     file_sizes['ktx2'] = os.path.getsize(ktx2_output)
                     self.logger.info(f"KTX2 compression successful: {file_sizes['ktx2']} bytes")
                 else:
-                    results['ktx2'] = {'success': False, 'error': result.stderr}
+                    results['ktx2'] = {'success': False, 'error': result.get('error', 'Compression failed')}
                     self.logger.info(f"KTX2 compression unavailable, will use WebP")
             else:
                 self.logger.info("KTX-Software not available, will use WebP compression")
@@ -1643,9 +1617,9 @@ class GLBOptimizer:
                 '--quality', settings['webp_quality']
             ]
             
-            result = subprocess.run(webp_cmd, capture_output=True, text=True, timeout=600)
+            result = self._run_subprocess(webp_cmd, "WebP Compression", "WebP texture compression", timeout=600)
             
-            if result.returncode == 0 and os.path.exists(webp_output):
+            if result["success"] and os.path.exists(webp_output):
                 results['webp'] = {'success': True}
                 file_sizes['webp'] = os.path.getsize(webp_output)
                 self.logger.info(f"WebP compression: {file_sizes['webp']} bytes")
@@ -1787,9 +1761,9 @@ class GLBOptimizer:
                 '--quality', settings['webp_quality']
             ]
             
-            result = subprocess.run(webp_cmd, capture_output=True, text=True, timeout=600)
+            result = self._run_subprocess(webp_cmd, "WebP Compression", "WebP texture compression", timeout=600)
             
-            if result.returncode == 0 and os.path.exists(webp_output):
+            if result["success"] and os.path.exists(webp_output):
                 results['webp'] = {'success': True}
                 file_sizes['webp'] = os.path.getsize(webp_output)
                 self.logger.info(f"WebP compression: {file_sizes['webp']} bytes")
@@ -1934,42 +1908,23 @@ class GLBOptimizer:
         
         except Exception as e:
             self.logger.warning(f"gltfpack failed with exception: {e}")
-            # Fallback: copy the input file 
+            # Fallback: copy the input file
             shutil.copy2(input_path, output_path)
+            return {'success': True, 'fallback': True}
 
     def _estimate_gpu_memory_savings(self, original_size: int, compressed_size: int) -> float:
-        """
-        Estimate GPU memory savings from optimization
-        This is an approximation based on file size reduction and typical GPU memory usage patterns
-        """
-        # GPU memory usage is typically 2-4x the file size due to decompression
-        # KTX2 textures save significant GPU memory, geometry compression saves less
+        """Estimate GPU memory savings from optimization"""
         if original_size == 0:
             return 0.0
         
         # Base memory savings from file size reduction
         base_savings = (1.0 - compressed_size / original_size) * 100
         
-        # Adjust for GPU memory usage patterns:
-        # - Texture compression (KTX2, WebP) provides significant GPU memory savings
-        # - Geometry compression provides moderate GPU memory savings
-        # - Overall GPU memory usage is typically 2-3x file size
-        
-        # Estimate that optimized files use ~75% of their compressed GPU memory
-        # vs unoptimized files using ~150% of their file size as GPU memory
-        estimated_gpu_savings = min(base_savings * 1.2, 95.0)  # Cap at 95%
+        # GPU memory multiplier (textures typically expand 2-4x in GPU memory)
+        # Compressed textures (KTX2) stay compressed in GPU memory
+        estimated_gpu_savings = min(base_savings * 1.2, 95.0)
         
         return estimated_gpu_savings
-        original_gpu_memory = original_size * gpu_memory_multiplier
-        compressed_gpu_memory = compressed_size * gpu_memory_multiplier
-        
-        # Additional savings from KTX2 compression (textures stay compressed in GPU memory)
-        ktx2_additional_savings = compressed_size * 0.4  # KTX2 stays compressed
-        
-        effective_gpu_memory = compressed_gpu_memory - ktx2_additional_savings
-        memory_savings = (1 - effective_gpu_memory / original_gpu_memory) * 100
-        
-        return max(0, min(95, memory_savings))  # Cap at 95% savings
 
     def _generate_performance_report(self, input_path: str, output_path: str, processing_time: float) -> dict:
         """
