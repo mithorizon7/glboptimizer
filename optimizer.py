@@ -244,8 +244,16 @@ class GLBOptimizer:
         Security: Validate and sanitize file paths with TOCTOU protection
         Returns: Validated absolute path or raises ValueError
         """
-        # Performance: Check cache first (but still re-validate at operation time)
-        cache_key = f"{file_path}:{allow_temp}"
+        # Performance: Check cache first with normalized path key (but still re-validate at operation time)
+        # Normalize the path before using as cache key to ensure functionally identical paths
+        # (e.g., ./model.glb, models/../model.glb) use the same cache entry
+        try:
+            normalized_path = str(path_resolve(file_path))
+        except (OSError, ValueError):
+            # If path cannot be resolved, use the original path for cache key
+            normalized_path = file_path
+        
+        cache_key = f"{normalized_path}:{allow_temp}"
         if cache_key in self._path_cache:
             cached_path = self._path_cache[cache_key]
             # Still perform immediate re-validation for TOCTOU protection
@@ -256,7 +264,7 @@ class GLBOptimizer:
             abs_path = str(path_resolve(file_path))
             validated_path = self._immediate_path_validation(abs_path, allow_temp)
             
-            # Cache successful validation
+            # Cache successful validation using normalized path key
             self._path_cache[cache_key] = validated_path
             return validated_path
             
