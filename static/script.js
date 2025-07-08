@@ -699,37 +699,30 @@ class ModelViewer3D {
         // Initialize GLTFLoader with full compression support
         this.loader = new GLTFLoader();
         
-        // Setup Meshopt decoder for EXT_meshopt_compression using importmap
-        try {
-            this.loader.setMeshoptDecoder(MeshoptDecoder);
-            this.meshoptInitialized = true;
-            console.log('✓ Meshopt decoder initialized via importmap');
-        } catch (error) {
-            console.error('Meshopt decoder failed:', error);
-            this.meshoptInitialized = false;
-        }
+        // 1️⃣ Meshopt - MUST be set before loading compressed files
+        this.loader.setMeshoptDecoder(MeshoptDecoder);
+        console.log('✓ Meshopt decoder set on main loader');
         
-        // Setup DRACO decoder for KHR_draco_mesh_compression
-        try {
-            const dracoLoader = new DRACOLoader();
-            dracoLoader.setDecoderPath('/static/libs/draco/');
-            this.loader.setDRACOLoader(dracoLoader);
-            console.log('✓ DRACO decoder configured');
-        } catch (error) {
-            console.error('DRACO decoder failed:', error);
-        }
+        // 2️⃣ Draco fallback
+        this.dracoLoader = new DRACOLoader();
+        this.dracoLoader.setDecoderPath('/static/libs/draco/');
+        this.loader.setDRACOLoader(this.dracoLoader);
+        console.log('✓ DRACO decoder configured');
         
-        // Setup KTX2 loader for KHR_texture_basisu and EXT_texture_webp
-        try {
-            this.ktx2Loader = new KTX2Loader();
-            this.ktx2Loader.setTranscoderPath('/static/libs/basis/');
-            console.log('✓ KTX2 decoder configured');
-        } catch (error) {
-            console.error('KTX2 decoder failed:', error);
-        }
+        // 3️⃣ KTX2 / BasisU - will be initialized when renderer is available
+        this.ktx2Loader = new KTX2Loader();
+        this.ktx2Loader.setTranscoderPath('/static/libs/basis/');
+        console.log('✓ KTX2 decoder prepared');
         
-        // Skip WebP extension registration to avoid sourceDef.uri issues
-        console.log('✓ WebP extension skipped to prevent URI loading issues');
+        // 4️⃣ WebP extension registration
+        this.loader.register(parser => ({
+            name: 'EXT_texture_webp',
+            parser,
+            afterRoot: () => {}
+        }));
+        console.log('✓ WebP extension registered');
+        
+
         
         console.log('✓ Advanced GLTFLoader initialized with full compression support');
     }
@@ -777,12 +770,12 @@ class ModelViewer3D {
         renderer.outputColorSpace = THREE.SRGBColorSpace; // Updated for r178
         renderer.setClearColor(0x1a1a2e, 1.0); // Ensure background is rendered
         
-        // Initialize KTX2 loader with GPU support detection (needs renderer)
+        // 3️⃣ KTX2 / BasisU initialization with GPU support detection (needs renderer)
         if (this.ktx2Loader && !this.ktx2LoaderInitialized) {
             this.ktx2Loader.detectSupport(renderer);
             this.loader.setKTX2Loader(this.ktx2Loader);
             this.ktx2LoaderInitialized = true;
-            console.log('KTX2 loader initialized with GPU support detection');
+            console.log('✓ KTX2 loader initialized with GPU support detection');
         }
         
         // Enhanced lighting setup for much better model visibility
