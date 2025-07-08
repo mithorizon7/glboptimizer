@@ -162,7 +162,7 @@ class OptimizationConfig:
         
         # Check for JSON config file override
         config_file = os.environ.get('GLB_CONFIG_FILE')
-        if config_file and os.path.exists(config_file):
+        if config_file and Path(config_file).exists():
             try:
                 with open(config_file, 'r') as f:
                     overrides = json.load(f)
@@ -316,7 +316,7 @@ class Config:
         
         # Check required directories
         for name, path in [('UPLOAD_FOLDER', cls.UPLOAD_FOLDER), ('OUTPUT_FOLDER', cls.OUTPUT_FOLDER)]:
-            if not os.path.exists(path):
+            if not Path(path).exists():
                 try:
                     Path(path).mkdir(parents=True, exist_ok=True)
                 except Exception as e:

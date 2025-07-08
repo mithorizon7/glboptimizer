@@ -1,5 +1,6 @@
 import os
 import logging
+from pathlib import Path
 from dotenv import load_dotenv
 from flask import Flask, Blueprint, render_template, request, jsonify, send_file, flash, redirect, url_for, session, current_app
 from werkzeug.utils import secure_filename
@@ -71,9 +72,9 @@ def process_file_synchronously(file_path, output_path, task_id, quality_level, e
         # Create task record
         optimization_task = OptimizationTask(
             id=task_id,
-            original_filename=os.path.basename(file_path),
+            original_filename=Path(file_path).name,
             secure_filename=f"{task_id}.glb",
-            original_size=os.path.getsize(file_path),
+            original_size=Path(file_path).stat().st_size,
             quality_level=quality_level,
             enable_lod=enable_lod,
             enable_simplification=enable_simplification,
@@ -90,7 +91,7 @@ def process_file_synchronously(file_path, output_path, task_id, quality_level, e
         start_time = time.time()
         
         # Get original file size
-        original_size = os.path.getsize(file_path)
+        original_size = Path(file_path).stat().st_size
         
         result = optimizer.optimize(
             input_path=file_path,
@@ -99,7 +100,7 @@ def process_file_synchronously(file_path, output_path, task_id, quality_level, e
         )
         
         processing_time = time.time() - start_time
-        compressed_size = os.path.getsize(output_path) if os.path.exists(output_path) else 0
+        compressed_size = Path(output_path).stat().st_size if Path(output_path).exists() else 0
         compression_ratio = (1 - compressed_size / original_size) * 100 if original_size > 0 else 0
         
         # Update task to completed
@@ -248,8 +249,8 @@ def process_file_synchronously(input_path, output_path, task_id, quality_level, 
         success = result.get('success', False)
         
         processing_time = time.time() - start_time
-        original_size = os.path.getsize(input_path) if os.path.exists(input_path) else 0
-        optimized_size = os.path.getsize(output_path) if os.path.exists(output_path) else 0
+        original_size = Path(input_path).stat().st_size if Path(input_path).exists() else 0
+        optimized_size = Path(output_path).stat().st_size if Path(output_path).exists() else 0
         compression_ratio = ((original_size - optimized_size) / original_size * 100) if original_size > 0 else 0.0
         
         # Update task with final results
@@ -340,13 +341,13 @@ def upload_file():
         
         # Secure: Generate completely safe, server-controlled filenames using task_id only
         # No user input is used in the actual file paths passed to shell commands
-        input_path = os.path.join(config.UPLOAD_FOLDER, f"{task_id}.glb")
-        output_path = os.path.join(config.OUTPUT_FOLDER, f"{task_id}_optimized.glb")
+        input_path = str(Path(config.UPLOAD_FOLDER) / f"{task_id}.glb")
+        output_path = str(Path(config.OUTPUT_FOLDER) / f"{task_id}_optimized.glb")
         
         file.save(input_path)
         
         # Get original file size
-        original_size = os.path.getsize(input_path)
+        original_size = Path(input_path).stat().st_size
         
         # Store original file info for comparison viewer
         original_file_info = {
@@ -360,7 +361,7 @@ def upload_file():
         success = process_file_synchronously(input_path, output_path, task_id, quality_level, enable_lod, enable_simplification)
         
         if success:
-            optimized_size = os.path.getsize(output_path) if os.path.exists(output_path) else 0
+            optimized_size = Path(output_path).stat().st_size if Path(output_path).exists() else 0
             compression_ratio = ((original_size - optimized_size) / original_size * 100) if original_size > 0 else 0
             
             return jsonify({
@@ -482,9 +483,9 @@ def download_file(task_id):
         
         # Look for the output file
         expected_output_file = f"{task_id}_optimized.glb"
-        file_path = os.path.join(config.OUTPUT_FOLDER, expected_output_file)
+        file_path = str(Path(config.OUTPUT_FOLDER) / expected_output_file)
         
-        if not os.path.exists(file_path):
+        if not Path(file_path).exists():
             return jsonify({'error': 'Output file not found'}), 404
         
         # Use original filename for download
@@ -511,11 +512,11 @@ def cleanup_task(task_id):
         # Clean up both files using direct path construction (no directory scanning needed)
         # This is more efficient than the previous approach of scanning directories
         original_filename = f"{task_id}.glb"
-        original_path = os.path.join(config.UPLOAD_FOLDER, original_filename)
+        original_path = str(Path(config.UPLOAD_FOLDER) / original_filename)
         
-        if os.path.exists(original_path):
+        if Path(original_path).exists():
             try:
-                os.remove(original_path)
+                Path(original_path).unlink()
                 logging.info(f"Cleaned up original file: {original_path}")
             except Exception as e:
                 logging.warning(f"Failed to remove original file {original_path}: {str(e)}")
@@ -523,10 +524,10 @@ def cleanup_task(task_id):
         # DO NOT remove the optimized file - users need to download it!
         # Optimized files will be cleaned up later by scheduled cleanup task
         optimized_filename = f"{task_id}_optimized.glb"
-        optimized_path = os.path.join(config.OUTPUT_FOLDER, optimized_filename)
+        optimized_path = str(Path(config.OUTPUT_FOLDER) / optimized_filename)
         
         # Just log that the file exists for download
-        if os.path.exists(optimized_path):
+        if Path(optimized_path).exists():
             logging.info(f"Optimized file ready for download: {optimized_path}")
         else:
             logging.warning(f"Optimized file not found: {optimized_path}")
@@ -546,9 +547,9 @@ def get_original_file(task_id):
     """Serve the original GLB file for 3D comparison viewer"""
     try:
         # Look for the original file in uploads directory using task_id
-        original_file_path = os.path.join(config.UPLOAD_FOLDER, f"{task_id}.glb")
+        original_file_path = str(Path(config.UPLOAD_FOLDER) / f"{task_id}.glb")
         
-        if not os.path.exists(original_file_path):
+        if not Path(original_file_path).exists():
             return jsonify({'error': 'Original file not found'}), 404
         
         response = send_file(
