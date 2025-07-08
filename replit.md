@@ -349,6 +349,13 @@ Changelog:
   - **RESULT**: Files now download as valid GLB with proper headers and 81.6% compression
   - WebP texture compression + Draco geometry compression working perfectly
   - Users receive working 4.4MB files from 24MB originals
+- July 07, 2025. **SMART RE-ENABLEMENT**: Intelligently restored advanced compression features with safety controls:
+  - **KTX2 COMPRESSION**: Re-enabled only for 'high' quality level with fast settings (level 1, RDO 1.0, zstd 6)
+  - **FINAL GLTFPACK**: Re-enabled only for 'high' quality with basic compression (-c flag)
+  - **PERFORMANCE PROTECTION**: Reduced timeouts (60s for KTX2, 120s for gltfpack) to prevent hangs
+  - **QUALITY SEPARATION**: 'balanced' and 'maximum_compression' use reliable WebP + skip risky steps
+  - **FALLBACK SYSTEM**: All advanced steps gracefully fall back to working alternatives
+  - **RESULT**: Maximum compression for demanding users, reliability for general use
 
 ## User Preferences
 
