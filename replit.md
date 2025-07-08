@@ -433,6 +433,14 @@ Changelog:
   - **ENVIRONMENT FIX**: Enhanced subprocess environment with proper PATH and XDG variables for Node.js tool access
   - **VERIFICATION**: npx gltf-transform now functional with version 4.2.0 detected and operational
   - **RESULT**: Full optimization pipeline working end-to-end with 46.2% compression achieved on real 24MB GLB files
+- July 08, 2025. **CRITICAL SUBPROCESS SECURITY FIX**: Eliminated all security bypasses in external command execution:
+  - **SECURITY VULNERABILITY**: Multiple methods used direct subprocess.run calls bypassing the hardened security wrapper
+  - **ATTACK SURFACE**: Processes inherited full environment including LD_PRELOAD, PYTHONPATH injection vectors
+  - **SOLUTION**: Routed all external commands through _run_subprocess security wrapper with restricted environment
+  - **METHODS SECURED**: Draco compression, GLB optimization, model analysis, texture compression, animations, final optimization
+  - **ENVIRONMENT PROTECTION**: Eliminated environment variable injection attacks while maintaining Node.js tool access
+  - **VERIFICATION**: All subprocess calls now use centralized security, timeout protection, and comprehensive logging
+  - **RESULT**: Enterprise-grade security with zero functional compromise - optimization pipeline fully secured
 
 ## User Preferences
 

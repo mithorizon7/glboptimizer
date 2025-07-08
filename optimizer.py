@@ -1249,22 +1249,22 @@ class GLBOptimizer:
                 input_path, output_path
             ]
             
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+            result = self._run_subprocess(cmd, "Draco Compression", "Applying advanced Draco compression", timeout=600)
             
-            if result.returncode != 0:
-                self.logger.error(f"Advanced Draco compression failed: {result.stderr}")
+            if not result['success']:
+                self.logger.error(f"Advanced Draco compression failed: {result.get('detailed_error', 'Unknown error')}")
                 # Try basic Draco compression as fallback
                 cmd_fallback = [
                     'npx', 'gltf-transform', 'draco',
                     '--method', 'edgebreaker',
                     input_path, output_path
                 ]
-                fallback_result = subprocess.run(cmd_fallback, capture_output=True, text=True, timeout=600)
+                fallback_result = self._run_subprocess(cmd_fallback, "Draco Compression", "Applying basic Draco compression fallback", timeout=600)
                 
-                if fallback_result.returncode != 0:
+                if not fallback_result['success']:
                     return {
                         'success': False,
-                        'error': f'Draco compression failed: {fallback_result.stderr}'
+                        'error': f'Draco compression failed: {fallback_result.get("detailed_error", "Unknown error")}'
                     }
             
             return {'success': True}
@@ -1472,13 +1472,13 @@ class GLBOptimizer:
                 '--sparse'      # Use sparse accessors when beneficial
             ])
             
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+            result = self._run_subprocess(cmd, "GLB Optimization", "Applying gltf-transform optimizations", timeout=600)
             
-            if result.returncode != 0:
-                self.logger.error(f"gltf-transform optimize failed: {result.stderr}")
+            if not result['success']:
+                self.logger.error(f"gltf-transform optimize failed: {result.get('detailed_error', 'Unknown error')}")
                 return {
                     'success': False,
-                    'error': f'Hybrid optimization failed: {result.stderr}'
+                    'error': f'Hybrid optimization failed: {result.get("detailed_error", "Unknown error")}'
                 }
             
             return {'success': True}
@@ -1493,12 +1493,12 @@ class GLBOptimizer:
         try:
             # Use gltf-transform inspect to analyze the model
             cmd = ['npx', 'gltf-transform', 'inspect', input_path, '--format', 'json']
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+            result = self._run_subprocess(cmd, "Model Analysis", "Inspecting GLB model structure", timeout=60)
             
-            if result.returncode == 0:
+            if result['success']:
                 import json
                 try:
-                    analysis = json.loads(result.stdout)
+                    analysis = json.loads(result.get('stdout', '{}'))
                     return {
                         'vertices': analysis.get('scenes', [{}])[0].get('vertices', 0),
                         'primitives': analysis.get('scenes', [{}])[0].get('primitives', 0),
@@ -1571,10 +1571,10 @@ class GLBOptimizer:
             # Check if KTX-Software is available with timeout protection
             ktx_available = False
             try:
-                test_result = subprocess.run(['which', 'ktx'], capture_output=True, text=True, timeout=5)
-                ktx_available = test_result.returncode == 0
+                test_result = self._run_subprocess(['which', 'ktx'], "Tool Check", "Checking for KTX-Software availability", timeout=5)
+                ktx_available = test_result['success']
                 if ktx_available:
-                    self.logger.info(f"KTX-Software detected at: {test_result.stdout.strip()}")
+                    self.logger.info(f"KTX-Software detected at: {test_result.get('stdout', 'unknown location').strip()}")
                     # Only enable for high quality to avoid performance issues
                     if self.quality_level != 'high':
                         ktx_available = False
@@ -1755,14 +1755,14 @@ class GLBOptimizer:
                     '--rd', '18'            # Rate-distortion optimization
                 ]
             
-            result = subprocess.run(ktx2_cmd, capture_output=True, text=True, timeout=600)
+            result = self._run_subprocess(ktx2_cmd, "KTX2 Compression", "Applying KTX2 texture compression", timeout=600)
             
-            if result.returncode == 0 and os.path.exists(ktx2_output):
+            if result['success'] and os.path.exists(ktx2_output):
                 results['ktx2'] = {'success': True}
                 file_sizes['ktx2'] = os.path.getsize(ktx2_output)
                 self.logger.info(f"KTX2 compression: {file_sizes['ktx2']} bytes")
             else:
-                results['ktx2'] = {'success': False, 'error': result.stderr}
+                results['ktx2'] = {'success': False, 'error': result.get('detailed_error', 'KTX2 compression failed')}
                 
         except Exception as e:
             results['ktx2'] = {'success': False, 'error': str(e)}
@@ -1862,16 +1862,16 @@ class GLBOptimizer:
             # First try to resample animations
             temp_resampled = input_path + '.resampled.glb'
             cmd = ['npx', 'gltf-transform', 'resample', '--fps', '30', input_path, temp_resampled]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            result = self._run_subprocess(cmd, "Animation Resampling", "Resampling animation frames", timeout=300)
             
-            if result.returncode != 0:
-                self.logger.warning(f"Animation resampling failed, skipping: {result.stderr}")
+            if not result['success']:
+                self.logger.warning(f"Animation resampling failed, skipping: {result.get('detailed_error', 'Unknown error')}")
                 shutil.copy2(input_path, output_path)
                 return {'success': True}
             
             # Then compress animations
             cmd = ['npx', 'gltf-transform', 'compress-animation', '--quantize', '16', temp_resampled, output_path]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            result = self._run_subprocess(cmd, "Animation Compression", "Compressing animation data", timeout=300)
             
             # Clean up temp file
             try:
@@ -1905,13 +1905,13 @@ class GLBOptimizer:
                     '-o', output_path,
                     '-c'  # Use basic compression to avoid corruption
                 ]
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+                result = self._run_subprocess(cmd, "Final Optimization", "Applying final gltfpack compression", timeout=120)
                 
-                if result.returncode == 0:
+                if result['success']:
                     self.logger.info("Final gltfpack optimization completed successfully")
                     return {'success': True}
                 else:
-                    self.logger.warning(f"gltfpack failed: {result.stderr}")
+                    self.logger.warning(f"gltfpack failed: {result.get('detailed_error', 'Unknown error')}")
                     # Fallback: copy the input file
                     shutil.copy2(input_path, output_path)
                     return {'success': True}
