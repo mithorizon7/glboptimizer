@@ -893,46 +893,17 @@ class ModelViewer3D {
             },
             (error) => {
                 console.error(`Error loading ${type} model:`, error);
-                console.error('Error details:', error.stack);
                 
-                // Enhanced error handling for compression formats and GLB structure
+                // Enhanced error handling for compression formats
                 if (error.message && error.message.includes('KTX2')) {
                     console.warn('KTX2 texture loading failed, model may still display with fallback textures');
                 } else if (error.message && error.message.includes('Meshopt')) {
                     console.warn('Meshopt compression failed, trying fallback decompression');
                 } else if (error.message && error.message.includes('WebP')) {
                     console.warn('WebP texture loading failed, checking browser support');
-                } else if (error.message && error.message.includes('sourceDef.uri')) {
-                    console.warn('GLB buffer URI issue - file may be corrupted or have invalid buffer references');
-                    // Try to reload without advanced decoders
-                    this.tryFallbackLoading(url, type, container);
-                    return;
                 }
                 
                 this.showError(container, `Failed to load ${type} model: ${error.message || 'Unknown error'}`);
-            }
-        );
-    }
-    
-    async tryFallbackLoading(url, type, container) {
-        console.log(`Trying fallback loading for ${type} model without advanced decoders`);
-        
-        // Create a basic loader without advanced decoders
-        const fallbackLoader = new GLTFLoader();
-        
-        fallbackLoader.load(
-            url,
-            (gltf) => {
-                console.log(`${type} model loaded successfully with fallback loader`);
-                this.onModelLoaded(gltf, type);
-            },
-            (progress) => {
-                const percent = (progress.loaded / progress.total * 100);
-                this.updateLoadingProgress(container, percent);
-            },
-            (error) => {
-                console.error(`Fallback loading also failed for ${type}:`, error);
-                this.showError(container, `Failed to load ${type} model even with fallback: ${error.message || 'Unknown error'}`);
             }
         );
     }
