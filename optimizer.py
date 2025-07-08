@@ -15,9 +15,50 @@ import concurrent.futures
 import multiprocessing
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Dict, Any, Optional, Set
+from typing import Dict, Any, Optional, Set, Union
 import threading
 from config import Config, OptimizationConfig, GLBConstants, OptimizationThresholds
+
+# Type hint for path-like objects
+PathLike = Union[str, Path]
+
+# Path utility functions for consistent pathlib.Path usage
+def ensure_path(path_like: PathLike) -> Path:
+    """Convert string or Path-like object to pathlib.Path consistently"""
+    return Path(path_like)
+
+def path_exists(path_like: PathLike) -> bool:
+    """Check if path exists using pathlib.Path"""
+    return ensure_path(path_like).exists()
+
+def path_size(path_like: PathLike) -> int:
+    """Get file size using pathlib.Path"""
+    return ensure_path(path_like).stat().st_size
+
+def path_basename(path_like: PathLike) -> str:
+    """Get basename using pathlib.Path"""
+    return ensure_path(path_like).name
+
+def path_dirname(path_like: PathLike) -> Path:
+    """Get directory using pathlib.Path"""
+    return ensure_path(path_like).parent
+
+def path_join(*parts: PathLike) -> Path:
+    """Join path parts using pathlib.Path"""
+    if not parts:
+        return Path()
+    result = ensure_path(parts[0])
+    for part in parts[1:]:
+        result = result / ensure_path(part)
+    return result
+
+def path_resolve(path_like: PathLike) -> Path:
+    """Resolve path to absolute form using pathlib.Path"""
+    return ensure_path(path_like).resolve()
+
+def path_is_symlink(path_like: PathLike) -> bool:
+    """Check if path is a symlink using pathlib.Path"""
+    return ensure_path(path_like).is_symlink()
 
 # Global standalone functions for parallel processing
 def run_gltfpack_geometry_parallel(input_path, output_path):
@@ -41,8 +82,8 @@ def run_gltfpack_geometry_parallel(input_path, output_path):
                 timeout=optimizer.config.SUBPROCESS_TIMEOUT
             )
             
-            # Check output using standard os operations
-            if result['success'] and os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+            # Check output using pathlib.Path operations
+            if result['success'] and path_exists(output_path) and path_size(output_path) > 0:
                 return {'success': True}
             else:
                 return {
@@ -78,7 +119,7 @@ def run_draco_compression_parallel(input_path, output_path):
             )
             
             # Check output using standard os operations
-            if result['success'] and os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+            if result['success'] and path_exists(output_path) and path_size(output_path) > 0:
                 return {'success': True}
             else:
                 return {
@@ -113,7 +154,7 @@ def run_gltf_transform_optimize_parallel(input_path, output_path):
             )
             
             # Check output using standard os operations
-            if result['success'] and os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+            if result['success'] and path_exists(output_path) and path_size(output_path) > 0:
                 return {'success': True}
             else:
                 return {
@@ -146,8 +187,8 @@ class GLBOptimizer:
         # Security: Define allowed base directories for file operations
         # Only allow uploads and output directories for security
         self.allowed_dirs = {
-            os.path.realpath(os.path.abspath('uploads')),
-            os.path.realpath(os.path.abspath('output'))
+            str(path_resolve('uploads')),
+            str(path_resolve('output'))
         }
         
         # Security: Track temporary files for cleanup
@@ -167,6 +208,13 @@ class GLBOptimizer:
         if not self._cleanup_registered:
             atexit.register(self.cleanup_temp_files)
             self._cleanup_registered = True
+        
+        # Initialize secure temp directory for context manager usage
+        if self._secure_temp_dir is None:
+            self._secure_temp_dir = tempfile.mkdtemp(prefix='glb_secure_')
+            self._temp_files.add(self._secure_temp_dir)
+            self.logger.debug(f"Created secure temp directory: {self._secure_temp_dir}")
+        
         return self
     
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -183,7 +231,7 @@ class GLBOptimizer:
         """Security: Validate environment and required tools"""
         # Ensure allowed directories exist and are secure
         for allowed_dir in self.allowed_dirs:
-            if not os.path.exists(allowed_dir):
+            if not path_exists(allowed_dir):
                 os.makedirs(allowed_dir, mode=0o755, exist_ok=True)
             
             # Security: Check directory permissions
@@ -205,7 +253,7 @@ class GLBOptimizer:
         
         try:
             # Security: Initial validation - resolve symlinks and get real path
-            abs_path = os.path.realpath(os.path.abspath(file_path))
+            abs_path = str(path_resolve(file_path))
             validated_path = self._immediate_path_validation(abs_path, allow_temp)
             
             # Cache successful validation
@@ -222,7 +270,7 @@ class GLBOptimizer:
         Performs real-time validation immediately before file operations
         """
         # CRITICAL: Re-resolve symlinks immediately before use (TOCTOU protection)
-        abs_path = os.path.realpath(abs_path)
+        abs_path = str(path_resolve(abs_path))
         
         # Security: Enhanced extension validation for temporary files
         if allow_temp:
@@ -254,10 +302,10 @@ class GLBOptimizer:
         
         # Add configured allowed directories
         for allowed_dir in self.allowed_dirs:
-            allowed_real = os.path.realpath(allowed_dir)
+            allowed_real = str(path_resolve(allowed_dir))
             allowed_directories.append(allowed_real)
             try:
-                if os.path.commonpath([abs_path, allowed_real]) == allowed_real:
+                if str(ensure_path(abs_path).relative_to(ensure_path(allowed_real))):
                     path_allowed = True
                     break
             except ValueError:
@@ -266,10 +314,10 @@ class GLBOptimizer:
         
         # Add secure temp directory if initialized
         if hasattr(self, '_secure_temp_dir') and self._secure_temp_dir:
-            secure_temp_real = os.path.realpath(self._secure_temp_dir)
+            secure_temp_real = str(path_resolve(self._secure_temp_dir))
             allowed_directories.append(secure_temp_real)
             try:
-                if os.path.commonpath([abs_path, secure_temp_real]) == secure_temp_real:
+                if str(ensure_path(abs_path).relative_to(ensure_path(secure_temp_real))):
                     path_allowed = True
             except ValueError:
                 pass
@@ -277,10 +325,10 @@ class GLBOptimizer:
         # Allow system temp directory for temp files only
         if allow_temp and not path_allowed:
             temp_dir = tempfile.gettempdir()
-            temp_real = os.path.realpath(temp_dir)
+            temp_real = str(path_resolve(temp_dir))
             allowed_directories.append(temp_real)
             try:
-                if os.path.commonpath([abs_path, temp_real]) == temp_real:
+                if str(ensure_path(abs_path).relative_to(ensure_path(temp_real))):
                     path_allowed = True
             except ValueError:
                 pass
@@ -291,7 +339,7 @@ class GLBOptimizer:
             raise ValueError(f"Path outside allowed directories: {abs_path}")
         
         # Security: Additional symlink check after path resolution
-        if os.path.islink(abs_path):
+        if path_is_symlink(abs_path):
             raise ValueError(f"TOCTOU attack detected: Symlink still present after resolution: {abs_path}")
         
         return abs_path
@@ -318,7 +366,7 @@ class GLBOptimizer:
                 # Perform the actual operation with final path validation
                 if operation == 'read':
                     # Final existence check before opening
-                    if not os.path.exists(final_validated_path):
+                    if not path_exists(final_validated_path):
                         raise FileNotFoundError(f"File does not exist: {filepath}")
                     with open(final_validated_path, 'rb') as f:
                         result = f.read()
@@ -326,7 +374,7 @@ class GLBOptimizer:
                         return result
                 elif operation == 'read_bytes':
                     # Read only specified number of bytes from start of file (memory efficient)
-                    if not os.path.exists(final_validated_path):
+                    if not path_exists(final_validated_path):
                         raise FileNotFoundError(f"File does not exist: {filepath}")
                     num_bytes = args[0] if args else 12  # Default to 12 bytes for GLB header
                     with open(final_validated_path, 'rb') as f:
@@ -342,23 +390,23 @@ class GLBOptimizer:
                     # Re-validate destination path immediately before copy
                     dest_path = self._immediate_path_validation(args[0], allow_temp=True)
                     # Re-validate source exists before copy
-                    if not os.path.exists(final_validated_path):
+                    if not path_exists(final_validated_path):
                         raise FileNotFoundError(f"Source file does not exist: {filepath}")
                     result = shutil.copy2(final_validated_path, dest_path)
                     operation_success = True
                     return result
                 elif operation == 'exists':
-                    result = os.path.exists(final_validated_path)
+                    result = path_exists(final_validated_path)
                     operation_success = True
                     return result
                 elif operation == 'size':
-                    if not os.path.exists(final_validated_path):
+                    if not path_exists(final_validated_path):
                         raise FileNotFoundError(f"File does not exist: {filepath}")
-                    result = os.path.getsize(final_validated_path)
+                    result = path_size(final_validated_path)
                     operation_success = True
                     return result
                 elif operation == 'remove':
-                    if os.path.exists(final_validated_path):
+                    if path_exists(final_validated_path):
                         result = os.remove(final_validated_path)
                     else:
                         result = True  # Already removed
@@ -372,7 +420,7 @@ class GLBOptimizer:
                     return result
                 elif operation == 'read_text':
                     # Final existence check before opening
-                    if not os.path.exists(final_validated_path):
+                    if not path_exists(final_validated_path):
                         raise FileNotFoundError(f"File does not exist: {filepath}")
                     with open(final_validated_path, 'r', encoding='utf-8') as f:
                         result = f.read()
@@ -393,7 +441,7 @@ class GLBOptimizer:
                 # Structured logging for diagnostics and security monitoring
                 operation_duration = time.time() - operation_start_time
                 self.logger.info(
-                    f"FILE_OPERATION source={os.path.basename(filepath)} "
+                    f"FILE_OPERATION source={path_basename(filepath)} "
                     f"action={operation} "
                     f"path={final_validated_path} "
                     f"success={operation_success} "
@@ -406,9 +454,9 @@ class GLBOptimizer:
         path_components = []
         
         # 1. Add project node_modules/.bin if it exists (for local npm packages)
-        project_node_bin = os.path.join(os.getcwd(), 'node_modules', '.bin')
-        if os.path.isdir(project_node_bin):
-            path_components.append(project_node_bin)
+        project_node_bin = path_join(os.getcwd(), 'node_modules', '.bin')
+        if project_node_bin.is_dir():
+            path_components.append(str(project_node_bin))
             self.logger.debug(f"Added project node_modules/.bin to PATH: {project_node_bin}")
         
         # 2. Extract Node.js/NPX paths from current environment if available (for Nix/containerized environments)
@@ -416,7 +464,7 @@ class GLBOptimizer:
         if current_path:
             for path_dir in current_path.split(':'):
                 # Include Node.js and NPX directories from current environment
-                if any(tool in path_dir.lower() for tool in ['node', 'npm', 'npx']) and os.path.isdir(path_dir):
+                if any(tool in path_dir.lower() for tool in ['node', 'npm', 'npx']) and Path(path_dir).is_dir():
                     if path_dir not in path_components:
                         path_components.append(path_dir)
                         self.logger.debug(f"Added Node.js path from environment: {path_dir}")
@@ -424,7 +472,7 @@ class GLBOptimizer:
         # 3. Add standard system directories (always present)
         standard_paths = ['/usr/local/bin', '/usr/bin', '/bin']
         for std_path in standard_paths:
-            if std_path not in path_components and os.path.isdir(std_path):
+            if std_path not in path_components and Path(std_path).is_dir():
                 path_components.append(std_path)
         
         # Construct final PATH
@@ -450,11 +498,11 @@ class GLBOptimizer:
         
         # Set defaults for XDG variables if not present
         if 'XDG_CONFIG_HOME' not in safe_env:
-            safe_env['XDG_CONFIG_HOME'] = os.path.join(safe_env['HOME'], '.config')
+            safe_env['XDG_CONFIG_HOME'] = str(path_join(safe_env['HOME'], '.config'))
         if 'XDG_DATA_HOME' not in safe_env:
-            safe_env['XDG_DATA_HOME'] = os.path.join(safe_env['HOME'], '.local', 'share')
+            safe_env['XDG_DATA_HOME'] = str(path_join(safe_env['HOME'], '.local', 'share'))
         if 'XDG_CACHE_HOME' not in safe_env:
-            safe_env['XDG_CACHE_HOME'] = os.path.join(safe_env['HOME'], '.cache')
+            safe_env['XDG_CACHE_HOME'] = str(path_join(safe_env['HOME'], '.cache'))
         
         # Add Replit-specific environment variables if present
         replit_vars = ['REPLIT_DOMAINS', 'REPL_ID', 'REPLIT_DB_URL']
@@ -739,7 +787,7 @@ class GLBOptimizer:
                 return validation_result
             
             # Ensure target directory exists
-            target_dir = os.path.dirname(final_path)
+            target_dir = str(path_dirname(final_path))
             try:
                 self._safe_file_operation(target_dir, 'makedirs', mode=0o755, exist_ok=True)
             except ValueError:
@@ -757,7 +805,7 @@ class GLBOptimizer:
                         self._safe_file_operation(final_path, 'remove')
                 except ValueError:
                     # Path might be outside safe directories during testing
-                    if os.path.exists(final_path):
+                    if path_exists(final_path):
                         os.remove(final_path)
                 os.rename(temp_path, final_path)
             
@@ -795,13 +843,13 @@ class GLBOptimizer:
         """Security: Clean up temporary files and directories"""
         for temp_path in list(self._temp_files):
             try:
-                if os.path.isfile(temp_path):
+                if ensure_path(temp_path).is_file():
                     try:
                         self._safe_file_operation(temp_path, 'remove')
                     except ValueError:
                         # Temp path might be outside safe directories
                         os.remove(temp_path)
-                elif os.path.isdir(temp_path):
+                elif ensure_path(temp_path).is_dir():
                     shutil.rmtree(temp_path)
                 self._temp_files.discard(temp_path)
             except Exception as e:
@@ -828,7 +876,7 @@ class GLBOptimizer:
             # Security: Validate all file paths in the command
             validated_cmd = []
             for arg in cmd:
-                if arg.endswith('.glb') and os.path.sep in arg:
+                if arg.endswith('.glb') and '/' in arg:
                     # This looks like a file path - validate it
                     try:
                         # Allow temp paths for intermediate processing files
@@ -1087,8 +1135,8 @@ class GLBOptimizer:
             self._temp_files.add(temp_output)
             
             # Additional security: Ensure paths are within expected directories
-            expected_upload_dir = os.path.abspath('uploads')
-            expected_output_dir = os.path.abspath('output')
+            expected_upload_dir = str(path_resolve('uploads'))
+            expected_output_dir = str(path_resolve('output'))
             
             if not (validated_input.startswith(expected_upload_dir) or validated_input.startswith(expected_output_dir)):
                 self.logger.error(f"Security violation: Input path outside allowed directories: {validated_input}")
@@ -1116,7 +1164,7 @@ class GLBOptimizer:
                 if progress_callback:
                     progress_callback("Step 1: Cleanup & Deduplication", 10, "Pruning unused data...")
                 
-                step1_output = self._validate_path(os.path.join(temp_dir, "step1_pruned.glb"), allow_temp=True)
+                step1_output = self._validate_path(str(path_join(temp_dir, "step1_pruned.glb")), allow_temp=True)
                 result = self._run_gltf_transform_prune(validated_input, step1_output)
                 if not result['success']:
                     return result
@@ -1125,7 +1173,7 @@ class GLBOptimizer:
                 if progress_callback:
                     progress_callback("Step 1: Cleanup & Deduplication", 20, "Welding and joining meshes...")
                 
-                step2_output = self._validate_path(os.path.join(temp_dir, "step2_welded.glb"), allow_temp=True)
+                step2_output = self._validate_path(str(path_join(temp_dir, "step2_welded.glb")), allow_temp=True)
                 result = self._run_gltf_transform_weld(step1_output, step2_output)
                 if not result['success']:
                     # Continue with step1 result if welding fails
@@ -1136,7 +1184,7 @@ class GLBOptimizer:
                 if progress_callback:
                     progress_callback("Step 2: Geometry Compression", 40, "Analyzing model for optimal compression...")
                 
-                step3_output = self._validate_path(os.path.join(temp_dir, "step3_compressed.glb"), allow_temp=True)
+                step3_output = self._validate_path(str(path_join(temp_dir, "step3_compressed.glb")), allow_temp=True)
                 result = self._run_advanced_geometry_compression(step2_output, step3_output, progress_callback)
                 if not result['success']:
                     # Continue with step2 result if compression fails
@@ -1147,7 +1195,7 @@ class GLBOptimizer:
                 if progress_callback:
                     progress_callback("Step 3: Texture Compression", 60, "Applying advanced texture compression...")
                 
-                step4_output = self._validate_path(os.path.join(temp_dir, "step4_textures.glb"), allow_temp=True)
+                step4_output = self._validate_path(str(path_join(temp_dir, "step4_textures.glb")), allow_temp=True)
                 result = self._run_gltf_transform_textures(step3_output, step4_output)
                 if not result['success']:
                     # Continue with step3 result if texture compression fails
@@ -1158,7 +1206,7 @@ class GLBOptimizer:
                 if progress_callback:
                     progress_callback("Step 4: Animation Optimization", 75, "Optimizing animations...")
                 
-                step5_output = self._validate_path(os.path.join(temp_dir, "step5_animations.glb"), allow_temp=True)
+                step5_output = self._validate_path(str(path_join(temp_dir, "step5_animations.glb")), allow_temp=True)
                 result = self._run_gltf_transform_animations(step4_output, step5_output)
                 if not result['success']:
                     # Continue with step4 result if animation optimization fails
@@ -1249,7 +1297,7 @@ class GLBOptimizer:
             }
         finally:
             # Clean up temporary output file if it exists
-            if temp_output and os.path.exists(temp_output):
+            if temp_output and path_exists(temp_output):
                 try:
                     os.remove(temp_output)
                     self._temp_files.discard(temp_output)
@@ -1455,7 +1503,7 @@ class GLBOptimizer:
                 
                 # Submit tasks with unique temporary files
                 for method in methods_to_test:
-                    temp_output = os.path.join(self._secure_temp_dir, f"test_{method}_{os.getpid()}_{time.time():.0f}.glb")
+                    temp_output = str(path_join(self._secure_temp_dir, f"test_{method}_{os.getpid()}_{time.time():.0f}.glb"))
                     temp_files.append(temp_output)
                     self._temp_files.add(temp_output)
                     
@@ -1479,8 +1527,8 @@ class GLBOptimizer:
                         result = future.result(timeout=5)  # Quick timeout since task is done
                         results[method] = result
                         
-                        if result['success'] and os.path.exists(temp_output) and os.path.getsize(temp_output) > 0:
-                            file_sizes[method] = os.path.getsize(temp_output)
+                        if result['success'] and path_exists(temp_output) and path_size(temp_output) > 0:
+                            file_sizes[method] = path_size(temp_output)
                             self.logger.info(f"Parallel {method}: {file_sizes[method]} bytes")
                         
                         if progress_callback:
@@ -1526,8 +1574,8 @@ class GLBOptimizer:
             shutil.copy2(best_temp_file, output_path)
             
             # Calculate metrics
-            input_size = os.path.getsize(input_path)
-            output_size = os.path.getsize(output_path)
+            input_size = path_size(input_path)
+            output_size = path_size(output_path)
             compression_ratio = (1 - output_size / input_size) * 100
             
             self.logger.info(f"Parallel geometry compression ({best_method_name}): {input_size} → {output_size} bytes ({compression_ratio:.1f}% reduction)")
@@ -1548,7 +1596,7 @@ class GLBOptimizer:
             # Clean up all temporary files
             for temp_file in temp_files:
                 try:
-                    if os.path.exists(temp_file):
+                    if path_exists(temp_file):
                         os.remove(temp_file)
                         self._temp_files.discard(temp_file)
                 except Exception as cleanup_error:
@@ -1649,7 +1697,7 @@ class GLBOptimizer:
                     pass
             
             # Fallback: simple file size-based analysis
-            file_size = os.path.getsize(input_path)
+            file_size = path_size(input_path)
             return {
                 'file_size': file_size,
                 'complexity': 'high' if file_size > 10_000_000 else 'medium' if file_size > 1_000_000 else 'low'
@@ -1735,8 +1783,8 @@ class GLBOptimizer:
             
             result = self._run_subprocess(ktx2_cmd, "KTX2 Compression", "Advanced texture compression with KTX2", timeout=60)
             
-            if result['success'] and os.path.exists(output_path):
-                file_size = os.path.getsize(output_path)
+            if result['success'] and path_exists(output_path):
+                file_size = path_size(output_path)
                 self.logger.info(f"KTX2 compression successful: {file_size} bytes")
                 return {'success': True, 'size': file_size}
             else:
@@ -1759,8 +1807,8 @@ class GLBOptimizer:
             
             result = self._run_subprocess(webp_cmd, "WebP Compression", "WebP texture compression", timeout=600)
             
-            if result["success"] and os.path.exists(output_path):
-                file_size = os.path.getsize(output_path)
+            if result["success"] and path_exists(output_path):
+                file_size = path_size(output_path)
                 self.logger.info(f"WebP compression successful: {file_size} bytes")
                 return {'success': True, 'size': file_size}
             else:
@@ -1802,7 +1850,7 @@ class GLBOptimizer:
         """Clean up temporary texture compression files"""
         for temp_file in temp_files:
             try:
-                if os.path.exists(temp_file):
+                if path_exists(temp_file):
                     os.remove(temp_file)
             except:
                 pass
@@ -1810,9 +1858,9 @@ class GLBOptimizer:
     def _run_gltf_transform_textures(self, input_path, output_path):
         """Step 4: Advanced texture compression with KTX2/BasisU and WebP fallback"""
         # Setup temp files for testing different compression methods
-        temp_dir = os.path.dirname(output_path)
-        ktx2_output = os.path.join(temp_dir, "test_ktx2.glb")
-        webp_output = os.path.join(temp_dir, "test_webp.glb")
+        temp_dir = str(path_dirname(output_path))
+        ktx2_output = str(path_join(temp_dir, "test_ktx2.glb"))
+        webp_output = str(path_join(temp_dir, "test_webp.glb"))
         temp_files = [ktx2_output, webp_output]
         
         # Attempt both compression methods
@@ -1831,7 +1879,7 @@ class GLBOptimizer:
         
         # Move selected file to final output
         selected_file = ktx2_output if selected_method == 'ktx2' else webp_output
-        input_size = os.path.getsize(input_path)
+        input_size = path_size(input_path)
         compression_ratio = (1 - selected_size / input_size) * 100
         
         shutil.move(selected_file, output_path)
@@ -1912,7 +1960,7 @@ class GLBOptimizer:
                 self._safe_file_operation(temp_glb, 'copy', output_path)
                 # Clean up the temporary gltfpack file
                 try:
-                    if os.path.exists(temp_glb):
+                    if path_exists(temp_glb):
                         os.remove(temp_glb)
                 except:
                     pass  # Cleanup failure is not critical
@@ -1953,8 +2001,8 @@ class GLBOptimizer:
         Generate comprehensive performance metrics report
         """
         try:
-            original_size = os.path.getsize(input_path)
-            compressed_size = os.path.getsize(output_path)
+            original_size = path_size(input_path)
+            compressed_size = path_size(output_path)
             compression_ratio = (1 - compressed_size / original_size) * 100
             
             # Estimate performance improvements for web games
