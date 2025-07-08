@@ -696,35 +696,31 @@ class ModelViewer3D {
     }
     
     async setupAdvancedGLTFLoader() {
-        // Initialize GLTFLoader with full compression support
-        this.loader = new GLTFLoader();
+        // Initialize GLTFLoader exactly as specified
+        const loader = new GLTFLoader();
         
-        // 1️⃣ Meshopt - MUST be set before loading compressed files
-        this.loader.setMeshoptDecoder(MeshoptDecoder);
-        console.log('✓ Meshopt decoder set on main loader');
+        // 1️⃣ Meshopt
+        loader.setMeshoptDecoder(MeshoptDecoder);
         
         // 2️⃣ Draco fallback
-        this.dracoLoader = new DRACOLoader();
-        this.dracoLoader.setDecoderPath('/static/libs/draco/');
-        this.loader.setDRACOLoader(this.dracoLoader);
-        console.log('✓ DRACO decoder configured');
+        const draco = new DRACOLoader().setDecoderPath('/static/libs/draco/');
+        loader.setDRACOLoader(draco);
         
         // 3️⃣ KTX2 / BasisU - will be initialized when renderer is available
-        this.ktx2Loader = new KTX2Loader();
-        this.ktx2Loader.setTranscoderPath('/static/libs/basis/');
-        console.log('✓ KTX2 decoder prepared');
+        this.ktx2Loader = new KTX2Loader().setTranscoderPath('/static/libs/basis/');
         
-        // 4️⃣ WebP extension registration
-        this.loader.register(parser => ({
+        // 4️⃣ WebP extension
+        loader.register(parser => ({
             name: 'EXT_texture_webp',
             parser,
             afterRoot: () => {}
         }));
-        console.log('✓ WebP extension registered');
         
-
+        // Store configured loader
+        this.loader = loader;
+        this.dracoLoader = draco;
         
-        console.log('✓ Advanced GLTFLoader initialized with full compression support');
+        console.log('✓ GLTFLoader initialized with exact specification pattern');
     }
     
     initializeViewers(originalContainer, optimizedContainer, originalUrl, optimizedUrl) {
@@ -772,8 +768,8 @@ class ModelViewer3D {
         
         // 3️⃣ KTX2 / BasisU initialization with GPU support detection (needs renderer)
         if (this.ktx2Loader && !this.ktx2LoaderInitialized) {
-            this.ktx2Loader.detectSupport(renderer);
-            this.loader.setKTX2Loader(this.ktx2Loader);
+            const ktx2 = this.ktx2Loader.detectSupport(renderer);
+            this.loader.setKTX2Loader(ktx2);
             this.ktx2LoaderInitialized = true;
             console.log('✓ KTX2 loader initialized with GPU support detection');
         }
