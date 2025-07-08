@@ -698,30 +698,49 @@ class ModelViewer3D {
         // Initialize GLTFLoader with full compression support
         this.loader = new GLTFLoader();
         
-        // Setup fixed Meshopt decoder for EXT_meshopt_compression
+        // Setup Meshopt decoder for EXT_meshopt_compression using importmap
         try {
-            const { MeshoptDecoder } = await import('/static/libs/meshopt/meshopt_decoder_fixed.js');
-            await MeshoptDecoder.init();
+            const { MeshoptDecoder } = await import('meshopt-decoder');
             this.loader.setMeshoptDecoder(MeshoptDecoder);
             this.meshoptInitialized = true;
-            console.log('✓ Fixed Meshopt decoder loaded and initialized');
+            console.log('✓ Meshopt decoder initialized via importmap');
         } catch (error) {
-            console.error('Fixed Meshopt decoder failed:', error);
+            console.error('Meshopt decoder failed:', error);
             this.meshoptInitialized = false;
         }
         
-        // Setup DRACO decoder for KHR_draco_mesh_compression fallback
-        const dracoLoader = new DRACOLoader();
-        dracoLoader.setDecoderPath('/static/libs/draco/');
-        this.loader.setDRACOLoader(dracoLoader);
-        console.log('✓ DRACO decoder configured');
+        // Setup DRACO decoder for KHR_draco_mesh_compression
+        try {
+            const dracoLoader = new DRACOLoader();
+            dracoLoader.setDecoderPath('/static/libs/draco/');
+            this.loader.setDRACOLoader(dracoLoader);
+            console.log('✓ DRACO decoder configured');
+        } catch (error) {
+            console.error('DRACO decoder failed:', error);
+        }
         
-        // Setup KTX2 decoder for KHR_texture_basisu (requires renderer for GPU support detection)
-        this.ktx2Loader = new KTX2Loader();
-        this.ktx2Loader.setTranscoderPath('/static/libs/basis/');
-        console.log('✓ KTX2 decoder configured');
+        // Setup KTX2 loader for KHR_texture_basisu and EXT_texture_webp
+        try {
+            this.ktx2Loader = new KTX2Loader();
+            this.ktx2Loader.setTranscoderPath('/static/libs/basis/');
+            console.log('✓ KTX2 decoder configured');
+        } catch (error) {
+            console.error('KTX2 decoder failed:', error);
+        }
         
-        console.log('✓ Advanced GLTFLoader initialized with compression support');
+        // Register EXT_texture_webp extension for WebP texture support
+        try {
+            this.loader.register(parser => ({
+                name: 'EXT_texture_webp',
+                parser: parser,
+                afterRoot: () => {}
+            }));
+            console.log('✓ WebP texture extension registered');
+        } catch (error) {
+            console.warn('WebP texture extension registration failed:', error);
+        }
+        
+        console.log('✓ Advanced GLTFLoader initialized with full compression support');
     }
     
     initializeViewers(originalContainer, optimizedContainer, originalUrl, optimizedUrl) {
@@ -891,14 +910,15 @@ class ModelViewer3D {
     
     async ensureDecodersInitialized(type) {
         // Ensure Meshopt decoder is properly initialized for each model
-        try {
-            const { MeshoptDecoder } = await import('/static/libs/meshopt/meshopt_decoder_fixed.js');
-            await MeshoptDecoder.init();
-            this.loader.setMeshoptDecoder(MeshoptDecoder);
-            this.meshoptInitialized = true;
-            console.log(`✓ Fixed Meshopt decoder ensured for ${type} model loading`);
-        } catch (error) {
-            console.error(`Fixed Meshopt decoder initialization failed for ${type}:`, error);
+        if (!this.meshoptInitialized) {
+            try {
+                const { MeshoptDecoder } = await import('meshopt-decoder');
+                this.loader.setMeshoptDecoder(MeshoptDecoder);
+                this.meshoptInitialized = true;
+                console.log(`✓ Meshopt decoder ensured for ${type} model loading`);
+            } catch (error) {
+                console.error(`Meshopt decoder initialization failed for ${type}:`, error);
+            }
         }
         
         // Ensure KTX2 loader is properly configured with GPU support
