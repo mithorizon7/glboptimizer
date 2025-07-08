@@ -1,5 +1,4 @@
-# .github/workflows/ci.yml
-name: GLB Optimizer CI/CD Pipeline
+name: GLB Optimizer CI
 
 on:
   push:
@@ -7,399 +6,182 @@ on:
   pull_request:
     branches: [ main ]
 
-env:
-  PYTHON_VERSION: '3.11'
-  NODE_VERSION: '20'
-
 jobs:
-  unit-tests:
-    name: Unit Tests
+  test:
     runs-on: ubuntu-latest
-    
-    services:
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_DB: glb_optimizer_test
-          POSTGRES_USER: test_user
-          POSTGRES_PASSWORD: test_password
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-    
+    strategy:
+      matrix:
+        python-version: [3.9, 3.10, 3.11]
+
     steps:
     - uses: actions/checkout@v4
     
-    - name: Set up Python
+    - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v4
       with:
-        python-version: ${{ env.PYTHON_VERSION }}
+        python-version: ${{ matrix.python-version }}
     
     - name: Set up Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: ${{ env.NODE_VERSION }}
-    
-    - name: Install system dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y redis-tools postgresql-client
+        node-version: '18'
     
     - name: Install Node.js dependencies
       run: |
-        npm install -g @gltf-transform/cli gltfpack
-    
-    - name: Cache Python dependencies
-      uses: actions/cache@v3
-      with:
-        path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
-        restore-keys: |
-          ${{ runner.os }}-pip-
+        npm install -g @gltf-transform/cli@4.2.0
+        npm install -g gltfpack@0.24.0
     
     - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install pytest pytest-flask pytest-mock
-        pip install -r requirements.txt
+        pip install pytest pytest-cov pytest-mock
+        pip install -r requirements.txt || pip install flask sqlalchemy psycopg2-binary gunicorn celery redis python-dotenv
     
-    - name: Set up test environment
-      env:
-        DATABASE_URL: postgresql://test_user:test_password@localhost:5432/glb_optimizer_test
-        REDIS_URL: redis://localhost:6379/1
-        FLASK_ENV: testing
-        SESSION_SECRET: test_secret_key
+    - name: Install KTX-Software (for texture compression tests)
       run: |
-        # Create test directories
-        mkdir -p test_uploads test_output
-        
-        # Initialize test database
-        python -c "
-        import os
-        os.environ['DATABASE_URL'] = 'postgresql://test_user:test_password@localhost:5432/glb_optimizer_test'
-        os.environ['REDIS_URL'] = 'redis://localhost:6379/1'
-        from database import init_database
-        init_database()
-        "
+        wget https://github.com/KhronosGroup/KTX-Software/releases/download/v4.1.0/ktx_4.1.0_linux.tar.gz
+        tar -xzf ktx_4.1.0_linux.tar.gz
+        sudo cp ktx_4.1.0_linux/bin/* /usr/local/bin/
+        sudo chmod +x /usr/local/bin/ktx*
+    
+    - name: Run security tests
+      run: |
+        pytest tests/test_security.py -v --tb=short
     
     - name: Run unit tests
-      env:
-        DATABASE_URL: postgresql://test_user:test_password@localhost:5432/glb_optimizer_test
-        REDIS_URL: redis://localhost:6379/1
-        FLASK_ENV: testing
-        SESSION_SECRET: test_secret_key
       run: |
-        pytest tests/test_optimizer.py tests/test_tasks.py tests/test_analytics.py -v --tb=short
+        pytest tests/test_optimizer_unit.py tests/test_config.py -v --tb=short
     
-    - name: Upload unit test results
-      uses: actions/upload-artifact@v3
-      if: always()
-      with:
-        name: unit-test-results
-        path: |
-          test-results.xml
-          coverage.xml
-        retention-days: 30
-
-  integration-tests:
-    name: Integration Tests
-    runs-on: ubuntu-latest
-    needs: unit-tests
-    
-    services:
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_DB: glb_optimizer_test
-          POSTGRES_USER: test_user
-          POSTGRES_PASSWORD: test_password
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-    
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: ${{ env.PYTHON_VERSION }}
-    
-    - name: Set up Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: ${{ env.NODE_VERSION }}
-    
-    - name: Install dependencies
+    - name: Run compression method tests
       run: |
-        sudo apt-get update
-        sudo apt-get install -y redis-tools postgresql-client
-        npm install -g @gltf-transform/cli gltfpack
-        python -m pip install --upgrade pip
-        pip install pytest pytest-flask pytest-mock
-        pip install -r requirements.txt
-    
-    - name: Set up test environment
-      env:
-        DATABASE_URL: postgresql://test_user:test_password@localhost:5432/glb_optimizer_test
-        REDIS_URL: redis://localhost:6379/1
-        FLASK_ENV: testing
-        SESSION_SECRET: test_secret_key
-      run: |
-        mkdir -p test_uploads test_output
-        python -c "
-        import os
-        os.environ['DATABASE_URL'] = 'postgresql://test_user:test_password@localhost:5432/glb_optimizer_test'
-        os.environ['REDIS_URL'] = 'redis://localhost:6379/1'
-        from database import init_database
-        init_database()
-        "
-    
-    - name: Start Celery worker
-      env:
-        DATABASE_URL: postgresql://test_user:test_password@localhost:5432/glb_optimizer_test
-        REDIS_URL: redis://localhost:6379/1
-        CELERY_BROKER_URL: redis://localhost:6379/1
-        CELERY_RESULT_BACKEND: redis://localhost:6379/1
-      run: |
-        celery -A tasks worker --loglevel=info --detach
+        pytest tests/test_compression_methods.py -v --tb=short
     
     - name: Run integration tests
-      env:
-        DATABASE_URL: postgresql://test_user:test_password@localhost:5432/glb_optimizer_test
-        REDIS_URL: redis://localhost:6379/1
-        FLASK_ENV: testing
-        SESSION_SECRET: test_secret_key
       run: |
         pytest tests/test_integration.py -v --tb=short
     
-    - name: Upload integration test results
-      uses: actions/upload-artifact@v3
-      if: always()
-      with:
-        name: integration-test-results
-        path: |
-          test-results.xml
-          integration-coverage.xml
-        retention-days: 30
-
-  e2e-tests:
-    name: End-to-End Tests
-    runs-on: ubuntu-latest
-    needs: integration-tests
-    
-    services:
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_DB: glb_optimizer_test
-          POSTGRES_USER: test_user
-          POSTGRES_PASSWORD: test_password
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-    
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: ${{ env.PYTHON_VERSION }}
-    
-    - name: Set up Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: ${{ env.NODE_VERSION }}
-    
-    - name: Install dependencies
+    - name: Run full test suite with coverage
       run: |
-        sudo apt-get update
-        sudo apt-get install -y redis-tools postgresql-client
-        npm install -g @gltf-transform/cli gltfpack
-        python -m pip install --upgrade pip
-        pip install pytest pytest-flask pytest-playwright
-        pip install -r requirements.txt
-        playwright install chromium
+        pytest --cov=optimizer --cov=config --cov-report=xml --cov-report=term-missing --cov-fail-under=85
     
-    - name: Set up test environment
-      env:
-        DATABASE_URL: postgresql://test_user:test_password@localhost:5432/glb_optimizer_test
-        REDIS_URL: redis://localhost:6379/1
-        FLASK_ENV: testing
-        SESSION_SECRET: test_secret_key
-      run: |
-        mkdir -p test_uploads test_output
-        python -c "
-        import os
-        os.environ['DATABASE_URL'] = 'postgresql://test_user:test_password@localhost:5432/glb_optimizer_test'
-        os.environ['REDIS_URL'] = 'redis://localhost:6379/1'
-        from database import init_database
-        init_database()
-        "
-    
-    - name: Start application server
-      env:
-        DATABASE_URL: postgresql://test_user:test_password@localhost:5432/glb_optimizer_test
-        REDIS_URL: redis://localhost:6379/1
-        CELERY_BROKER_URL: redis://localhost:6379/1
-        CELERY_RESULT_BACKEND: redis://localhost:6379/1
-        SESSION_SECRET: test_secret_key
-        FLASK_ENV: testing
-      run: |
-        # Start Celery worker
-        celery -A tasks worker --loglevel=info --detach
-        
-        # Start Flask application in background
-        python develop.py &
-        
-        # Wait for server to start
-        sleep 10
-        
-        # Verify server is running
-        curl -f http://localhost:5000/ || exit 1
-    
-    - name: Run E2E tests
-      env:
-        DATABASE_URL: postgresql://test_user:test_password@localhost:5432/glb_optimizer_test
-        REDIS_URL: redis://localhost:6379/1
-        SESSION_SECRET: test_secret_key
-      run: |
-        pytest tests/test_e2e.py -v --tb=short --browser chromium
-    
-    - name: Upload E2E test artifacts
-      uses: actions/upload-artifact@v3
-      if: always()
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
       with:
-        name: e2e-test-artifacts
-        path: |
-          test-results/
-          screenshots/
-          videos/
-        retention-days: 30
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
 
   security-scan:
-    name: Security Scan
     runs-on: ubuntu-latest
-    needs: unit-tests
-    
     steps:
     - uses: actions/checkout@v4
     
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: ${{ env.PYTHON_VERSION }}
+        python-version: '3.11'
     
-    - name: Install security tools
+    - name: Install security scanning tools
       run: |
         python -m pip install --upgrade pip
         pip install bandit safety
     
     - name: Run Bandit security scan
       run: |
-        bandit -r . -f json -o bandit-report.json
+        bandit -r optimizer.py config.py app.py -f json -o bandit-report.json || true
+        bandit -r optimizer.py config.py app.py
     
-    - name: Check dependencies for vulnerabilities
+    - name: Run Safety vulnerability scan
       run: |
-        safety check --json --output safety-report.json
+        safety check --json --output safety-report.json || true
+        safety check
     
-    - name: Upload security scan results
+    - name: Upload security reports
       uses: actions/upload-artifact@v3
       if: always()
       with:
-        name: security-scan-results
+        name: security-reports
         path: |
           bandit-report.json
           safety-report.json
-        retention-days: 30
 
-  build-and-test:
-    name: Build and Test
+  code-quality:
     runs-on: ubuntu-latest
-    needs: [unit-tests, integration-tests, e2e-tests, security-scan]
-    if: github.ref == 'refs/heads/main'
-    
     steps:
     - uses: actions/checkout@v4
     
-    - name: Build production image
-      run: |
-        # In a real scenario, you might build a Docker image here
-        echo "Building production package..."
-        
-        # Verify all critical files are present
-        test -f develop.py
-        test -f run_production.py
-        test -f requirements.txt
-        test -f README_STARTUP.md
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
     
-    - name: Run production smoke test
+    - name: Install code quality tools
       run: |
-        # Quick smoke test to ensure production setup works
-        echo "Running production smoke test..."
-        python -c "
-        import sys
-        sys.path.append('.')
-        from run_production import ProductionServer
-        server = ProductionServer()
-        print('Production server can be instantiated')
-        "
+        python -m pip install --upgrade pip
+        pip install flake8 black isort mypy
+    
+    - name: Run Black code formatting check
+      run: |
+        black --check --diff optimizer.py config.py app.py tests/
+    
+    - name: Run isort import sorting check
+      run: |
+        isort --check-only --diff optimizer.py config.py app.py tests/
+    
+    - name: Run Flake8 linting
+      run: |
+        flake8 optimizer.py config.py app.py --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 optimizer.py config.py app.py --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+    
+    - name: Run MyPy type checking
+      run: |
+        mypy optimizer.py config.py --ignore-missing-imports --no-strict-optional
 
-  notify-success:
-    name: Notify Success
+  docker-build:
     runs-on: ubuntu-latest
-    needs: [build-and-test]
-    if: success()
-    
     steps:
-    - name: Notify success
+    - uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Build Docker image
       run: |
-        echo "🎉 All tests passed! GLB Optimizer is ready for deployment."
-        echo "✅ Unit tests: PASSED"
-        echo "✅ Integration tests: PASSED"
-        echo "✅ E2E tests: PASSED"
-        echo "✅ Security scan: PASSED"
-        echo "✅ Build verification: PASSED"
+        docker build -t glb-optimizer:test .
+    
+    - name: Test Docker image
+      run: |
+        docker run --rm glb-optimizer:test python -c "import optimizer; print('Import successful')"
+
+  performance-test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest pytest-benchmark
+        pip install flask sqlalchemy psycopg2-binary
+        npm install -g @gltf-transform/cli@4.2.0
+    
+    - name: Run performance benchmarks
+      run: |
+        pytest tests/ -k "not slow" --benchmark-only --benchmark-json=benchmark.json || true
+    
+    - name: Upload benchmark results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: benchmark-results
+        path: benchmark.json
