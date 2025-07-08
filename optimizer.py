@@ -1146,16 +1146,13 @@ class GLBOptimizer:
                     progress_callback("Step 5: Final Optimization", 90, "Final bundling and minification...")
                 
                 best_result = step5_output
-                if self.quality_level == 'high':
-                    result = self._run_gltfpack_final(step5_output, temp_output)
-                    if result['success']:
-                        best_result = temp_output
-                    else:
-                        # If final optimization fails, use step 5 result
-                        self.logger.warning("Final optimization failed, using step 5 result")
-                        best_result = step5_output
+                # Run gltfpack final optimization for all quality levels
+                result = self._run_gltfpack_final(step5_output, temp_output)
+                if result['success']:
+                    best_result = temp_output
                 else:
-                    # For non-high quality, use step 5 result
+                    # If final optimization fails, use step 5 result
+                    self.logger.warning("Final optimization failed, using step 5 result")
                     best_result = step5_output
                 
                 # Ensure we have a valid result, find best fallback if needed
@@ -2012,42 +2009,42 @@ class GLBOptimizer:
             return {'success': True}
     
     def _run_gltfpack_final(self, input_path, output_path):
-        """Step 6: Final bundle and minify with safe gltfpack flags"""
+        """Step 6: Final bundle and minify with gltfpack for all quality levels"""
         try:
-            # Only use gltfpack for 'high' quality to avoid corruption issues
-            if self.quality_level == 'high':
-                self.logger.info("Running final gltfpack optimization (high quality only)")
-                
-                # Create a proper temporary file with .glb extension for gltfpack
-                temp_glb = output_path + ".gltfpack_temp.glb"
-                
-                cmd = [
-                    'gltfpack',
-                    '-i', input_path,
-                    '-o', temp_glb,  # Use .glb extension for gltfpack
-                    '-c'  # Use basic compression to avoid corruption
-                ]
-                result = self._run_subprocess(cmd, "Final Optimization", "Applying final gltfpack compression", timeout=120)
-                
-                if result['success']:
-                    # Copy the successful result to the final destination
-                    self._safe_file_operation(temp_glb, 'copy', output_path)
-                    # Clean up the temporary gltfpack file
-                    try:
-                        if os.path.exists(temp_glb):
-                            os.remove(temp_glb)
-                    except:
-                        pass  # Cleanup failure is not critical
-                    self.logger.info("Final gltfpack optimization completed successfully")
-                    return {'success': True}
-                else:
-                    self.logger.warning(f"gltfpack failed: {result.get('detailed_error', 'Unknown error')}")
-                    # Fallback: copy the input file
-                    self._safe_file_operation(input_path, 'copy', output_path)
-                    return {'success': True}
+            self.logger.info("Running final gltfpack optimization for all quality levels")
+            
+            # Create a proper temporary file with .glb extension for gltfpack
+            temp_glb = output_path + ".gltfpack_temp.glb"
+            
+            # First try with aggressive compression (-cc)
+            cmd = [
+                'gltfpack',
+                '-i', input_path,
+                '-o', temp_glb,  # Use .glb extension for gltfpack
+                '-cc'  # Aggressive compression first
+            ]
+            result = self._run_subprocess(cmd, "Final Optimization", "Applying final gltfpack compression", timeout=120)
+            
+            # If aggressive compression fails, fallback to basic compression (-c)
+            if not result['success']:
+                self.logger.info("Aggressive compression failed, trying basic compression")
+                cmd[-1] = '-c'  # swap -cc -> -c
+                result = self._run_subprocess(cmd, "Final Optimization Fallback", "Applying basic gltfpack compression", timeout=120)
+            
+            if result['success']:
+                # Copy the successful result to the final destination
+                self._safe_file_operation(temp_glb, 'copy', output_path)
+                # Clean up the temporary gltfpack file
+                try:
+                    if os.path.exists(temp_glb):
+                        os.remove(temp_glb)
+                except:
+                    pass  # Cleanup failure is not critical
+                self.logger.info("Final gltfpack optimization completed successfully")
+                return {'success': True}
             else:
-                # For non-high quality, skip gltfpack to avoid corruption
-                self.logger.info("Skipping gltfpack final step (not high quality)")
+                self.logger.warning(f"gltfpack failed: {result.get('detailed_error', 'Unknown error')}")
+                # Fallback: copy the input file
                 self._safe_file_operation(input_path, 'copy', output_path)
                 return {'success': True}
         
