@@ -182,7 +182,7 @@ def add_security_headers(response):
         # Content Security Policy (allowing required external resources and WASM)
         response.headers['Content-Security-Policy'] = (
             "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline' cdnjs.cloudflare.com cdn.jsdelivr.net unpkg.com; "
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' cdnjs.cloudflare.com cdn.jsdelivr.net unpkg.com; "
             "style-src 'self' 'unsafe-inline' cdnjs.cloudflare.com cdn.jsdelivr.net cdn.replit.com fonts.googleapis.com; "
             "font-src 'self' cdnjs.cloudflare.com fonts.gstatic.com; "
             "img-src 'self' data: blob:; "
