@@ -16,6 +16,7 @@ from database import SessionLocal, init_database
 from models import OptimizationTask, PerformanceMetric, UserSession, SystemMetric
 from analytics import get_analytics_dashboard_data
 from issue_logger import issue_logger, track_errors, track_performance
+from enhanced_error_logging import global_error_handler, catch_all_errors, log_database_errors, log_file_operations, log_optimization_errors
 
 # Load environment variables
 load_dotenv()
@@ -61,6 +62,8 @@ def get_db():
     """Get database session"""
     return SessionLocal()
 
+@log_optimization_errors
+@log_file_operations
 def process_file_synchronously(file_path, output_path, task_id, quality_level, enable_lod, enable_simplification):
     """Synchronous file processing when Celery is unavailable"""
     try:
@@ -128,6 +131,7 @@ def process_file_synchronously(file_path, output_path, task_id, quality_level, e
             pass
         return False
 
+@log_database_errors
 def get_or_create_user_session():
     """Get or create user session for tracking"""
     try:
@@ -444,6 +448,7 @@ def upload_file():
 
 
 @main_routes.route('/progress/<task_id>')
+@catch_all_errors('progress')
 def get_progress(task_id):
     try:
         # Get task result from Celery
@@ -492,6 +497,8 @@ def get_progress(task_id):
 
 
 @main_routes.route('/download/<task_id>')
+@catch_all_errors('download')
+@log_file_operations
 def download_file(task_id):
     try:
         # Check if task exists in database
@@ -526,6 +533,8 @@ def download_file(task_id):
 
 
 @main_routes.route('/cleanup/<task_id>', methods=['POST'])
+@catch_all_errors('cleanup')
+@log_file_operations
 def cleanup_task(task_id):
     """Clean up task files and result data"""
     try:
@@ -566,6 +575,8 @@ def cleanup_task(task_id):
 
 
 @main_routes.route('/original/<task_id>')
+@catch_all_errors('original_file')
+@log_file_operations
 def get_original_file(task_id):
     """Serve the original GLB file for 3D comparison viewer"""
     try:
@@ -591,6 +602,7 @@ def get_original_file(task_id):
 
 
 @main_routes.route('/error-logs/<task_id>')
+@catch_all_errors('error_logs')
 def download_error_logs(task_id):
     """Download detailed error logs for optimization tasks"""
     try:
@@ -648,6 +660,8 @@ Task is still in progress or in an unknown state.
 
 
 @main_routes.route('/admin/analytics')
+@catch_all_errors('admin_analytics')
+@log_database_errors
 def admin_analytics():
     """Admin analytics dashboard showing database insights"""
     try:
@@ -660,6 +674,8 @@ def admin_analytics():
 
 
 @main_routes.route('/admin/stats')
+@catch_all_errors('admin_stats')
+@log_database_errors
 def admin_stats():
     """Quick database statistics endpoint"""
     try:
@@ -680,6 +696,7 @@ def admin_stats():
         return jsonify({'error': 'Failed to get database stats', 'database_status': 'error'}), 500
 
 @main_routes.route('/health')
+@catch_all_errors('health_check')
 def health_check():
     """Health check endpoint for monitoring."""
     services = {}
@@ -723,6 +740,9 @@ def create_app():
     
     # Apply middleware
     app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
+
+    # Initialize comprehensive error handling
+    global_error_handler.init_app(app)
 
     # Register the Blueprint with all routes
     app.register_blueprint(main_routes)
