@@ -564,8 +564,14 @@ def cleanup_task(task_id):
         else:
             logging.warning(f"Optimized file not found: {optimized_path}")
         
-        # Revoke/forget the task in Celery
-        celery_task.forget()
+        # IMPROVEMENT: Safe Celery cleanup with Redis fallback handling
+        try:
+            celery_task.forget()
+            logging.info(f"Successfully cleaned up Celery task: {task_id}")
+        except Exception as celery_error:
+            # If Redis is unavailable, this will fail - but that's okay, the task data will expire naturally
+            logging.warning(f"Celery task cleanup failed (Redis unavailable): {celery_error}")
+            # Don't raise error since file cleanup was successful
         
         return jsonify({'message': 'Task cleaned up successfully'})
     

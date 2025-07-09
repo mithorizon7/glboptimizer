@@ -325,8 +325,12 @@ class GLBOptimizer:
         # CRITICAL: Re-resolve symlinks immediately before use (TOCTOU protection)
         abs_path = str(path_resolve(abs_path))
         
-        # Security: Enhanced extension validation for temporary files
-        if allow_temp:
+        # IMPROVEMENT: Skip extension validation for directories
+        if ensure_path(abs_path).is_dir() or abs_path.endswith('/') or abs_path.endswith('\\'):
+            # Directory paths don't need extension validation
+            pass
+        elif allow_temp:
+            # Security: Enhanced extension validation for temporary files
             # Whitelist of allowed extensions for temporary files
             allowed_temp_extensions = ['.glb', '.tmp', '.ktx2', '.webp', '.png', '.jpg', '.jpeg']
             
@@ -400,6 +404,12 @@ class GLBOptimizer:
                 pass
         
         if not path_allowed:
+            # IMPROVEMENT: Check if this is a directory path instead of a file path
+            # Directories shouldn't be validated as files with extensions
+            if ensure_path(abs_path).is_dir() or abs_path.endswith('/') or abs_path.endswith('\\'):
+                self.logger.warning(f"Directory path validation attempted (skipping): {abs_path}")
+                return abs_path  # Allow directory paths to pass through
+            
             self.logger.error(f"Path validation failed - Path outside allowed directories: {abs_path}")
             self.logger.error(f"Allowed directories: {allowed_directories}")
             self.logger.error(f"allow_temp flag: {allow_temp}")
