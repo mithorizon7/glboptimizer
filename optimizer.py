@@ -337,8 +337,18 @@ class GLBOptimizer:
             glb_temp_patterns = ['.glb.tmp', '.gltfpack_temp.glb', '.ktx2.tmp', '.webp.tmp']
             is_glb_temp = any(pattern in abs_path.lower() for pattern in glb_temp_patterns)
             
-            # Allow gltfpack temporary files (pattern: .tmp.#### where #### is process ID)
-            is_gltfpack_temp = re.search(r'\.tmp\.\d+$', abs_path.lower()) is not None
+            # Allow gltfpack temporary files (multiple patterns supported)
+            # Pattern 1: .tmp.#### where #### is process ID (e.g., file.tmp.5938)
+            # Pattern 2: _optimized.tmp.#### for output files (e.g., filename_optimized.tmp.5938)
+            # Pattern 3: .glb.tmp.#### for GLB temp files
+            gltfpack_patterns = [
+                r'\.tmp\.\d+$',                    # Standard .tmp.XXXX
+                r'_optimized\.tmp\.\d+$',          # Output temp files
+                r'\.glb\.tmp\.\d+$',               # GLB temp files
+                r'\.ktx2\.tmp\.\d+$',              # KTX2 temp files
+                r'\.webp\.tmp\.\d+$'               # WebP temp files
+            ]
+            is_gltfpack_temp = any(re.search(pattern, abs_path.lower()) for pattern in gltfpack_patterns)
             
             if not (has_valid_extension or is_glb_temp or is_gltfpack_temp):
                 raise ValueError(f"Temporary file has disallowed extension: {abs_path}")
@@ -390,8 +400,16 @@ class GLBOptimizer:
                 pass
         
         if not path_allowed:
-            self.logger.error(f"Path outside allowed directories: {abs_path}")
+            self.logger.error(f"Path validation failed - Path outside allowed directories: {abs_path}")
             self.logger.error(f"Allowed directories: {allowed_directories}")
+            self.logger.error(f"allow_temp flag: {allow_temp}")
+            # Add detailed debug info for temp file validation
+            if allow_temp and '.tmp.' in abs_path:
+                self.logger.error(f"This appears to be a temp file that should be allowed. Checking patterns...")
+                gltfpack_patterns = [r'\.tmp\.\d+$', r'_optimized\.tmp\.\d+$', r'\.glb\.tmp\.\d+$']
+                for pattern in gltfpack_patterns:
+                    if re.search(pattern, abs_path.lower()):
+                        self.logger.error(f"File matches gltfpack pattern {pattern} but still rejected")
             raise ValueError(f"Path outside allowed directories: {abs_path}")
         
         # Security: Additional symlink check after path resolution
@@ -521,11 +539,16 @@ class GLBOptimizer:
         current_path = os.environ.get('PATH', '')
         if current_path:
             for path_dir in current_path.split(':'):
-                # Include Node.js and NPX directories from current environment
-                if any(tool in path_dir.lower() for tool in ['node', 'npm', 'npx']) and Path(path_dir).is_dir():
-                    if path_dir not in path_components:
+                path_obj = Path(path_dir)
+                if path_obj.is_dir():
+                    # Include directories that contain Node.js tools or are Node.js-related
+                    contains_node_tools = any(tool in path_dir.lower() for tool in ['node', 'npm', 'npx'])
+                    # Also include directories that contain gltf-transform or gltfpack
+                    has_gltf_tools = (path_obj / 'gltf-transform').exists() or (path_obj / 'gltfpack').exists()
+                    
+                    if (contains_node_tools or has_gltf_tools) and path_dir not in path_components:
                         path_components.append(path_dir)
-                        self.logger.debug(f"Added Node.js path from environment: {path_dir}")
+                        self.logger.debug(f"Added tool path from environment: {path_dir} (node_tools: {contains_node_tools}, gltf_tools: {has_gltf_tools})")
         
         # 3. Add standard system directories (always present)
         standard_paths = ['/usr/local/bin', '/usr/bin', '/bin']
@@ -1032,12 +1055,29 @@ class GLBOptimizer:
             }
             
         except FileNotFoundError:
-            error_msg = f"Required tool not found for {step_name}"
+            error_msg = f"Required tool not found for {step_name}: {validated_cmd[0]}"
             self.logger.error(error_msg)
+            self.logger.error(f"Current PATH for tool detection: {safe_env.get('PATH', 'N/A')}")
+            # Try to detect if the tool exists anywhere in the system
+            tool_name = validated_cmd[0]
+            tool_found = None
+            for path_dir in safe_env.get('PATH', '').split(':'):
+                potential_tool = Path(path_dir) / tool_name
+                if potential_tool.exists():
+                    tool_found = str(potential_tool)
+                    self.logger.error(f"Tool found at {tool_found} but not accessible")
+                    break
+            
+            error_details = f"Tool '{tool_name}' not found in PATH. "
+            if tool_found:
+                error_details += f"Tool exists at {tool_found} but is not accessible."
+            else:
+                error_details += "Tool not installed or not in PATH."
+                
             return {
                 'success': False,
-                'error': f"Optimization tool '{validated_cmd[0]}' is not available. The file will be processed with basic optimization only.",
-                'detailed_error': error_msg,
+                'error': "Required optimization tool is not installed. Please contact support.",
+                'detailed_error': error_details,
                 'step': step_name
             }
             
