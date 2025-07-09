@@ -238,6 +238,51 @@ class GLBOptimizer:
             dir_stat = ensure_path(allowed_dir).stat()
             if stat.S_IMODE(dir_stat.st_mode) & 0o022:  # Check for world/group write
                 self.logger.warning(f"Directory {allowed_dir} has overly permissive permissions")
+        
+        # Check for required tools availability
+        self._check_required_tools()
+    
+    def _check_required_tools(self):
+        """Check if required optimization tools are available"""
+        tools_status = {}
+        
+        # Check gltf-transform
+        try:
+            result = subprocess.run(['npx', 'gltf-transform', '--version'], 
+                                  capture_output=True, text=True, timeout=10)
+            if result.returncode == 0:
+                tools_status['gltf-transform'] = 'available'
+                self.logger.info(f"gltf-transform available: {result.stdout.strip()}")
+            else:
+                tools_status['gltf-transform'] = 'failed'
+                self.logger.warning(f"gltf-transform check failed: {result.stderr}")
+        except Exception as e:
+            tools_status['gltf-transform'] = 'missing'
+            self.logger.error(f"gltf-transform not available: {e}")
+        
+        # Check gltfpack
+        try:
+            result = subprocess.run(['gltfpack', '--version'], 
+                                  capture_output=True, text=True, timeout=10)
+            if result.returncode == 0:
+                tools_status['gltfpack'] = 'available'
+                self.logger.info(f"gltfpack available: {result.stdout.strip()}")
+            else:
+                tools_status['gltfpack'] = 'failed'
+                self.logger.warning(f"gltfpack check failed: {result.stderr}")
+        except Exception as e:
+            tools_status['gltfpack'] = 'missing'
+            self.logger.error(f"gltfpack not available: {e}")
+        
+        # Store tool status for later use
+        self.tools_status = tools_status
+        
+        # Log overall status
+        available_tools = [tool for tool, status in tools_status.items() if status == 'available']
+        if available_tools:
+            self.logger.info(f"Available optimization tools: {', '.join(available_tools)}")
+        else:
+            self.logger.warning("No optimization tools detected - basic GLB processing only")
     
     def _validate_path(self, file_path: str, allow_temp: bool = False) -> str:
         """
@@ -787,7 +832,21 @@ class GLBOptimizer:
     
     def _validate_glb_file(self, filepath: str) -> Dict[str, Any]:
         """Legacy wrapper for full-mode validation - use validate_glb() instead"""
-        return self.validate_glb(filepath, mode="full")
+        try:
+            result = self.validate_glb(filepath, mode="full")
+            return result if result is not None else {
+                'success': False,
+                'error': 'Validation returned None',
+                'user_message': 'File validation failed unexpectedly.',
+                'category': 'Validation Error'
+            }
+        except Exception as e:
+            return {
+                'success': False,
+                'error': f'Validation exception: {str(e)}',
+                'user_message': 'File validation failed unexpectedly.',
+                'category': 'Validation Error'
+            }
     
     def _atomic_write(self, temp_path: str, final_path: str) -> Dict[str, Any]:
         """
@@ -827,8 +886,15 @@ class GLBOptimizer:
             
             # Final validation of moved file
             final_validation = self._validate_glb_file(final_path)
-            if not final_validation or not final_validation.get('success'):
-                error_msg = final_validation.get('error', 'Unknown validation error') if final_validation else 'Validation returned None'
+            if not final_validation:
+                return {
+                    'success': False,
+                    'error': 'Final validation returned None',
+                    'user_message': 'The optimization produced an invalid output file.',
+                    'category': 'Validation Error'
+                }
+            if not final_validation.get('success'):
+                error_msg = final_validation.get('error', 'Unknown validation error')
                 return {
                     'success': False,
                     'error': f'Final validation failed: {error_msg}',
@@ -970,7 +1036,7 @@ class GLBOptimizer:
             self.logger.error(error_msg)
             return {
                 'success': False,
-                'error': f"Required optimization tool is not installed. Please contact support.",
+                'error': f"Optimization tool '{validated_cmd[0]}' is not available. The file will be processed with basic optimization only.",
                 'detailed_error': error_msg,
                 'step': step_name
             }
