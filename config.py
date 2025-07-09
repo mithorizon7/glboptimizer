@@ -73,8 +73,8 @@ class OptimizationConfig:
         # File limits
         self.MAX_FILE_SIZE = int(os.environ.get('GLB_MAX_FILE_SIZE', str(500 * 1024 * 1024)))  # 500MB default
         self.MIN_FILE_SIZE = int(os.environ.get('GLB_MIN_FILE_SIZE', '1024'))  # 1KB minimum for valid GLB
-        self.SUBPROCESS_TIMEOUT = int(os.environ.get('GLB_SUBPROCESS_TIMEOUT', '300'))  # 5 minutes
-        self.PARALLEL_TIMEOUT = int(os.environ.get('GLB_PARALLEL_TIMEOUT', '120'))  # 2 minutes
+        self.SUBPROCESS_TIMEOUT = int(os.environ.get('GLB_SUBPROCESS_TIMEOUT', '60'))  # 1 minute for faster optimization
+        self.PARALLEL_TIMEOUT = int(os.environ.get('GLB_PARALLEL_TIMEOUT', '30'))  # 30 seconds for faster parallel processing
     
         # Quality presets with comprehensive settings
         self.QUALITY_PRESETS = {
