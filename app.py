@@ -714,10 +714,13 @@ def health_check():
     
     # Check database connectivity
     try:
-        from database import get_db
         db = get_db()
-        db.execute('SELECT 1')
-        services['database'] = "Connected"
+        try:
+            # Simple check using existing models
+            count = db.query(OptimizationTask).count()
+            services['database'] = f"Connected ({count} tasks)"
+        finally:
+            db.close()
     except Exception as e:
         services['database'] = f"ERROR: {str(e)}"
     
