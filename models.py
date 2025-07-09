@@ -17,6 +17,14 @@ class OptimizationTask(Base):
     compressed_size = Column(Integer, nullable=True)
     compression_ratio = Column(Float, nullable=True)
     
+    # Object storage references
+    original_storage_key = Column(String(500), nullable=True)
+    optimized_storage_key = Column(String(500), nullable=True)
+    logs_storage_key = Column(String(500), nullable=True)
+    original_storage_url = Column(String(1000), nullable=True)
+    optimized_storage_url = Column(String(1000), nullable=True)
+    storage_provider = Column(String(50), nullable=True, default='local')
+    
     # Optimization settings
     quality_level = Column(String(50), nullable=False, default='high')
     enable_lod = Column(Boolean, nullable=False, default=True)

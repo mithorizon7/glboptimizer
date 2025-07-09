@@ -17,6 +17,7 @@ from models import OptimizationTask, PerformanceMetric, UserSession, SystemMetri
 from analytics import get_analytics_dashboard_data
 from issue_logger import issue_logger, track_errors, track_performance
 from enhanced_error_logging import global_error_handler, catch_all_errors, log_database_errors, log_file_operations, log_optimization_errors
+from object_storage import get_storage_manager, init_storage
 
 # Load environment variables
 load_dotenv()
@@ -216,6 +217,10 @@ if config_issues:
 # Log configuration summary
 logger.info(f"GLB Optimizer starting with config: {config.get_config_summary()}")
 
+# Initialize object storage
+init_storage()
+logger.info(f"Object storage initialized with provider: {config.STORAGE_TYPE}")
+
 
 def process_file_synchronously(input_path, output_path, task_id, quality_level, enable_lod, enable_simplification):
     """Synchronous file processing when Celery is unavailable"""
@@ -266,6 +271,27 @@ def process_file_synchronously(input_path, output_path, task_id, quality_level, 
         optimized_size = Path(output_path).stat().st_size if Path(output_path).exists() else 0
         compression_ratio = ((original_size - optimized_size) / original_size * 100) if original_size > 0 else 0.0
         
+        # Upload optimized file to object storage
+        optimized_storage_url = None
+        if success and Path(output_path).exists():
+            storage_manager = get_storage_manager()
+            try:
+                optimized_storage_url = storage_manager.upload_file(
+                    output_path, 
+                    task_id, 
+                    'optimized',
+                    metadata={
+                        'original_size': original_size,
+                        'optimized_size': optimized_size,
+                        'compression_ratio': compression_ratio,
+                        'processing_time': processing_time,
+                        'quality_level': quality_level
+                    }
+                )
+                logger.info(f"Uploaded optimized file to object storage: {optimized_storage_url}")
+            except Exception as e:
+                logger.warning(f"Failed to upload optimized file to object storage: {e}")
+        
         # Update task with final results
         with get_db() as db:
             task = db.query(OptimizationTask).filter_by(id=task_id).first()
@@ -277,6 +303,13 @@ def process_file_synchronously(input_path, output_path, task_id, quality_level, 
                 task.compression_ratio = compression_ratio
                 task.processing_time = processing_time
                 task.completed_at = datetime.now(timezone.utc)
+                
+                # Store object storage information
+                if optimized_storage_url:
+                    task.optimized_storage_url = optimized_storage_url
+                    task.optimized_storage_key = storage_manager.generate_storage_key(task_id, 'optimized')
+                    task.storage_provider = type(storage_manager.provider).__name__
+                
                 if not success:
                     task.error_message = result.get('error', 'Unknown error') if isinstance(result, dict) else 'Optimization failed'
                 db.commit()
@@ -371,10 +404,31 @@ def upload_file():
         input_path = str(Path(config.UPLOAD_FOLDER) / f"{task_id}.glb")
         output_path = str(Path(config.OUTPUT_FOLDER) / f"{task_id}_optimized.glb")
         
+        # Save file locally first
         file.save(input_path)
         
         # Get original file size
         original_size = Path(input_path).stat().st_size
+        
+        # Upload to object storage
+        storage_manager = get_storage_manager()
+        try:
+            original_storage_url = storage_manager.upload_file(
+                input_path, 
+                task_id, 
+                'original', 
+                original_filename,
+                metadata={
+                    'quality_level': quality_level,
+                    'enable_lod': enable_lod,
+                    'enable_simplification': enable_simplification,
+                    'user_agent': request.headers.get('User-Agent', '')[:500]
+                }
+            )
+            logger.info(f"Uploaded original file to object storage: {original_storage_url}")
+        except Exception as e:
+            logger.warning(f"Failed to upload original file to object storage: {e}")
+            original_storage_url = None
         
         # Store original file info for comparison viewer
         original_file_info = {
@@ -511,12 +565,22 @@ def download_file(task_id):
         if optimization_task.status != 'completed':
             return jsonify({'error': 'Task not completed successfully'}), 400
         
-        # Look for the output file
+        # Try to get file from object storage first
+        storage_manager = get_storage_manager()
+        
+        # Look for the output file locally first
         expected_output_file = f"{task_id}_optimized.glb"
         file_path = str(Path(config.OUTPUT_FOLDER) / expected_output_file)
         
+        # If file doesn't exist locally, try to download from object storage
         if not Path(file_path).exists():
-            return jsonify({'error': 'Output file not found'}), 404
+            if optimization_task.optimized_storage_key:
+                logger.info(f"Downloading optimized file from object storage: {task_id}")
+                success = storage_manager.download_file(task_id, 'optimized', file_path)
+                if not success:
+                    return jsonify({'error': 'Output file not found in storage'}), 404
+            else:
+                return jsonify({'error': 'Output file not found'}), 404
         
         # Use original filename for download
         original_name = optimization_task.original_filename.replace('.glb', '') if optimization_task.original_filename else 'optimized'
@@ -564,6 +628,16 @@ def cleanup_task(task_id):
         else:
             logging.warning(f"Optimized file not found: {optimized_path}")
         
+        # Clean up object storage files
+        storage_manager = get_storage_manager()
+        try:
+            # Delete original file from object storage
+            storage_manager.delete_file(task_id, 'original')
+            # Keep optimized file for download - it will be cleaned up by scheduled task
+            logging.info(f"Cleaned up original file from object storage: {task_id}")
+        except Exception as storage_error:
+            logging.warning(f"Object storage cleanup failed: {storage_error}")
+        
         # IMPROVEMENT: Safe Celery cleanup with Redis fallback handling
         try:
             celery_task.forget()
@@ -589,8 +663,19 @@ def get_original_file(task_id):
         # Look for the original file in uploads directory using task_id
         original_file_path = str(Path(config.UPLOAD_FOLDER) / f"{task_id}.glb")
         
+        # If file doesn't exist locally, try to download from object storage
         if not Path(original_file_path).exists():
-            return jsonify({'error': 'Original file not found'}), 404
+            storage_manager = get_storage_manager()
+            db = get_db()
+            optimization_task = db.query(OptimizationTask).filter_by(id=task_id).first()
+            
+            if optimization_task and optimization_task.original_storage_key:
+                logger.info(f"Downloading original file from object storage: {task_id}")
+                success = storage_manager.download_file(task_id, 'original', original_file_path, optimization_task.original_filename)
+                if not success:
+                    return jsonify({'error': 'Original file not found in storage'}), 404
+            else:
+                return jsonify({'error': 'Original file not found'}), 404
         
         response = send_file(
             original_file_path,
@@ -605,6 +690,66 @@ def get_original_file(task_id):
     
     except Exception as e:
         return jsonify({'error': f'Failed to serve original file: {str(e)}'}), 500
+
+
+@main_routes.route('/storage/<path:storage_key>')
+@catch_all_errors('storage_file')
+def serve_storage_file(storage_key):
+    """Serve files from object storage"""
+    try:
+        storage_manager = get_storage_manager()
+        
+        # Get signed URL if using cloud storage
+        if config.STORAGE_TYPE != 'local':
+            signed_url = storage_manager.provider.get_url(storage_key, expires_in=config.STORAGE_URL_EXPIRES)
+            return redirect(signed_url)
+        
+        # For local storage, serve the file directly
+        else:
+            file_path = storage_manager.provider._get_file_path(storage_key)
+            if not file_path.exists():
+                return jsonify({'error': 'File not found in storage'}), 404
+            
+            # Determine mimetype based on file extension
+            mimetype = 'model/gltf-binary' if storage_key.endswith('.glb') else 'application/octet-stream'
+            
+            return send_file(
+                str(file_path),
+                mimetype=mimetype,
+                as_attachment=False
+            )
+    
+    except Exception as e:
+        logger.error(f"Failed to serve storage file {storage_key}: {e}")
+        return jsonify({'error': f'Failed to serve storage file: {str(e)}'}), 500
+
+
+@main_routes.route('/admin/storage-stats')
+@catch_all_errors('storage_stats')
+def admin_storage_stats():
+    """Admin endpoint for storage statistics"""
+    try:
+        storage_manager = get_storage_manager()
+        stats = storage_manager.get_storage_stats()
+        
+        # Add configuration info
+        storage_config = {
+            'storage_type': config.STORAGE_TYPE,
+            'storage_path': getattr(config, 'STORAGE_PATH', 'N/A'),
+            'url_expires': config.STORAGE_URL_EXPIRES,
+            's3_bucket': getattr(config, 'S3_BUCKET_NAME', 'N/A'),
+            'aws_region': getattr(config, 'AWS_REGION', 'N/A')
+        }
+        
+        return jsonify({
+            'storage_stats': stats,
+            'configuration': storage_config,
+            'provider_type': type(storage_manager.provider).__name__
+        })
+    
+    except Exception as e:
+        logger.error(f"Failed to get storage stats: {e}")
+        return jsonify({'error': f'Failed to get storage stats: {str(e)}'}), 500
 
 
 @main_routes.route('/error-logs/<task_id>')

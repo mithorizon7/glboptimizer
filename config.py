@@ -303,6 +303,27 @@ class Config:
     MAX_PARALLEL_WORKERS = int(os.environ.get('MAX_PARALLEL_WORKERS', '3'))  # Cap to avoid overload
     PARALLEL_TIMEOUT = int(os.environ.get('PARALLEL_TIMEOUT', '120'))  # 2 minutes per parallel task
     
+    # Object Storage Configuration
+    STORAGE_TYPE = os.environ.get('STORAGE_TYPE', 'local')  # local, s3, gcs, azure
+    STORAGE_PATH = os.environ.get('STORAGE_PATH', 'storage')  # For local storage
+    STORAGE_URL_EXPIRES = int(os.environ.get('STORAGE_URL_EXPIRES', '3600'))  # 1 hour
+    
+    # AWS S3 Configuration
+    S3_BUCKET_NAME = os.environ.get('S3_BUCKET_NAME')
+    AWS_ACCESS_KEY_ID = os.environ.get('AWS_ACCESS_KEY_ID')
+    AWS_SECRET_ACCESS_KEY = os.environ.get('AWS_SECRET_ACCESS_KEY')
+    AWS_REGION = os.environ.get('AWS_REGION', 'us-east-1')
+    
+    # Google Cloud Storage Configuration
+    GCS_BUCKET_NAME = os.environ.get('GCS_BUCKET_NAME')
+    GCS_PROJECT_ID = os.environ.get('GCS_PROJECT_ID')
+    GCS_CREDENTIALS_PATH = os.environ.get('GCS_CREDENTIALS_PATH')
+    
+    # Azure Blob Storage Configuration
+    AZURE_STORAGE_ACCOUNT = os.environ.get('AZURE_STORAGE_ACCOUNT')
+    AZURE_STORAGE_KEY = os.environ.get('AZURE_STORAGE_KEY')
+    AZURE_CONTAINER_NAME = os.environ.get('AZURE_CONTAINER_NAME')
+    
     @classmethod
     def ensure_directories(cls):
         """Create necessary directories if they don't exist"""
