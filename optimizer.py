@@ -1439,7 +1439,10 @@ class GLBOptimizer:
             return {'success': False, 'error': f'Welding/joining failed: {str(e)}'}
     
     def _run_gltfpack_geometry(self, input_path, output_path):
-        """Step 3: Advanced geometry compression with meshopt and aggressive optimization"""
+        """Step 3: Progressive geometry compression - optimized for performance"""
+        # Get file size to determine optimization strategy
+        file_size = self._safe_file_operation(input_path, 'size')
+        
         # Quality-based simplification levels
         simplify_ratio = {
             'high': str(OptimizationThresholds.SIMPLIFY_RATIOS['high']),  # 80% triangle count (preserve quality)
@@ -1447,36 +1450,71 @@ class GLBOptimizer:
             'maximum_compression': str(OptimizationThresholds.SIMPLIFY_RATIOS['maximum_compression'])  # 40% triangle count (maximum compression)
         }.get(self.quality_level, '0.7')
         
-        # Advanced meshopt compression with aggressive settings
-        cmd = [
-            'gltfpack',
-            '-i', input_path,
-            '-o', output_path,
-            '--meshopt',  # Enable meshopt compression
-            '--quantize',  # Quantize vertex attributes
-            '--simplify', simplify_ratio,  # Polygon simplification
-            '--simplify-error', str(OptimizationThresholds.SIMPLIFY_ERROR_THRESHOLD),  # Low error threshold for quality
-            '--attributes',  # Optimize vertex attributes
-            '--indices',  # Optimize index buffers
-            '--normals',  # Optimize normal vectors
-            '--tangents',  # Optimize tangent vectors
-            '--join',  # Join compatible meshes
-            '--dedup',  # Remove duplicate vertices
-            '--reorder',  # Reorder primitives for GPU efficiency
-            '--sparse',  # Use sparse accessors when beneficial
-        ]
+        # Progressive optimization based on file size
+        if file_size < OptimizationThresholds.SMALL_MODEL_THRESHOLD:  # < 1MB
+            # Fast optimization for small files
+            cmd = [
+                'gltfpack',
+                '-i', input_path,
+                '-o', output_path,
+                '--meshopt',  # Enable meshopt compression
+                '--quantize',  # Quantize vertex attributes
+                '--dedup',    # Remove duplicate vertices
+            ]
+            operation_name = "Fast Geometry Compression"
+            operation_desc = "Applying fast meshopt compression for small model"
+            
+        elif file_size < OptimizationThresholds.MEDIUM_MODEL_THRESHOLD:  # < 10MB  
+            # Balanced optimization for medium files
+            cmd = [
+                'gltfpack',
+                '-i', input_path,
+                '-o', output_path,
+                '--meshopt',     # Enable meshopt compression
+                '--quantize',    # Quantize vertex attributes
+                '--simplify', simplify_ratio,  # Polygon simplification
+                '--attributes',  # Optimize vertex attributes
+                '--indices',     # Optimize index buffers
+                '--join',        # Join compatible meshes
+                '--dedup',       # Remove duplicate vertices
+            ]
+            operation_name = "Balanced Geometry Compression"
+            operation_desc = "Applying balanced meshopt compression for medium model"
+            
+        else:  # >= 10MB
+            # Full optimization for large files (original behavior)
+            cmd = [
+                'gltfpack',
+                '-i', input_path,
+                '-o', output_path,
+                '--meshopt',  # Enable meshopt compression
+                '--quantize',  # Quantize vertex attributes
+                '--simplify', simplify_ratio,  # Polygon simplification
+                '--simplify-error', str(OptimizationThresholds.SIMPLIFY_ERROR_THRESHOLD),  # Low error threshold for quality
+                '--attributes',  # Optimize vertex attributes
+                '--indices',  # Optimize index buffers
+                '--normals',  # Optimize normal vectors
+                '--tangents',  # Optimize tangent vectors
+                '--join',  # Join compatible meshes
+                '--dedup',  # Remove duplicate vertices
+                '--reorder',  # Reorder primitives for GPU efficiency
+                '--sparse',  # Use sparse accessors when beneficial
+            ]
+            
+            # Add quality-specific options for large files
+            if self.quality_level == 'maximum_compression':
+                cmd.extend([
+                    '--simplify-aggressive',  # More aggressive simplification
+                    '--simplify-lock-border',  # Preserve mesh borders
+                ])
+            
+            operation_name = "Advanced Geometry Compression"
+            operation_desc = "Applying full meshopt compression for large model"
         
-        # Add quality-specific options
-        if self.quality_level == 'maximum_compression':
-            cmd.extend([
-                '--simplify-aggressive',  # More aggressive simplification
-                '--simplify-lock-border',  # Preserve mesh borders
-            ])
-        
-        result = self._run_subprocess(cmd, "Advanced Geometry Compression", "Applying meshopt with aggressive optimization")
+        result = self._run_subprocess(cmd, operation_name, operation_desc)
         
         if not result['success']:
-            self.logger.warning(f"Advanced geometry compression failed, trying basic meshopt: {result.get('error', 'Unknown error')}")
+            self.logger.warning(f"Geometry compression failed, trying basic meshopt: {result.get('error', 'Unknown error')}")
             # Fallback to basic meshopt compression
             cmd_fallback = [
                 'gltfpack',
