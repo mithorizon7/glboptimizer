@@ -1,0 +1,86 @@
+🔴 CRITICAL (Must Fix)
+1. Fragmented Celery/Task Queue Architecture
+Problem: Task queue initialization is scattered across 4+ files (app.py, celery_app.py, celery_redis_proper.py, tasks.py) with conflicting fallback mechanisms. This can leave celery as None while task modules assume it exists.
+
+Impact: Background optimization tasks can silently fail or never execute.
+
+Recommendation:
+
+Create a single celery_factory.py that initializes ONE Celery instance
+All other modules import from this single source
+Remove redundant fallback mechanisms
+2. Subprocess Process Management in Web Process
+Problem: main.py spawns Redis and Celery as subprocesses inside the web process without health checks or proper supervision. Processes leak on restarts.
+
+Impact: Memory leaks, zombie processes, unreliable task execution in production.
+
+Recommendation:
+
+Remove subprocess spawning from main.py
+Use external process manager (systemd, supervisord) or Replit's workflow system
+Web process should ONLY run Flask/Gunicorn
+3. Duplicate Pipeline Task Implementations
+Problem: Multiple files contain overlapping task logic: pipeline_tasks.py, pipeline_tasks_fixed.py, tasks.py. Unclear which is authoritative.
+
+Impact: Bugs fixed in one file may not be fixed in others, causing regression.
+
+Recommendation:
+
+Consolidate into single tasks.py with clear pipeline stages
+Delete all *_fixed.py files after merging fixes
+Create single optimization entry point
+🟠 HIGH PRIORITY
+4. Inconsistent Database Session Management
+Problem: Tasks use ad-hoc SessionLocal() without consistent context management. Sessions can leak under load or on failures.
+
+Impact: Connection pool exhaustion, open transactions, database instability.
+
+Recommendation:
+
+# Use context managers consistently
+with get_db_session() as session:
+    # All database operations here
+    session.commit()
+
+5. Scattered Configuration Defaults
+Problem: Default values set in wsgi.py, main.py, celery_app.py, AND config.py. Different defaults in different places.
+
+Impact: Unexpected behavior when environment variables are missing, different behavior between web and worker processes.
+
+Recommendation:
+
+All defaults in config.py ONLY
+Other files import from config, never define defaults
+Add config validation at startup
+6. Large Monolithic optimizer.py (2000+ lines)
+Problem: Single file handles validation, compression, textures, animations, subprocess management, security, and file operations.
+
+Impact: Hard to test, hard to maintain, difficult to understand.
+
+Recommendation: Split into focused modules:
+
+glb_validator.py - File validation
+geometry_optimizer.py - Mesh/geometry compression
+texture_optimizer.py - Texture compression
+subprocess_security.py - Secure command execution
+🟡 MEDIUM PRIORITY
+7. Frontend JavaScript Complexity
+Problem: script.js is 600+ lines with mixed concerns (3D rendering, file upload, progress tracking, UI updates).
+
+Recommendation: Split into modules or use ES6 imports for better organization.
+
+8. Missing Request Rate Limiting
+Problem: No rate limiting on upload endpoints. A user could spam large file uploads.
+
+Recommendation: Add Flask-Limiter or similar rate limiting middleware.
+
+9. Incomplete Error Recovery
+Problem: When optimization fails partway, cleanup may not happen correctly. Orphaned files can accumulate.
+
+Recommendation: Implement proper cleanup scheduler with database-driven file tracking.
+
+10. Test Coverage Gaps
+Problem: Unit tests exist for config but integration tests for the full optimization pipeline are limited.
+
+Recommendation: Add end-to-end tests that upload real GLB files and verify output.
+
