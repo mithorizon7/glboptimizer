@@ -9,9 +9,7 @@ import uuid
 import time
 from datetime import datetime, timezone
 from config import get_config
-from celery_app import make_celery
-# Import the task function to ensure it's registered
-import tasks
+from celery_factory import celery, broker_type
 from database import SessionLocal, init_database
 from models import OptimizationTask, PerformanceMetric, UserSession, SystemMetric
 from analytics import get_analytics_dashboard_data
@@ -37,24 +35,11 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-# Import the proper Celery instance with Redis support
-try:
-    from celery_redis_proper import celery, broker_type
+# Log Celery status
+if celery:
     logger.info(f"Celery loaded with {broker_type} broker")
-except Exception as e:
-    # Fallback mode - disable Celery entirely
-    celery = None
-    broker_type = 'none'
-    logger.warning(f"Celery unavailable: {e}. Running in fallback mode.")
-
-# Import tasks to ensure they're registered with Celery
-try:
-    import tasks
-    import pipeline_tasks
-    logger.info("Celery tasks imported successfully")
-except ImportError as e:
-    logger.warning(f"Failed to import tasks: {e}")
-    logger.info("Application will continue without background processing")
+else:
+    logger.warning("Celery unavailable - running in synchronous mode")
 
 # Note: Flask app creation is now handled by the factory pattern in main.py
 # This file now contains only the route functions and utilities
@@ -62,75 +47,6 @@ except ImportError as e:
 def get_db():
     """Get database session"""
     return SessionLocal()
-
-@log_optimization_errors
-@log_file_operations
-def process_file_synchronously(file_path, output_path, task_id, quality_level, enable_lod, enable_simplification):
-    """Synchronous file processing when Celery is unavailable"""
-    try:
-        from optimizer import GLBOptimizer
-        import time
-        
-        # Update task to processing
-        db = get_db()
-        
-        # Create task record
-        optimization_task = OptimizationTask(
-            id=task_id,
-            original_filename=Path(file_path).name,
-            secure_filename=f"{task_id}.glb",
-            original_size=Path(file_path).stat().st_size,
-            quality_level=quality_level,
-            enable_lod=enable_lod,
-            enable_simplification=enable_simplification,
-            status='processing',
-            progress=10,
-            current_step='Starting optimization',
-            started_at=datetime.now(timezone.utc)
-        )
-        db.add(optimization_task)
-        db.commit()
-        
-        # Run optimization
-        optimizer = GLBOptimizer(quality_level=quality_level)
-        start_time = time.time()
-        
-        # Get original file size
-        original_size = Path(file_path).stat().st_size
-        
-        result = optimizer.optimize(
-            input_path=file_path,
-            output_path=output_path,
-            progress_callback=lambda p, s, m=None: None  # Skip progress updates for sync mode
-        )
-        
-        processing_time = time.time() - start_time
-        compressed_size = Path(output_path).stat().st_size if Path(output_path).exists() else 0
-        compression_ratio = (1 - compressed_size / original_size) * 100 if original_size > 0 else 0
-        
-        # Update task to completed
-        optimization_task.status = 'completed'
-        optimization_task.progress = 100
-        optimization_task.current_step = 'Optimization complete!'
-        optimization_task.completed_at = datetime.now(timezone.utc)
-        optimization_task.original_size = original_size
-        optimization_task.compressed_size = compressed_size
-        optimization_task.compression_ratio = compression_ratio
-        optimization_task.processing_time = processing_time
-        db.commit()
-        
-        logger.info(f"Synchronous optimization completed: {original_size} -> {compressed_size} bytes ({compression_ratio:.1f}% reduction)")
-        return True
-        
-    except Exception as e:
-        logger.error(f"Synchronous optimization failed: {e}")
-        try:
-            optimization_task.status = 'failed'
-            optimization_task.error_message = str(e)
-            db.commit()
-        except:
-            pass
-        return False
 
 @log_database_errors
 def get_or_create_user_session():

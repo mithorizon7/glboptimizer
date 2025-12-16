@@ -8,8 +8,21 @@ import os
 import time
 import logging
 from datetime import datetime, timedelta
-from celery_app import celery
+from celery_factory import celery
 from celery.schedules import crontab
+
+if celery is None:
+    logging.getLogger(__name__).warning("Celery unavailable - cleanup tasks will not be registered")
+    
+    class DummyCeleryTask:
+        def task(self, *args, **kwargs):
+            def decorator(func):
+                func.delay = lambda *a, **kw: None
+                func.apply_async = lambda *a, **kw: None
+                return func
+            return decorator
+    
+    celery = DummyCeleryTask()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

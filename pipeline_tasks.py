@@ -1,12 +1,11 @@
-# pipeline_tasks_fixed.py
 """
 Enhanced Pipeline Tasks with Robust Error Handling
-Fixed version addressing critical initialization and method access issues
+Modular optimization pipeline with granular Celery tasks
 """
 
 import os
 import logging
-from celery_app import make_celery
+from celery_factory import celery as celery_app
 from optimizer import GLBOptimizer
 from database import SessionLocal
 from models import OptimizationTask
@@ -14,8 +13,19 @@ from sqlalchemy import text
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
-# Import the shared Celery instance
-from celery_app import celery as celery_app
+
+if celery_app is None:
+    logger.warning("Celery unavailable - pipeline tasks will not be registered")
+    
+    class DummyCeleryTask:
+        def task(self, *args, **kwargs):
+            def decorator(func):
+                func.delay = lambda *a, **kw: None
+                func.apply_async = lambda *a, **kw: None
+                return func
+            return decorator
+    
+    celery_app = DummyCeleryTask()
 
 class PipelineStage:
     """
