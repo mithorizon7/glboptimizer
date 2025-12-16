@@ -56,22 +56,46 @@
                                data-bs-title="GLB files are 3D models used in games and web apps. If you have a .gltf file, you can convert it to .glb using online tools."></i>
                         </h3>
                         
+                        <!-- Upload Mode Toggle -->
+                        <div class="btn-group w-100 mb-4" role="group" aria-label="Upload mode">
+                            <input type="radio" class="btn-check" name="uploadMode" id="singleMode" autocomplete="off" checked>
+                            <label class="btn btn-outline-info" for="singleMode">
+                                <i class="fas fa-file me-2"></i>Single File
+                            </label>
+                            <input type="radio" class="btn-check" name="uploadMode" id="batchMode" autocomplete="off">
+                            <label class="btn btn-outline-info" for="batchMode">
+                                <i class="fas fa-layer-group me-2"></i>Batch Upload
+                                <span class="badge bg-warning text-dark ms-1">Pro</span>
+                            </label>
+                        </div>
+
                         <!-- Drop Zone -->
                         <div id="drop-zone" class="drop-zone text-center p-5 mb-4">
                             <div id="drop-zone-content">
                                 <i class="fas fa-cloud-upload-alt fa-3x mb-3 text-muted"></i>
-                                <h5>Drag & drop your GLB file here</h5>
-                                <p class="text-muted">or click to select a file (up to 100MB)</p>
+                                <h5 id="drop-zone-title">Drag & drop your GLB file here</h5>
+                                <p class="text-muted" id="drop-zone-subtitle">or click to select a file (up to 100MB)</p>
                                 <small class="text-muted">
                                     <i class="fas fa-info-circle me-1"></i>
                                     We'll automatically compress textures, reduce polygons, and optimize your model for web use
                                 </small>
                                 <label for="file-input" class="btn btn-outline-secondary" style="cursor: pointer;">
                                     <i class="fas fa-folder-open me-2"></i>
-                                    Choose File
+                                    <span id="choose-file-text">Choose File</span>
                                 </label>
                             </div>
                             <input type="file" id="file-input" accept=".glb" style="display: none;">
+                        </div>
+
+                        <!-- Batch File List -->
+                        <div id="batch-file-list" class="mb-4" style="display: none;">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <h6 class="mb-0"><i class="fas fa-list me-2"></i>Selected Files (<span id="batch-file-count">0</span>)</h6>
+                                <button type="button" class="btn btn-sm btn-outline-danger" id="clear-batch-btn">
+                                    <i class="fas fa-trash me-1"></i>Clear All
+                                </button>
+                            </div>
+                            <div class="list-group" id="batch-files-container"></div>
                         </div>
 
                         <!-- File Info -->
@@ -373,6 +397,65 @@
                             <button id="new-optimization-btn" class="btn btn-outline-secondary btn-lg">
                                 <i class="fas fa-plus me-2"></i>
                                 Optimize Another File
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Batch Progress Section -->
+        <div class="row justify-content-center mt-4" id="batch-progress-section" style="display: none;">
+            <div class="col-lg-8">
+                <div class="card">
+                    <div class="card-body p-4">
+                        <h4 class="card-title mb-4">
+                            <i class="fas fa-layer-group me-2"></i>
+                            Batch Optimization Progress
+                        </h4>
+                        
+                        <!-- Overall Progress -->
+                        <div class="mb-4">
+                            <div class="d-flex justify-content-between mb-2">
+                                <span>Overall Progress</span>
+                                <span id="batch-overall-progress">0 / 0 files</span>
+                            </div>
+                            <div class="progress" style="height: 20px;">
+                                <div id="batch-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated bg-info" 
+                                     role="progressbar" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        
+                        <!-- Individual File Progress -->
+                        <div id="batch-tasks-container" class="list-group mb-4"></div>
+                        
+                        <!-- Batch Summary (shown when complete) -->
+                        <div id="batch-summary" class="alert alert-success" style="display: none;">
+                            <div class="row text-center">
+                                <div class="col-md-4">
+                                    <h6>Total Original</h6>
+                                    <span id="batch-total-original" class="badge bg-secondary fs-6"></span>
+                                </div>
+                                <div class="col-md-4">
+                                    <h6>Total Optimized</h6>
+                                    <span id="batch-total-optimized" class="badge bg-success fs-6"></span>
+                                </div>
+                                <div class="col-md-4">
+                                    <h6>Overall Savings</h6>
+                                    <span id="batch-savings" class="badge bg-info fs-6"></span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Download All Button -->
+                        <div class="text-center" id="batch-download-section" style="display: none;">
+                            <button id="download-all-btn" class="btn btn-success btn-lg">
+                                <i class="fas fa-download me-2"></i>
+                                Download All (ZIP)
+                            </button>
+                            <button id="batch-new-btn" class="btn btn-outline-primary ms-2">
+                                <i class="fas fa-plus me-2"></i>
+                                New Batch
                             </button>
                         </div>
                     </div>
