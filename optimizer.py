@@ -1,3 +1,21 @@
+"""
+GLB Optimizer - Main optimization orchestrator module.
+
+This module provides the GLBOptimizer class which orchestrates the multi-step
+optimization workflow for GLB (3D model) files. It uses modular components:
+- path_utils: Path manipulation utilities
+- glb_validator: GLB format validation
+- subprocess_security: Secure subprocess execution
+
+The optimizer implements a 6-step workflow:
+1. Prune unused data
+2. Weld vertices and join meshes
+3. Advanced geometry compression (meshopt/draco/hybrid)
+4. Texture compression (KTX2/WebP)
+5. Animation optimization
+6. Final bundling
+"""
+
 import os
 import subprocess
 import tempfile
@@ -19,46 +37,13 @@ from typing import Dict, Any, Optional, Set, Union
 import threading
 from config import Config, OptimizationConfig, GLBConstants, OptimizationThresholds
 
-# Type hint for path-like objects
-PathLike = Union[str, Path]
-
-# Path utility functions for consistent pathlib.Path usage
-def ensure_path(path_like: PathLike) -> Path:
-    """Convert string or Path-like object to pathlib.Path consistently"""
-    return Path(path_like)
-
-def path_exists(path_like: PathLike) -> bool:
-    """Check if path exists using pathlib.Path"""
-    return ensure_path(path_like).exists()
-
-def path_size(path_like: PathLike) -> int:
-    """Get file size using pathlib.Path"""
-    return ensure_path(path_like).stat().st_size
-
-def path_basename(path_like: PathLike) -> str:
-    """Get basename using pathlib.Path"""
-    return ensure_path(path_like).name
-
-def path_dirname(path_like: PathLike) -> Path:
-    """Get directory using pathlib.Path"""
-    return ensure_path(path_like).parent
-
-def path_join(*parts: PathLike) -> Path:
-    """Join path parts using pathlib.Path"""
-    if not parts:
-        return Path()
-    result = ensure_path(parts[0])
-    for part in parts[1:]:
-        result = result / ensure_path(part)
-    return result
-
-def path_resolve(path_like: PathLike) -> Path:
-    """Resolve path to absolute form using pathlib.Path"""
-    return ensure_path(path_like).resolve()
-
-def path_is_symlink(path_like: PathLike) -> bool:
-    """Check if path is a symlink using pathlib.Path"""
-    return ensure_path(path_like).is_symlink()
+from path_utils import (
+    ensure_path, path_exists, path_size, path_basename, 
+    path_dirname, path_join, path_resolve, path_is_symlink,
+    PathLike
+)
+from glb_validator import GLBValidator, validate_glb
+from subprocess_security import SubprocessSecurityManager
 
 # Global standalone functions for parallel processing
 def run_gltfpack_geometry_parallel(input_path, output_path):
@@ -191,7 +176,14 @@ class GLBOptimizer:
             str(path_resolve('output'))
         }
         
-        # Security: Track temporary files for cleanup
+        # Initialize modular components for delegation
+        self._security_manager = SubprocessSecurityManager(
+            allowed_dirs=self.allowed_dirs,
+            config=self.config
+        )
+        self._glb_validator = GLBValidator()
+        
+        # Security: Track temporary files for cleanup (delegate to security manager)
         self._temp_files: Set[str] = set()
         self._secure_temp_dir: Optional[str] = None
         self._file_locks: Dict[str, threading.Lock] = {}
@@ -244,35 +236,19 @@ class GLBOptimizer:
     
     def _check_required_tools(self):
         """Check if required optimization tools are available"""
+        # Delegate to security manager for tool checking
+        tools_check = self._security_manager.check_required_tools()
         tools_status = {}
         
-        # Check gltf-transform
-        try:
-            result = subprocess.run(['npx', 'gltf-transform', '--version'], 
-                                  capture_output=True, text=True, timeout=10)
-            if result.returncode == 0:
-                tools_status['gltf-transform'] = 'available'
-                self.logger.info(f"gltf-transform available: {result.stdout.strip()}")
-            else:
-                tools_status['gltf-transform'] = 'failed'
-                self.logger.warning(f"gltf-transform check failed: {result.stderr}")
-        except Exception as e:
-            tools_status['gltf-transform'] = 'missing'
-            self.logger.error(f"gltf-transform not available: {e}")
+        for tool, available in tools_check.items():
+            tools_status[tool] = 'available' if available else 'not found'
         
-        # Check gltfpack
-        try:
-            result = subprocess.run(['gltfpack', '--version'], 
-                                  capture_output=True, text=True, timeout=10)
-            if result.returncode == 0:
-                tools_status['gltfpack'] = 'available'
-                self.logger.info(f"gltfpack available: {result.stdout.strip()}")
+        # Log results
+        for tool, status in tools_status.items():
+            if status == 'available':
+                self.logger.info(f"Tool {tool}: {status}")
             else:
-                tools_status['gltfpack'] = 'failed'
-                self.logger.warning(f"gltfpack check failed: {result.stderr}")
-        except Exception as e:
-            tools_status['gltfpack'] = 'missing'
-            self.logger.error(f"gltfpack not available: {e}")
+                self.logger.warning(f"Tool {tool}: {status}")
         
         # Store tool status for later use
         self.tools_status = tools_status
@@ -283,6 +259,8 @@ class GLBOptimizer:
             self.logger.info(f"Available optimization tools: {', '.join(available_tools)}")
         else:
             self.logger.warning("No optimization tools detected - basic GLB processing only")
+        
+        return tools_status
     
     def _validate_path(self, file_path: str, allow_temp: bool = False) -> str:
         """
@@ -689,6 +667,8 @@ class GLBOptimizer:
         """
         Unified GLB file validation supporting different validation levels
         
+        Delegates to GLBValidator module for core validation logic.
+        
         Args:
             file_path: Path to GLB file to validate
             mode: Validation mode - "header" for basic format validation, "full" for comprehensive validation
@@ -696,168 +676,24 @@ class GLBOptimizer:
         Returns:
             Dictionary with validation results and metadata
         """
-        try:
-            # Mode-specific preliminary checks
-            if mode == "full":
-                # For output validation, check file existence first
-                if not self._safe_file_operation(file_path, 'exists'):
-                    return {
-                        'success': False,
-                        'error': 'File does not exist',
-                        'user_message': 'The output file was not created.',
-                        'category': 'File System Error'
-                    }
-                
-                file_size = self._safe_file_operation(file_path, 'size')
-                if file_size == 0:
-                    return {
-                        'success': False,
-                        'error': 'File is empty',
-                        'user_message': 'The optimization produced an empty file.',
-                        'category': 'Output Error'
-                    }
+        # Use the modular validator for core validation
+        full_validation = (mode == "full")
+        result = self._glb_validator.validate(file_path, full_validation=full_validation)
+        
+        if result['success']:
+            self.logger.info(f"GLB validation passed ({mode} mode): {file_path}")
+            return result
+        
+        # For backward compatibility, wrap errors with categories
+        if 'category' not in result:
+            if 'File System' in result.get('error', ''):
+                result['category'] = 'File System Error'
+            elif 'File too' in result.get('error', ''):
+                result['category'] = 'File Size Error'
             else:
-                # For input validation, get file size for later use
-                file_size = self._safe_file_operation(file_path, 'size')
-            
-            # Common validation: minimum header size
-            if file_size < 12:
-                error_context = "The optimization produced a corrupted file." if mode == "full" else "This does not appear to be a valid GLB file."
-                category = "Output Error" if mode == "full" else "Format Error"
-                return {
-                    'success': False,
-                    'error': 'File too small for GLB header',
-                    'user_message': error_context,
-                    'category': category
-                }
-            
-            # Memory efficient: read only GLB header bytes instead of entire file
-            header_data = self._safe_file_operation(file_path, 'read_bytes', GLBConstants.HEADER_LENGTH)
-            
-            if len(header_data) < GLBConstants.HEADER_LENGTH:
-                error_context = "The optimization produced a corrupted file." if mode == "full" else "This does not appear to be a valid GLB file."
-                category = "Output Error" if mode == "full" else "Format Error"
-                return {
-                    'success': False,
-                    'error': 'Cannot read GLB header',
-                    'user_message': error_context,
-                    'category': category
-                }
-            
-            # Validate magic number (bytes 0-3)
-            magic = header_data[0:4]
-            if magic != GLBConstants.MAGIC_NUMBER:
-                if mode == "full":
-                    error_msg = 'The optimization produced an invalid GLB file.'
-                    category = 'Output Error'
-                else:
-                    error_msg = 'This file is not a valid GLB format.'
-                    category = 'Format Error'
-                return {
-                    'success': False,
-                    'error': f'Invalid GLB magic number: {magic}',
-                    'user_message': error_msg,
-                    'category': category
-                }
-            
-            # Validate version (bytes 4-7) - use struct.unpack for consistency
-            version = struct.unpack('<I', header_data[GLBConstants.VERSION_OFFSET:GLBConstants.VERSION_OFFSET+4])[0]
-            if version != GLBConstants.SUPPORTED_VERSION:
-                if mode == "full":
-                    error_msg = f'The optimization produced GLB version {version}, but only version 2 is supported.'
-                    category = 'Output Error'
-                else:
-                    error_msg = f'GLB version {version} is not supported. Please use GLB version 2.'
-                    category = 'Format Error'
-                return {
-                    'success': False,
-                    'error': f'Unsupported GLB version: {version}',
-                    'user_message': error_msg,
-                    'category': category
-                }
-            
-            # Validate file length consistency (bytes 8-11)
-            stated_length = struct.unpack('<I', header_data[GLBConstants.LENGTH_OFFSET:GLBConstants.LENGTH_OFFSET+4])[0]
-            
-            if stated_length != file_size:
-                self.logger.warning(f"GLB length mismatch: header says {stated_length}, file is {file_size}")
-                # Don't fail on length mismatch as some files have padding
-            
-            # Mode-specific advanced validation
-            if mode == "full":
-                # Additional validation for output files: check chunk structure
-                if file_size < GLBConstants.MIN_FILE_WITH_CHUNK:  # 12 bytes header + 8 bytes minimum chunk header
-                    return {
-                        'success': False,
-                        'error': 'GLB file has no chunks',
-                        'user_message': 'The optimization produced an incomplete GLB file.',
-                        'category': 'Output Error'
-                    }
-                
-                # Memory efficient: read first chunk header (8 bytes at offset 12)
-                # Read total 20 bytes (12 header + 8 chunk header) instead of entire file
-                header_and_chunk_data = self._safe_file_operation(file_path, 'read_bytes', GLBConstants.MIN_FILE_WITH_CHUNK)
-                chunk_header = header_and_chunk_data[GLBConstants.HEADER_LENGTH:GLBConstants.MIN_FILE_WITH_CHUNK]
-                if len(chunk_header) < GLBConstants.CHUNK_HEADER_LENGTH:
-                    return {
-                        'success': False,
-                        'error': 'Cannot read first chunk header',
-                        'user_message': 'The optimization produced a corrupted GLB file.',
-                        'category': 'Output Error'
-                    }
-                
-                chunk_length = struct.unpack('<I', chunk_header[GLBConstants.CHUNK_LENGTH_OFFSET:GLBConstants.CHUNK_LENGTH_OFFSET+4])[0]
-                chunk_type = chunk_header[GLBConstants.CHUNK_TYPE_OFFSET:GLBConstants.CHUNK_TYPE_OFFSET+4]
-                
-                # First chunk should be JSON
-                if chunk_type != GLBConstants.JSON_CHUNK_TYPE:
-                    return {
-                        'success': False,
-                        'error': f'First chunk is not JSON: {chunk_type}',
-                        'user_message': 'The optimization produced an invalid GLB file structure.',
-                        'category': 'Output Error'
-                    }
-                
-                # Basic sanity check on chunk length
-                if chunk_length == 0 or chunk_length > file_size:
-                    return {
-                        'success': False,
-                        'error': f'Invalid chunk length: {chunk_length}',
-                        'user_message': 'The optimization produced a corrupted GLB file.',
-                        'category': 'Output Error'
-                    }
-                
-                self.logger.info(f"GLB validation passed: version {version}, length {stated_length}, first chunk length {chunk_length}")
-                return {
-                    'success': True,
-                    'version': version,
-                    'file_size': file_size,
-                    'chunk_length': chunk_length
-                }
-            else:
-                # Header-only validation successful
-                self.logger.info(f"GLB format validation passed: version {version}, length {stated_length}")
-                return {
-                    'success': True,
-                    'version': version,
-                    'file_size': file_size
-                }
-                
-        except Exception as e:
-            if mode == "full":
-                error_msg = 'Unable to validate the optimization output.'
-                category = 'Output Error'
-            else:
-                error_msg = 'Unable to validate the GLB file format.'
-                category = 'Format Error'
-                
-            self.logger.error(f"GLB validation failed: {str(e)}")
-            return {
-                'success': False,
-                'error': f'GLB validation error: {str(e)}',
-                'user_message': error_msg,
-                'category': category
-            }
+                result['category'] = 'Format Error'
+        
+        return result
 
     def _validate_glb_format(self, file_path: str) -> Dict[str, Any]:
         """Legacy wrapper for header-mode validation - use validate_glb() instead"""
