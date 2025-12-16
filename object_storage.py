@@ -320,7 +320,7 @@ class ObjectStorageManager:
         
     def _initialize_provider(self) -> StorageProvider:
         """Initialize storage provider based on configuration"""
-        storage_type = os.environ.get('STORAGE_TYPE', 'local').lower()
+        storage_type = self.config.STORAGE_TYPE.lower()
         
         if storage_type == 's3':
             return self._initialize_s3()
@@ -337,7 +337,7 @@ class ObjectStorageManager:
             bucket_name = os.environ.get('S3_BUCKET_NAME')
             aws_access_key_id = os.environ.get('AWS_ACCESS_KEY_ID')
             aws_secret_access_key = os.environ.get('AWS_SECRET_ACCESS_KEY')
-            region = os.environ.get('AWS_REGION', 'us-east-1')
+            region = self.config.AWS_REGION
             
             if not all([bucket_name, aws_access_key_id, aws_secret_access_key]):
                 logger.warning("S3 credentials not found, falling back to local storage")
@@ -364,7 +364,7 @@ class ObjectStorageManager:
     
     def _initialize_local(self) -> StorageProvider:
         """Initialize local filesystem storage provider"""
-        storage_path = os.environ.get('STORAGE_PATH', 'storage')
+        storage_path = self.config.STORAGE_PATH
         return LocalFileStorage(storage_path)
     
     def generate_storage_key(self, task_id: str, file_type: str, original_filename: str = None) -> str:

@@ -17,6 +17,7 @@ import logging
 from celery import Celery
 from celery.schedules import crontab
 from dotenv import load_dotenv
+from config import Config
 
 load_dotenv()
 
@@ -126,7 +127,7 @@ def make_celery(app_name='glb_optimizer'):
                 'task': 'cleanup.cleanup_orphaned_tasks',
                 'schedule': crontab(hour=2, minute=30),
             },
-        } if os.environ.get('CLEANUP_ENABLED', 'true').lower() in ['true', '1', 'yes'] else {},
+        } if Config.CLEANUP_ENABLED else {},
         
         worker_send_task_events=True,
         task_send_sent_event=True,

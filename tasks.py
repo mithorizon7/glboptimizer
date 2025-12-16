@@ -11,16 +11,15 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 if celery is None:
-    logger.warning("Celery unavailable - tasks will not be registered (synchronous fallback active)")
-    
-    def _dummy_task(*args, **kwargs):
-        raise RuntimeError("Celery tasks not available - use synchronous processing")
+    logger.warning("Celery unavailable - tasks will execute synchronously")
     
     class DummyCeleryTask:
+        """Dummy Celery task decorator for synchronous fallback"""
         def task(self, *args, **kwargs):
             def decorator(func):
-                func.delay = lambda *a, **kw: _dummy_task(*a, **kw)
-                func.apply_async = lambda *a, **kw: _dummy_task(*a, **kw)
+                # Execute synchronously when called via .delay() or .apply_async()
+                func.delay = func  # Direct call instead of queueing
+                func.apply_async = lambda args=None, kwargs=None, **_: func(*(args or ()), **(kwargs or {}))
                 return func
             return decorator
     

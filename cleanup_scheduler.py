@@ -10,15 +10,18 @@ import logging
 from datetime import datetime, timedelta
 from celery_factory import celery
 from celery.schedules import crontab
+from config import Config
 
 if celery is None:
-    logging.getLogger(__name__).warning("Celery unavailable - cleanup tasks will not be registered")
+    logging.getLogger(__name__).warning("Celery unavailable - cleanup tasks will execute synchronously")
     
     class DummyCeleryTask:
+        """Dummy Celery task decorator for synchronous fallback"""
         def task(self, *args, **kwargs):
             def decorator(func):
-                func.delay = lambda *a, **kw: None
-                func.apply_async = lambda *a, **kw: None
+                # Execute synchronously when called via .delay() or .apply_async()
+                func.delay = func  # Direct call instead of queueing
+                func.apply_async = lambda args=None, kwargs=None, **_: func(*(args or ()), **(kwargs or {}))
                 return func
             return decorator
     
@@ -28,10 +31,10 @@ if celery is None:
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Configuration from environment
-UPLOAD_FOLDER = os.environ.get('UPLOAD_FOLDER', 'uploads')
-OUTPUT_FOLDER = os.environ.get('OUTPUT_FOLDER', 'output')
-FILE_RETENTION_HOURS = int(os.environ.get('FILE_RETENTION_HOURS', '24'))
+# Configuration from centralized config
+UPLOAD_FOLDER = Config.UPLOAD_FOLDER
+OUTPUT_FOLDER = Config.OUTPUT_FOLDER
+FILE_RETENTION_HOURS = Config.FILE_RETENTION_HOURS
 
 # Celery instance is imported above
 
