@@ -4,6 +4,83 @@ from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
 
+class BatchOptimization(Base):
+    """Track batch optimization jobs containing multiple files"""
+    __tablename__ = 'batch_optimizations'
+    
+    id = Column(String(36), primary_key=True)  # UUID
+    session_id = Column(String(255), nullable=True)  # Link to user session
+    
+    # Batch status
+    status = Column(String(50), nullable=False, default='pending')  # pending, processing, completed, partial_failure, failed
+    total_files = Column(Integer, nullable=False, default=0)
+    completed_files = Column(Integer, nullable=False, default=0)
+    failed_files = Column(Integer, nullable=False, default=0)
+    
+    # Aggregate metrics
+    total_original_size = Column(Integer, nullable=True)
+    total_compressed_size = Column(Integer, nullable=True)
+    overall_compression_ratio = Column(Float, nullable=True)
+    
+    # Settings applied to all files
+    quality_level = Column(String(50), nullable=False, default='high')
+    enable_lod = Column(Boolean, nullable=False, default=True)
+    enable_simplification = Column(Boolean, nullable=False, default=True)
+    
+    # ZIP download
+    zip_storage_key = Column(String(500), nullable=True)
+    zip_storage_url = Column(String(1000), nullable=True)
+    zip_generated = Column(Boolean, nullable=False, default=False)
+    
+    # Timestamps
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    
+    # Relationship to tasks
+    tasks = relationship("OptimizationTask", back_populates="batch", lazy="dynamic")
+    
+    def __repr__(self):
+        return f'<BatchOptimization {self.id}: {self.completed_files}/{self.total_files} ({self.status})>'
+    
+    def update_progress(self):
+        """Update batch progress based on child task statuses"""
+        completed = 0
+        failed = 0
+        total_original = 0
+        total_compressed = 0
+        
+        for task in self.tasks:
+            if task.status == 'completed':
+                completed += 1
+                if task.original_size:
+                    total_original += task.original_size
+                if task.compressed_size:
+                    total_compressed += task.compressed_size
+            elif task.status == 'failed':
+                failed += 1
+        
+        self.completed_files = completed
+        self.failed_files = failed
+        self.total_original_size = total_original
+        self.total_compressed_size = total_compressed
+        
+        if total_original > 0:
+            self.overall_compression_ratio = total_compressed / total_original
+        
+        # Update batch status
+        if completed + failed == self.total_files:
+            if failed == 0:
+                self.status = 'completed'
+            elif completed == 0:
+                self.status = 'failed'
+            else:
+                self.status = 'partial_failure'
+            self.completed_at = datetime.now(timezone.utc)
+        elif completed + failed > 0:
+            self.status = 'processing'
+
+
 class OptimizationTask(Base):
     """Track GLB optimization tasks and their progress"""
     __tablename__ = 'optimization_tasks'
@@ -11,6 +88,9 @@ class OptimizationTask(Base):
     id = Column(String, primary_key=True)  # Celery task ID
     original_filename = Column(String(255), nullable=False)
     secure_filename = Column(String(255), nullable=False)
+    
+    # Batch reference (optional - null for single-file uploads)
+    batch_id = Column(String(36), ForeignKey('batch_optimizations.id'), nullable=True)
     
     # File information
     original_size = Column(Integer, nullable=True)
@@ -52,6 +132,9 @@ class OptimizationTask(Base):
     # File cleanup
     files_cleaned = Column(Boolean, nullable=False, default=False)
     cleanup_at = Column(DateTime, nullable=True)
+    
+    # Relationship to batch
+    batch = relationship("BatchOptimization", back_populates="tasks")
     
     def __repr__(self):
         return f'<OptimizationTask {self.id}: {self.original_filename} ({self.status})>'

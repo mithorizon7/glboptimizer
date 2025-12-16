@@ -1,6 +1,3 @@
-# This is the complete, corrected .replit file.
-# It now starts both the Gunicorn server and the Celery worker in parallel.
-
 modules = ["python-3.11", "nodejs-20", "python3", "postgresql-16"]
 
 [nix]

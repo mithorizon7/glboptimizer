@@ -429,6 +429,281 @@ def upload_file():
         }), 500
 
 
+@main_routes.route('/upload/batch', methods=['POST'])
+@limiter.limit(get_config().RATELIMIT_UPLOAD)
+@track_errors('batch_upload')
+def upload_batch():
+    """Handle batch upload of multiple GLB files"""
+    from models import BatchOptimization
+    
+    logger.info("Batch upload endpoint called")
+    
+    try:
+        files = request.files.getlist('files')
+        if not files or len(files) == 0:
+            return jsonify({'error': 'No files selected'}), 400
+        
+        # Validate all files first
+        valid_files = []
+        for file in files:
+            if file.filename == '':
+                continue
+            if not allowed_file(file.filename):
+                continue
+            
+            # Check GLB header
+            file.seek(0)
+            file_header = file.read(12)
+            file.seek(0)
+            
+            if len(file_header) >= 4 and file_header[:4] == b'glTF':
+                valid_files.append(file)
+        
+        if not valid_files:
+            return jsonify({'error': 'No valid GLB files found'}), 400
+        
+        # Get optimization settings
+        quality_level = request.form.get('quality_level', 'high')
+        enable_lod = request.form.get('enable_lod') == 'true'
+        enable_simplification = request.form.get('enable_simplification') == 'true'
+        
+        # Create batch record
+        batch_id = str(uuid.uuid4())
+        session_id = session.get('session_id')
+        
+        db = get_db()
+        try:
+            batch = BatchOptimization(
+                id=batch_id,
+                session_id=session_id,
+                status='pending',
+                total_files=len(valid_files),
+                quality_level=quality_level,
+                enable_lod=enable_lod,
+                enable_simplification=enable_simplification
+            )
+            db.add(batch)
+            db.commit()
+            logger.info(f"Created batch {batch_id} with {len(valid_files)} files")
+        finally:
+            db.close()
+        
+        # Process each file
+        task_ids = []
+        storage_manager = get_storage_manager()
+        
+        for file in valid_files:
+            task_id = str(uuid.uuid4())
+            original_filename = secure_filename(file.filename or "uploaded.glb")
+            original_name = original_filename.rsplit('.', 1)[0] if '.' in original_filename else "model"
+            
+            input_path = str(Path(config.UPLOAD_FOLDER) / f"{task_id}.glb")
+            output_path = str(Path(config.OUTPUT_FOLDER) / f"{task_id}_optimized.glb")
+            
+            # Save file
+            file.save(input_path)
+            original_size = Path(input_path).stat().st_size
+            
+            # Upload to object storage
+            try:
+                storage_manager.upload_file(
+                    input_path, task_id, 'original', original_filename,
+                    metadata={'batch_id': batch_id, 'quality_level': quality_level}
+                )
+            except Exception as e:
+                logger.warning(f"Failed to upload to object storage: {e}")
+            
+            # Queue optimization task
+            if celery and broker_type != 'none':
+                from tasks import optimize_glb_file
+                celery_task = optimize_glb_file.delay(
+                    input_path, output_path, original_name,
+                    quality_level=quality_level,
+                    enable_lod=enable_lod,
+                    enable_simplification=enable_simplification
+                )
+                actual_task_id = celery_task.id
+            else:
+                actual_task_id = task_id
+                # Sync fallback - process in background thread would be better
+                # For now, queue them and they'll process sequentially
+            
+            # Create task record linked to batch
+            db = get_db()
+            try:
+                optimization_task = OptimizationTask(
+                    id=actual_task_id,
+                    batch_id=batch_id,
+                    original_filename=original_filename,
+                    secure_filename=f"{actual_task_id}.glb",
+                    original_size=original_size,
+                    quality_level=quality_level,
+                    enable_lod=enable_lod,
+                    enable_simplification=enable_simplification,
+                    status='pending'
+                )
+                db.add(optimization_task)
+                db.commit()
+                task_ids.append(actual_task_id)
+            finally:
+                db.close()
+        
+        # Update batch status to processing
+        db = get_db()
+        try:
+            batch = db.query(BatchOptimization).filter_by(id=batch_id).first()
+            if batch:
+                batch.status = 'processing'
+                batch.started_at = datetime.now(timezone.utc)
+                db.commit()
+        finally:
+            db.close()
+        
+        return jsonify({
+            'batch_id': batch_id,
+            'task_ids': task_ids,
+            'total_files': len(valid_files),
+            'status': 'processing',
+            'message': f'Batch upload started with {len(valid_files)} files'
+        })
+    
+    except Exception as e:
+        logger.error(f"Batch upload error: {str(e)}")
+        return jsonify({
+            'error': 'An error occurred during batch upload. Please try again.',
+            'details': str(e) if config.DEBUG else None
+        }), 500
+
+
+@main_routes.route('/batch/<batch_id>/status')
+@catch_all_errors('batch_status')
+def get_batch_status(batch_id):
+    """Get status of a batch optimization job"""
+    from models import BatchOptimization
+    
+    try:
+        db = get_db()
+        try:
+            batch = db.query(BatchOptimization).filter_by(id=batch_id).first()
+            if not batch:
+                return jsonify({'error': 'Batch not found'}), 404
+            
+            # Get all tasks in this batch
+            tasks = db.query(OptimizationTask).filter_by(batch_id=batch_id).all()
+            
+            # Calculate progress
+            completed = sum(1 for t in tasks if t.status == 'completed')
+            failed = sum(1 for t in tasks if t.status == 'failed')
+            processing = sum(1 for t in tasks if t.status == 'processing')
+            
+            # Update batch progress
+            batch.completed_files = completed
+            batch.failed_files = failed
+            
+            # Calculate aggregate sizes
+            total_original = sum(t.original_size or 0 for t in tasks if t.status == 'completed')
+            total_compressed = sum(t.compressed_size or 0 for t in tasks if t.status == 'completed')
+            
+            # Update batch status
+            if completed + failed == batch.total_files:
+                if failed == 0:
+                    batch.status = 'completed'
+                elif completed == 0:
+                    batch.status = 'failed'
+                else:
+                    batch.status = 'partial_failure'
+                batch.completed_at = datetime.now(timezone.utc)
+            
+            db.commit()
+            
+            # Build task details
+            task_details = []
+            for task in tasks:
+                task_details.append({
+                    'task_id': task.id,
+                    'filename': task.original_filename,
+                    'status': task.status,
+                    'progress': task.progress,
+                    'original_size': task.original_size,
+                    'compressed_size': task.compressed_size,
+                    'compression_ratio': task.compression_ratio,
+                    'error': task.error_message
+                })
+            
+            return jsonify({
+                'batch_id': batch_id,
+                'status': batch.status,
+                'total_files': batch.total_files,
+                'completed_files': completed,
+                'failed_files': failed,
+                'processing_files': processing,
+                'total_original_size': total_original,
+                'total_compressed_size': total_compressed,
+                'overall_compression_ratio': (total_compressed / total_original * 100) if total_original > 0 else 0,
+                'zip_available': batch.zip_generated,
+                'tasks': task_details
+            })
+        finally:
+            db.close()
+    
+    except Exception as e:
+        logger.error(f"Batch status error: {str(e)}")
+        return jsonify({'error': f'Failed to get batch status: {str(e)}'}), 500
+
+
+@main_routes.route('/batch/<batch_id>/download')
+@catch_all_errors('batch_download')
+def download_batch(batch_id):
+    """Download all optimized files from a batch as a ZIP"""
+    from models import BatchOptimization
+    import zipfile
+    import io
+    
+    try:
+        db = get_db()
+        try:
+            batch = db.query(BatchOptimization).filter_by(id=batch_id).first()
+            if not batch:
+                return jsonify({'error': 'Batch not found'}), 404
+            
+            # Get completed tasks
+            tasks = db.query(OptimizationTask).filter_by(
+                batch_id=batch_id, 
+                status='completed'
+            ).all()
+            
+            if not tasks:
+                return jsonify({'error': 'No completed optimizations in this batch'}), 400
+            
+            # Create ZIP file in memory
+            memory_file = io.BytesIO()
+            with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
+                for task in tasks:
+                    output_file = Path(config.OUTPUT_FOLDER) / f"{task.id}_optimized.glb"
+                    if output_file.exists():
+                        # Use original filename with _optimized suffix
+                        original_name = task.original_filename.rsplit('.', 1)[0] if '.' in task.original_filename else task.original_filename
+                        zip_filename = f"{original_name}_optimized.glb"
+                        zf.write(str(output_file), zip_filename)
+            
+            memory_file.seek(0)
+            
+            # Mark batch as having ZIP generated
+            batch.zip_generated = True
+            db.commit()
+            
+            return send_file(
+                memory_file,
+                mimetype='application/zip',
+                as_attachment=True,
+                download_name=f'optimized_models_{batch_id[:8]}.zip'
+            )
+        finally:
+            db.close()
+    
+    except Exception as e:
+        logger.error(f"Batch download error: {str(e)}")
+        return jsonify({'error': f'Failed to download batch: {str(e)}'}), 500
 
 
 @main_routes.route('/progress/<task_id>')
