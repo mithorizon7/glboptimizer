@@ -85,7 +85,7 @@ def make_celery(app_name='glb_optimizer'):
         app_name,
         broker=broker_url,
         backend=result_backend,
-        include=['tasks', 'cleanup_scheduler', 'pipeline_tasks']
+        include=['tasks', 'cleanup_scheduler']
     )
     
     celery_app.conf.update(
