@@ -268,6 +268,13 @@ class Config:
     ENABLE_LOD_BY_DEFAULT = os.environ.get('ENABLE_LOD_BY_DEFAULT', 'true').lower() in ['true', '1', 'yes']
     ENABLE_SIMPLIFICATION_BY_DEFAULT = os.environ.get('ENABLE_SIMPLIFICATION_BY_DEFAULT', 'true').lower() in ['true', '1', 'yes']
     
+    # Database Configuration
+    DATABASE_URL = os.environ.get('DATABASE_URL')
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        'pool_pre_ping': True,
+        'pool_recycle': 300,
+    }
+    
     # Celery/Redis Configuration
     REDIS_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
     CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', REDIS_URL)

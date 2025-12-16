@@ -1,24 +1,26 @@
-import os
 from contextlib import contextmanager
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from models import Base
+from config import get_config
 import logging
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Database configuration
-DATABASE_URL = os.environ.get('DATABASE_URL')
-if not DATABASE_URL:
+# Get configuration
+config = get_config()
+
+# Database configuration - use centralized config
+if not config.DATABASE_URL:
     raise ValueError("DATABASE_URL environment variable is required")
 
-# Create engine with connection pooling
+# Create engine with connection pooling using config values
 engine = create_engine(
-    DATABASE_URL,
-    pool_pre_ping=True,
-    pool_recycle=300,
+    config.DATABASE_URL,
+    pool_pre_ping=config.SQLALCHEMY_ENGINE_OPTIONS.get('pool_pre_ping', True),
+    pool_recycle=config.SQLALCHEMY_ENGINE_OPTIONS.get('pool_recycle', 300),
     pool_size=10,
     max_overflow=20,
     echo=False  # Set to True for SQL debugging

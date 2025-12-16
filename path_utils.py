@@ -67,3 +67,34 @@ def path_suffix(path_like: PathLike) -> str:
 def path_with_suffix(path_like: PathLike, suffix: str) -> Path:
     """Return path with new suffix using pathlib.Path"""
     return ensure_path(path_like).with_suffix(suffix)
+
+
+def normalize_path(path_like: PathLike) -> Path:
+    """Normalize path by resolving .. and . components using pathlib.Path"""
+    return ensure_path(path_like).resolve()
+
+
+def safe_path_join(base: PathLike, *parts: PathLike) -> Path:
+    """
+    Safely join paths, ensuring the result stays within the base directory.
+    
+    Raises ValueError if the resulting path would escape the base directory
+    (e.g., via ../ traversal attacks).
+    """
+    base_path = ensure_path(base).resolve()
+    
+    # Build the full path
+    full_path = base_path
+    for part in parts:
+        full_path = full_path / ensure_path(part)
+    
+    # Resolve to absolute path
+    resolved = full_path.resolve()
+    
+    # Security check: ensure the resolved path is still under base
+    try:
+        resolved.relative_to(base_path)
+    except ValueError:
+        raise ValueError(f"Path traversal detected: {resolved} is outside {base_path}")
+    
+    return resolved
