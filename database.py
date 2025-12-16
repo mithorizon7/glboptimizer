@@ -1,4 +1,5 @@
 import os
+from contextlib import contextmanager
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from models import Base
@@ -37,10 +38,33 @@ def create_tables():
         raise
 
 def get_db():
-    """Get database session"""
+    """Get database session (for Flask dependency injection)"""
     db = SessionLocal()
     try:
         yield db
+    finally:
+        db.close()
+
+
+@contextmanager
+def db_session():
+    """
+    Context manager for database sessions with automatic cleanup.
+    
+    Usage:
+        with db_session() as db:
+            db.query(Model).all()
+            db.commit()  # Explicit commit when needed
+    
+    Automatically rolls back on exception and closes session.
+    """
+    db = SessionLocal()
+    try:
+        yield db
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Database session error, rolled back: {e}")
+        raise
     finally:
         db.close()
 

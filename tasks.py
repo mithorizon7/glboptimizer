@@ -4,7 +4,7 @@ import logging
 from datetime import datetime, timezone
 from celery_factory import celery
 from optimizer import GLBOptimizer
-from database import SessionLocal
+from database import db_session
 from models import OptimizationTask, PerformanceMetric
 
 logging.basicConfig(level=logging.INFO)
@@ -59,8 +59,7 @@ def optimize_glb_file(self, input_path, output_path, original_name, quality_leve
         # Update database record using text-based column names
         try:
             from sqlalchemy import text
-            db = SessionLocal()
-            try:
+            with db_session() as db:
                 # Build update query with proper parameterization
                 status_val = 'processing' if progress < 100 else 'completed'
                 
@@ -91,8 +90,6 @@ def optimize_glb_file(self, input_path, output_path, original_name, quality_leve
                     })
                 
                 db.commit()
-            finally:
-                db.close()
         except Exception as e:
             logger.error(f"Failed to update database progress: {e}")
     
@@ -130,10 +127,8 @@ def optimize_glb_file(self, input_path, output_path, original_name, quality_leve
             
             # Update database with completion results (simplified)
             try:
-                db = SessionLocal()
-                try:
-                    # Use raw SQL to avoid SQLAlchemy type issues
-                    from sqlalchemy import text
+                from sqlalchemy import text
+                with db_session() as db:
                     update_query = text("""
                         UPDATE optimization_tasks 
                         SET status = :status, progress = :progress, compressed_size = :compressed_size,
@@ -153,9 +148,6 @@ def optimize_glb_file(self, input_path, output_path, original_name, quality_leve
                     })
                     db.commit()
                     logger.info(f"Database updated for completed task {self.request.id}")
-                            
-                finally:
-                    db.close()
             except Exception as e:
                 logger.error(f"Failed to update database with completion results: {e}")
             
