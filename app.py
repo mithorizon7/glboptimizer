@@ -254,18 +254,13 @@ def process_file_synchronously(input_path, output_path, task_id, quality_level, 
                     task.error_message = str(e)
                     task.completed_at = datetime.now(timezone.utc)
                     db.commit()
-        except:
+        except Exception:
             pass
         return False
 
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in config.ALLOWED_EXTENSIONS
-
-
-@main_routes.route('/')
-def index():
-    return render_template('index.html')
 
 
 @main_routes.route('/upload', methods=['POST'])
@@ -364,59 +359,67 @@ def upload_file():
             'name': original_name
         }
         
-        # Always use synchronous processing for immediate results
-        logger.info("Using synchronous processing for immediate optimization")
-        success = process_file_synchronously(input_path, output_path, task_id, quality_level, enable_lod, enable_simplification)
-        
-        if success:
-            optimized_size = Path(output_path).stat().st_size if Path(output_path).exists() else 0
-            compression_ratio = ((original_size - optimized_size) / original_size * 100) if original_size > 0 else 0
+        # Use async processing when Celery is available, sync fallback otherwise
+        if celery and broker_type != 'none':
+            # Queue the optimization task asynchronously
+            from tasks import optimize_glb_file
+            logger.info("Queuing async optimization task via Celery")
+            
+            celery_task = optimize_glb_file.delay(
+                input_path, output_path, original_name,
+                quality_level=quality_level,
+                enable_lod=enable_lod,
+                enable_simplification=enable_simplification
+            )
+            
+            # Create database record for tracking
+            try:
+                db = get_db()
+                try:
+                    optimization_task = OptimizationTask(
+                        id=celery_task.id,
+                        original_filename=original_filename,
+                        secure_filename=f"{celery_task.id}.glb",
+                        original_size=original_size,
+                        quality_level=quality_level,
+                        enable_lod=enable_lod,
+                        enable_simplification=enable_simplification,
+                        status='pending'
+                    )
+                    db.add(optimization_task)
+                    db.commit()
+                    logger.info(f"Created database record for async task {celery_task.id}")
+                finally:
+                    db.close()
+            except Exception as e:
+                logger.error(f"Failed to create database record: {e}")
             
             return jsonify({
-                'task_id': task_id, 
-                'status': 'completed', 
-                'fallback_mode': True,
-                'original_size': original_size,
-                'optimized_size': optimized_size,
-                'compression_ratio': compression_ratio,
-                'message': 'Optimization completed successfully'
+                'task_id': celery_task.id,
+                'status': 'queued',
+                'message': 'File uploaded successfully. Optimization queued.',
+                'original_size': original_size
             })
         else:
-            return jsonify({'error': 'Optimization failed'}), 500
-        
-        # Create database record for tracking
-        try:
-            db = get_db()
-            try:
-                final_task_id = getattr(celery_task, 'id', task_id)
-                optimization_task = OptimizationTask(
-                    id=final_task_id,
-                    original_filename=original_filename,
-                    secure_filename=f"{final_task_id}.glb",
-                    original_size=original_size,
-                    quality_level=quality_level,
-                    enable_lod=enable_lod,
-                    enable_simplification=enable_simplification,
-                    status='pending'
-                )
-                db.add(optimization_task)
-                db.commit()
-                logger.info(f"Created database record for task {final_task_id}")
-            finally:
-                db.close()
-        except Exception as e:
-            logger.error(f"Failed to create database record: {e}")
-            # Continue without database tracking
-        
-        task_id = getattr(celery_task, 'id', f'sync_{datetime.now().strftime("%Y%m%d_%H%M%S")}')
-        logger.info(f"Preparing response for task {task_id}")
-        response_data = {
-            'task_id': task_id,
-            'message': 'File uploaded successfully. Optimization queued.',
-            'original_size': original_size
-        }
-        logger.info(f"Sending response: {response_data}")
-        return jsonify(response_data)
+            # Fallback to synchronous processing when Celery unavailable
+            logger.info("Using synchronous processing (Celery unavailable)")
+            success = process_file_synchronously(input_path, output_path, task_id, quality_level, enable_lod, enable_simplification)
+            
+            if success:
+                optimized_size = Path(output_path).stat().st_size if Path(output_path).exists() else 0
+                compression_ratio = ((original_size - optimized_size) / original_size * 100) if original_size > 0 else 0
+                
+                return jsonify({
+                    'task_id': task_id, 
+                    'status': 'completed', 
+                    'fallback_mode': True,
+                    'original_size': original_size,
+                    'optimized_size': optimized_size,
+                    'compression_ratio': compression_ratio,
+                    'message': 'Optimization completed successfully'
+                })
+            else:
+                return jsonify({'error': 'Optimization failed'}), 500
     
     except Exception as e:
         logger.error(f"Upload error: {str(e)}")
@@ -834,6 +837,19 @@ def create_app():
 
     # Register the Blueprint with all routes
     app.register_blueprint(main_routes)
+    
+    # Register modular route blueprints
+    from routes import web_bp
+    app.register_blueprint(web_bp)
+    
+    # Initialize Flask-SocketIO for real-time updates
+    try:
+        from services.realtime import init_socketio
+        socketio = init_socketio(app)
+        app.socketio = socketio  # Store reference on app for access elsewhere
+        logger.info("Flask-SocketIO initialized for real-time updates")
+    except ImportError as e:
+        logger.warning(f"Flask-SocketIO not available, falling back to polling: {e}")
     
     # Register middleware
     app.after_request(add_security_headers)

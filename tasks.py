@@ -55,40 +55,27 @@ def optimize_glb_file(self, input_path, output_path, original_name, quality_leve
         )
         logger.info(f"Task {self.request.id}: {step} - {progress}% - {message}")
         
-        # Update database record using text-based column names
+        # Emit real-time WebSocket update
         try:
-            from sqlalchemy import text
+            from services.realtime import emit_task_progress
+            emit_task_progress(self.request.id, progress, step, message)
+        except Exception as ws_error:
+            logger.debug(f"WebSocket emit failed (non-critical): {ws_error}")
+        
+        # Update database record using ORM
+        try:
             with db_session() as db:
-                # Build update query with proper parameterization
-                status_val = 'processing' if progress < 100 else 'completed'
+                task = db.query(OptimizationTask).filter(
+                    OptimizationTask.id == self.request.id
+                ).first()
                 
-                if progress == 100:
-                    query = text("""
-                        UPDATE optimization_tasks 
-                        SET status = :status, progress = :progress, current_step = :step, completed_at = :completed_at
-                        WHERE id = :task_id
-                    """)
-                    db.execute(query, {
-                        'status': status_val,
-                        'progress': progress,
-                        'step': step,
-                        'completed_at': datetime.now(timezone.utc),
-                        'task_id': self.request.id
-                    })
-                else:
-                    query = text("""
-                        UPDATE optimization_tasks 
-                        SET status = :status, progress = :progress, current_step = :step
-                        WHERE id = :task_id
-                    """)
-                    db.execute(query, {
-                        'status': status_val,
-                        'progress': progress,
-                        'step': step,
-                        'task_id': self.request.id
-                    })
-                
-                db.commit()
+                if task:
+                    task.status = 'processing' if progress < 100 else 'completed'
+                    task.progress = progress
+                    task.current_step = step
+                    if progress == 100:
+                        task.completed_at = datetime.now(timezone.utc)
+                    db.commit()
         except Exception as e:
             logger.error(f"Failed to update database progress: {e}")
     
@@ -124,31 +111,47 @@ def optimize_glb_file(self, input_path, output_path, original_name, quality_leve
             
             logger.info(f"Optimization completed for task {self.request.id}")
             
-            # Update database with completion results (simplified)
+            # Update database with completion results using ORM
             try:
-                from sqlalchemy import text
                 with db_session() as db:
-                    update_query = text("""
-                        UPDATE optimization_tasks 
-                        SET status = :status, progress = :progress, compressed_size = :compressed_size,
-                            compression_ratio = :compression_ratio, processing_time = :processing_time,
-                            completed_at = :completed_at
-                        WHERE id = :task_id
-                    """)
+                    task = db.query(OptimizationTask).filter(
+                        OptimizationTask.id == self.request.id
+                    ).first()
                     
-                    db.execute(update_query, {
-                        'status': 'completed',
-                        'progress': 100,
-                        'compressed_size': optimized_size,
-                        'compression_ratio': compression_ratio,
-                        'processing_time': processing_time,
-                        'completed_at': datetime.now(timezone.utc),
-                        'task_id': self.request.id
-                    })
-                    db.commit()
-                    logger.info(f"Database updated for completed task {self.request.id}")
+                    if task:
+                        task.status = 'completed'
+                        task.progress = 100
+                        task.compressed_size = optimized_size
+                        task.compression_ratio = compression_ratio
+                        task.processing_time = processing_time
+                        task.completed_at = datetime.now(timezone.utc)
+                        db.commit()
+                        logger.info(f"Database updated for completed task {self.request.id}")
             except Exception as e:
                 logger.error(f"Failed to update database with completion results: {e}")
+            
+            # Emit WebSocket completion event
+            try:
+                from services.realtime import emit_task_complete
+                emit_task_complete(self.request.id, {
+                    'original_size': original_size,
+                    'optimized_size': optimized_size,
+                    'compression_ratio': compression_ratio,
+                    'processing_time': processing_time
+                })
+            except Exception as ws_error:
+                logger.debug(f"WebSocket emit failed (non-critical): {ws_error}")
+            
+            # Collect detailed metrics for audit report
+            audit_report = None
+            try:
+                from optimizer.metrics import collect_glb_metrics, compare_metrics
+                before_metrics = collect_glb_metrics(input_path)
+                after_metrics = collect_glb_metrics(output_path)
+                audit_report = compare_metrics(before_metrics, after_metrics)
+                logger.info(f"Collected audit report for task {self.request.id}")
+            except Exception as metrics_error:
+                logger.warning(f"Failed to collect audit metrics: {metrics_error}")
             
             return {
                 'status': 'completed',
@@ -160,7 +163,8 @@ def optimize_glb_file(self, input_path, output_path, original_name, quality_leve
                 'output_file': os.path.basename(output_path),
                 'original_name': original_name,
                 'performance_metrics': result.get('performance_metrics'),
-                'estimated_memory_savings': result.get('estimated_memory_savings')
+                'estimated_memory_savings': result.get('estimated_memory_savings'),
+                'audit_report': audit_report
             }
         else:
             logger.error(f"Optimization failed for task {self.request.id}: {result.get('error')}")

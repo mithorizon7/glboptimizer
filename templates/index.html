@@ -553,6 +553,9 @@
         }
     }
     </script>
+    <!-- Socket.IO for real-time updates (optional - falls back to polling) -->
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script src="{{ url_for('static', filename='realtime.js') }}"></script>
     <script type="module" src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 </html>

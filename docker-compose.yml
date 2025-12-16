@@ -1,0 +1,75 @@
+# GLB Optimizer - Docker Compose Configuration
+# Production-ready setup with Redis and Celery worker
+
+services:
+  # Main web application
+  web:
+    build: .
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=production
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - DATABASE_URL=sqlite:///./data/glb_optimizer.db
+      - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
+      - STORAGE_TYPE=local
+      - STORAGE_PATH=/app/storage
+    volumes:
+      - uploads:/app/uploads
+      - output:/app/output
+      - storage:/app/storage
+      - db_data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Celery worker for async optimization
+  worker:
+    build: .
+    command: celery -A celery_factory:celery worker --loglevel=info --concurrency=2
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - DATABASE_URL=sqlite:///./data/glb_optimizer.db
+      - STORAGE_TYPE=local
+      - STORAGE_PATH=/app/storage
+    volumes:
+      - uploads:/app/uploads
+      - output:/app/output
+      - storage:/app/storage
+      - db_data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Redis for Celery broker and result backend
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+# Named volumes for data persistence
+volumes:
+  uploads:
+  output:
+  storage:
+  db_data:
+  redis_data:

@@ -1,0 +1,55 @@
+# Docker files
+.dockerignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.env
+.venv
+env/
+venv/
+ENV/
+
+# Testing
+.pytest_cache/
+htmlcov/
+.coverage
+*.cover
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Git
+.git/
+.gitignore
+
+# Documentation (not needed in container)
+*.md
+!README.md
+
+# Test files
+tests/
+test_*.py
+*_test.py
+
+# Development files
+.replit
+replit.nix
+*.log
+
+# Local data (will use Docker volumes)
+uploads/
+output/
+storage/
+data/
+logs/
+
+# Temporary files
+*.tmp
+*.bak

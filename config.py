@@ -5,8 +5,11 @@ Loads settings from environment variables with sensible defaults
 
 import os
 import json
+import logging
 from typing import Dict, Any
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # GLB File Format Constants
 class GLBConstants:
@@ -177,7 +180,7 @@ class OptimizationConfig:
                         setattr(config, key.upper(), value)
                         
             except (json.JSONDecodeError, FileNotFoundError) as e:
-                print(f"Warning: Could not load config file {config_file}: {e}")
+                logger.warning(f"Could not load config file {config_file}: {e}")
         
         return config
     
@@ -186,7 +189,7 @@ class OptimizationConfig:
         """Get comprehensive settings for specified quality level"""
         config = cls()
         if quality_level not in config.QUALITY_PRESETS:
-            print(f"Warning: Unknown quality level '{quality_level}', using 'balanced'")
+            logger.warning(f"Unknown quality level '{quality_level}', using 'balanced'")
             quality_level = 'balanced'
         
         return config.QUALITY_PRESETS[quality_level].copy()
