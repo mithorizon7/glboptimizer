@@ -3,6 +3,8 @@ import logging
 from pathlib import Path
 from dotenv import load_dotenv
 from flask import Flask, Blueprint, render_template, request, jsonify, send_file, flash, redirect, url_for, session, current_app
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from werkzeug.utils import secure_filename
 from werkzeug.middleware.proxy_fix import ProxyFix
 import uuid
@@ -16,6 +18,14 @@ from analytics import get_analytics_dashboard_data
 from issue_logger import issue_logger, track_errors, track_performance
 from enhanced_error_logging import global_error_handler, catch_all_errors, log_database_errors, log_file_operations, log_optimization_errors
 from object_storage import get_storage_manager, init_storage
+
+# Initialize rate limiter (will be attached to app in create_app)
+limiter = Limiter(
+    key_func=get_remote_address,
+    storage_uri=get_config().RATELIMIT_STORAGE_URI,
+    strategy=get_config().RATELIMIT_STRATEGY,
+    default_limits=[get_config().RATELIMIT_DEFAULT] if get_config().RATELIMIT_ENABLED else []
+)
 
 # Load environment variables
 load_dotenv()
@@ -78,7 +88,7 @@ def get_or_create_user_session():
 # Security headers middleware - now applied by factory pattern
 def add_security_headers(response):
     """Add security headers to all responses"""
-    if os.environ.get('SECURITY_HEADERS_ENABLED', 'true').lower() in ['true', '1', 'yes']:
+    if config.SECURITY_HEADERS_ENABLED:
         # Prevent clickjacking
         response.headers['X-Frame-Options'] = 'SAMEORIGIN'
         
@@ -116,7 +126,7 @@ def add_security_headers(response):
         )
         
         # HTTPS enforcement (if enabled)
-        if os.environ.get('HTTPS_ENABLED', 'false').lower() in ['true', '1', 'yes']:
+        if config.HTTPS_ENABLED:
             response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
     
     return response
@@ -259,6 +269,7 @@ def index():
 
 
 @main_routes.route('/upload', methods=['POST'])
+@limiter.limit(get_config().RATELIMIT_UPLOAD)
 @track_errors('upload')
 @track_performance('upload', threshold_ms=2000)
 def upload_file():
@@ -810,6 +821,13 @@ def create_app():
     
     # Apply middleware
     app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
+
+    # Initialize rate limiter
+    if config.RATELIMIT_ENABLED:
+        limiter.init_app(app)
+        logger.info(f"Rate limiting enabled: {config.RATELIMIT_DEFAULT} (uploads: {config.RATELIMIT_UPLOAD})")
+    else:
+        logger.info("Rate limiting disabled")
 
     # Initialize comprehensive error handling
     global_error_handler.init_app(app)

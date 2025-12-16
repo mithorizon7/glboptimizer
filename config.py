@@ -295,6 +295,27 @@ class Config:
     LOG_TO_FILE = os.environ.get('LOG_TO_FILE', 'false').lower() in ['true', '1', 'yes']
     LOG_FILE_PATH = os.environ.get('LOG_FILE_PATH', 'glb_optimizer.log')
     
+    # Server Configuration
+    HOST = os.environ.get('HOST', '0.0.0.0')
+    PORT = int(os.environ.get('PORT', '5000'))
+    
+    # Security Headers Configuration
+    SECURITY_HEADERS_ENABLED = os.environ.get('SECURITY_HEADERS_ENABLED', 'true').lower() in ['true', '1', 'yes']
+    HTTPS_ENABLED = os.environ.get('HTTPS_ENABLED', 'false').lower() in ['true', '1', 'yes']
+    
+    # Gunicorn Configuration
+    GUNICORN_WORKERS = int(os.environ.get('GUNICORN_WORKERS', '0'))  # 0 = auto-detect
+    GUNICORN_ACCESS_LOG = os.environ.get('GUNICORN_ACCESS_LOG', 'access.log')
+    GUNICORN_ERROR_LOG = os.environ.get('GUNICORN_ERROR_LOG', 'error.log')
+    GUNICORN_LOG_LEVEL = os.environ.get('GUNICORN_LOG_LEVEL', 'info')
+    
+    # Rate Limiting Configuration
+    RATELIMIT_ENABLED = os.environ.get('RATELIMIT_ENABLED', 'true').lower() in ['true', '1', 'yes']
+    RATELIMIT_DEFAULT = os.environ.get('RATELIMIT_DEFAULT', '100 per hour')
+    RATELIMIT_UPLOAD = os.environ.get('RATELIMIT_UPLOAD', '10 per hour')  # Limit file uploads
+    RATELIMIT_STORAGE_URI = os.environ.get('RATELIMIT_STORAGE_URI', 'memory://')  # Can use redis:// in production
+    RATELIMIT_STRATEGY = os.environ.get('RATELIMIT_STRATEGY', 'fixed-window')
+    
     # Performance Configuration
     COMPRESSION_THREADS = int(os.environ.get('COMPRESSION_THREADS', '0'))  # 0 = auto-detect
     MEMORY_LIMIT_MB = int(os.environ.get('MEMORY_LIMIT_MB', '2048'))

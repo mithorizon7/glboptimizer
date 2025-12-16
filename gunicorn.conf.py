@@ -3,15 +3,14 @@
 
 import os
 import multiprocessing
+from config import Config
 
 # Server socket - robust binding for Replit deployment
-host = os.environ.get('HOST', '0.0.0.0')
-port = os.environ.get('PORT', '5000')
-bind = f"{host}:{port}"
+bind = f"{Config.HOST}:{Config.PORT}"
 backlog = 2048
 
 # Worker processes
-workers = int(os.environ.get('GUNICORN_WORKERS', multiprocessing.cpu_count() * 2 + 1))
+workers = Config.GUNICORN_WORKERS if Config.GUNICORN_WORKERS > 0 else multiprocessing.cpu_count() * 2 + 1
 worker_class = "sync"
 worker_connections = 1000
 timeout = 300  # 5 minutes for GLB processing
@@ -39,9 +38,9 @@ proc_name = 'glb-optimizer'
 # group = os.environ.get('GUNICORN_GROUP', 'www-data')
 
 # Logging
-accesslog = os.environ.get('GUNICORN_ACCESS_LOG', 'access.log')
-errorlog = os.environ.get('GUNICORN_ERROR_LOG', 'error.log')
-loglevel = os.environ.get('GUNICORN_LOG_LEVEL', 'info')
+accesslog = Config.GUNICORN_ACCESS_LOG
+errorlog = Config.GUNICORN_ERROR_LOG
+loglevel = Config.GUNICORN_LOG_LEVEL
 access_log_format = '%(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s" %(D)s'
 
 # Security headers (in addition to application-level headers)

@@ -11,13 +11,8 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-# Set production environment variables
-os.environ.setdefault('SESSION_SECRET', 'production_secret_change_me')
+# Set production environment variables - no defaults here, Config is the source of truth
 os.environ.setdefault('FLASK_ENV', 'production')
-os.environ.setdefault('DATABASE_URL', os.environ.get('DATABASE_URL', 'sqlite:///production.db'))
-os.environ.setdefault('REDIS_URL', 'redis://localhost:6379/0')
-os.environ.setdefault('CELERY_BROKER_URL', 'redis://localhost:6379/0')
-os.environ.setdefault('CELERY_RESULT_BACKEND', 'redis://localhost:6379/0')
 
 # Configure logging for production
 logging.basicConfig(
@@ -65,8 +60,9 @@ def create_application():
         logger.error(f"Failed to create application: {e}")
         # Create minimal fallback app
         from flask import Flask, jsonify
+        from config import Config
         app = Flask(__name__)
-        app.secret_key = os.environ.get("SESSION_SECRET", "fallback_secret")
+        app.secret_key = Config.SECRET_KEY
         
         @app.route('/')
         def index():
@@ -91,7 +87,5 @@ def create_application():
 application = create_application()
 
 if __name__ == "__main__":
-    application.run(host='0.0.0.0', port=5000, debug=False)
-
-if __name__ == "__main__":
-    application.run(host='0.0.0.0', port=5000, debug=False)
+    from config import Config
+    application.run(host=Config.HOST, port=Config.PORT, debug=False)
