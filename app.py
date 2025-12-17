@@ -462,6 +462,15 @@ def upload_batch():
         if not valid_files:
             return jsonify({'error': 'No valid GLB files found'}), 400
         
+        # Backend validation: enforce file limit
+        MAX_BATCH_FILES = 15
+        if len(valid_files) > MAX_BATCH_FILES:
+            return jsonify({
+                'error': f'Too many files. Maximum {MAX_BATCH_FILES} files per batch.',
+                'files_received': len(valid_files),
+                'max_allowed': MAX_BATCH_FILES
+            }), 400
+        
         # Get optimization settings
         quality_level = request.form.get('quality_level', 'high')
         enable_lod = request.form.get('enable_lod') == 'true'
@@ -524,23 +533,52 @@ def upload_batch():
                 )
                 actual_task_id = celery_task.id
             else:
+                # Sync fallback - run optimization directly
                 actual_task_id = task_id
-                # Sync fallback - process in background thread would be better
-                # For now, queue them and they'll process sequentially
+                try:
+                    from optimizer import GLBOptimizer
+                    optimizer = GLBOptimizer(quality_level=quality_level)
+                    result = optimizer.optimize(input_path, output_path)
+                    
+                    # Update task record with result
+                    if result.get('success'):
+                        optimized_size = Path(output_path).stat().st_size if Path(output_path).exists() else 0
+                        compression_ratio = ((original_size - optimized_size) / original_size * 100) if original_size > 0 else 0
+                        logger.info(f"Sync batch task {task_id} completed: {compression_ratio:.1f}% reduction")
+                    else:
+                        logger.error(f"Sync batch task {task_id} failed: {result.get('error')}")
+                except Exception as sync_error:
+                    logger.error(f"Sync batch optimization failed: {sync_error}")
             
             # Create task record linked to batch
             db = get_db()
             try:
+                # Determine status based on sync execution
+                task_status = 'pending'
+                compressed_size = None
+                compression_ratio = None
+                
+                if not (celery and broker_type != 'none'):
+                    # Sync mode - check if output exists
+                    if Path(output_path).exists():
+                        task_status = 'completed'
+                        compressed_size = Path(output_path).stat().st_size
+                        compression_ratio = ((original_size - compressed_size) / original_size * 100) if original_size > 0 else 0
+                    else:
+                        task_status = 'failed'
+                
                 optimization_task = OptimizationTask(
                     id=actual_task_id,
                     batch_id=batch_id,
                     original_filename=original_filename,
                     secure_filename=f"{actual_task_id}.glb",
                     original_size=original_size,
+                    compressed_size=compressed_size,
+                    compression_ratio=compression_ratio,
                     quality_level=quality_level,
                     enable_lod=enable_lod,
                     enable_simplification=enable_simplification,
-                    status='pending'
+                    status=task_status
                 )
                 db.add(optimization_task)
                 db.commit()
@@ -588,33 +626,13 @@ def get_batch_status(batch_id):
             if not batch:
                 return jsonify({'error': 'Batch not found'}), 404
             
-            # Get all tasks in this batch
-            tasks = db.query(OptimizationTask).filter_by(batch_id=batch_id).all()
-            
-            # Calculate progress
-            completed = sum(1 for t in tasks if t.status == 'completed')
-            failed = sum(1 for t in tasks if t.status == 'failed')
-            processing = sum(1 for t in tasks if t.status == 'processing')
-            
-            # Update batch progress
-            batch.completed_files = completed
-            batch.failed_files = failed
-            
-            # Calculate aggregate sizes
-            total_original = sum(t.original_size or 0 for t in tasks if t.status == 'completed')
-            total_compressed = sum(t.compressed_size or 0 for t in tasks if t.status == 'completed')
-            
-            # Update batch status
-            if completed + failed == batch.total_files:
-                if failed == 0:
-                    batch.status = 'completed'
-                elif completed == 0:
-                    batch.status = 'failed'
-                else:
-                    batch.status = 'partial_failure'
-                batch.completed_at = datetime.now(timezone.utc)
-            
+            # Use model method to update progress (DRY principle)
+            batch.update_progress()
             db.commit()
+            
+            # Get all tasks for response details
+            tasks = db.query(OptimizationTask).filter_by(batch_id=batch_id).all()
+            processing = sum(1 for t in tasks if t.status == 'processing')
             
             # Build task details
             task_details = []
@@ -634,12 +652,13 @@ def get_batch_status(batch_id):
                 'batch_id': batch_id,
                 'status': batch.status,
                 'total_files': batch.total_files,
-                'completed_files': completed,
-                'failed_files': failed,
+                'completed_files': batch.completed_files,
+                'failed_files': batch.failed_files,
                 'processing_files': processing,
-                'total_original_size': total_original,
-                'total_compressed_size': total_compressed,
-                'overall_compression_ratio': (total_compressed / total_original * 100) if total_original > 0 else 0,
+                'total_original_size': batch.total_original_size or 0,
+                'total_compressed_size': batch.total_compressed_size or 0,
+                'overall_compression_ratio': ((batch.total_compressed_size / batch.total_original_size * 100) 
+                                              if batch.total_original_size and batch.total_original_size > 0 else 0),
                 'zip_available': batch.zip_generated,
                 'tasks': task_details
             })

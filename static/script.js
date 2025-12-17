@@ -13,7 +13,7 @@ class GLBOptimizer {
         this.currentTaskId = null;
         this.pollInterval = null;
         this.selectedFile = null;
-        
+
         // Batch upload state
         this.batchMode = false;
         this.batchFiles = [];
@@ -108,7 +108,7 @@ class GLBOptimizer {
         this.showErrorDetailsBtn = document.getElementById('show-error-details-btn');
         this.downloadLogsBtn = document.getElementById('download-logs-btn');
         this.retryBtn = document.getElementById('retry-btn');
-        
+
         // Batch elements
         this.singleModeBtn = document.getElementById('singleMode');
         this.batchModeBtn = document.getElementById('batchMode');
@@ -265,33 +265,33 @@ class GLBOptimizer {
         if (this.batchModeBtn) {
             this.batchModeBtn.addEventListener('change', () => this.toggleBatchMode(true));
         }
-        
+
         // Clear batch button
         if (this.clearBatchBtn) {
             this.clearBatchBtn.addEventListener('click', () => this.clearBatchFiles());
         }
-        
+
         // Download all button
         if (this.downloadAllBtn) {
             this.downloadAllBtn.addEventListener('click', () => this.downloadBatchZip());
         }
-        
+
         // New batch button
         if (this.batchNewBtn) {
             this.batchNewBtn.addEventListener('click', () => this.resetBatchUI());
         }
     }
-    
+
     toggleBatchMode(enabled) {
         this.batchMode = enabled;
         this.batchFiles = [];
         this.selectedFile = null;
-        
+
         if (enabled) {
             // Switch to batch mode
             this.fileInput.setAttribute('multiple', 'multiple');
             if (this.dropZoneTitle) this.dropZoneTitle.textContent = 'Drag & drop multiple GLB files here';
-            if (this.dropZoneSubtitle) this.dropZoneSubtitle.textContent = 'or click to select files (up to 10 files, 100MB each)';
+            if (this.dropZoneSubtitle) this.dropZoneSubtitle.textContent = 'or click to select files (up to 15 files, 100MB each)';
             if (this.chooseFileText) this.chooseFileText.textContent = 'Choose Files';
             if (this.batchFileList) this.batchFileList.style.display = 'none';
         } else {
@@ -302,19 +302,19 @@ class GLBOptimizer {
             if (this.chooseFileText) this.chooseFileText.textContent = 'Choose File';
             if (this.batchFileList) this.batchFileList.style.display = 'none';
         }
-        
+
         // Reset upload button
         this.uploadBtn.disabled = true;
         this.fileInfo.style.display = 'none';
         this.optimizationSettings.style.display = 'none';
-        
+
         // Reset drop zone content
         const dropZoneContent = document.getElementById('drop-zone-content');
         if (dropZoneContent) {
             dropZoneContent.innerHTML = `
                 <i class="fas fa-cloud-upload-alt fa-3x mb-3 text-muted"></i>
                 <h5 id="drop-zone-title">${enabled ? 'Drag & drop multiple GLB files here' : 'Drag & drop your GLB file here'}</h5>
-                <p class="text-muted" id="drop-zone-subtitle">${enabled ? 'or click to select files (up to 10 files, 100MB each)' : 'or click to select a file (up to 100MB)'}</p>
+                <p class="text-muted" id="drop-zone-subtitle">${enabled ? 'or click to select files (up to 15 files, 100MB each)' : 'or click to select a file (up to 100MB)'}</p>
                 <small class="text-muted">
                     <i class="fas fa-info-circle me-1"></i>
                     We'll automatically compress textures, reduce polygons, and optimize your model for web use
@@ -326,51 +326,51 @@ class GLBOptimizer {
             `;
         }
     }
-    
+
     handleBatchFileSelect(files) {
-        const maxFiles = 10;
+        const maxFiles = 15;
         const maxSize = 100 * 1024 * 1024;
-        
+
         for (const file of files) {
             if (this.batchFiles.length >= maxFiles) {
                 console.warn('Maximum file limit reached');
                 break;
             }
-            
+
             if (!file.name.toLowerCase().endsWith('.glb')) {
                 console.warn(`Skipping non-GLB file: ${file.name}`);
                 continue;
             }
-            
+
             if (file.size > maxSize) {
                 console.warn(`File too large: ${file.name}`);
                 continue;
             }
-            
+
             // Avoid duplicates
             if (!this.batchFiles.some(f => f.name === file.name && f.size === file.size)) {
                 this.batchFiles.push(file);
             }
         }
-        
+
         this.updateBatchFileList();
     }
-    
+
     updateBatchFileList() {
         if (!this.batchFilesContainer || !this.batchFileList) return;
-        
+
         if (this.batchFiles.length === 0) {
             this.batchFileList.style.display = 'none';
             this.uploadBtn.disabled = true;
             this.optimizationSettings.style.display = 'none';
             return;
         }
-        
+
         this.batchFileList.style.display = 'block';
         this.batchFileCount.textContent = this.batchFiles.length;
         this.uploadBtn.disabled = false;
         this.optimizationSettings.style.display = 'block';
-        
+
         this.batchFilesContainer.innerHTML = this.batchFiles.map((file, index) => `
             <div class="list-group-item d-flex justify-content-between align-items-center">
                 <div>
@@ -384,23 +384,23 @@ class GLBOptimizer {
             </div>
         `).join('');
     }
-    
+
     removeBatchFile(index) {
         this.batchFiles.splice(index, 1);
         this.updateBatchFileList();
     }
-    
+
     clearBatchFiles() {
         this.batchFiles = [];
         this.updateBatchFileList();
     }
-    
+
     async startBatchOptimization() {
         if (this.batchFiles.length === 0) {
             this.showError('Please select at least one file.');
             return;
         }
-        
+
         // Show batch progress section
         this.uploadSection.style.display = 'none';
         this.batchProgressSection.style.display = 'block';
@@ -409,7 +409,7 @@ class GLBOptimizer {
         this.batchTasksContainer.innerHTML = '';
         this.batchSummary.style.display = 'none';
         this.batchDownloadSection.style.display = 'none';
-        
+
         // Create form data
         const formData = new FormData();
         for (const file of this.batchFiles) {
@@ -418,21 +418,21 @@ class GLBOptimizer {
         formData.append('quality_level', this.qualityLevel.value);
         formData.append('enable_lod', this.enableLod.checked);
         formData.append('enable_simplification', this.enableSimplification.checked);
-        
+
         try {
             const response = await fetch('/upload/batch', {
                 method: 'POST',
                 body: formData
             });
-            
+
             const result = await response.json();
-            
+
             if (!response.ok) {
                 throw new Error(result.error || 'Batch upload failed');
             }
-            
+
             this.currentBatchId = result.batch_id;
-            
+
             // Initialize task list in UI
             for (const taskId of result.task_ids) {
                 this.batchTasksContainer.innerHTML += `
@@ -447,37 +447,125 @@ class GLBOptimizer {
                     </div>
                 `;
             }
-            
-            // Start polling for batch status
-            this.startBatchPolling();
-            
+
+            // Start WebSocket or polling for batch status
+            this.startBatchUpdates();
+
         } catch (error) {
             console.error('Batch upload error:', error);
             this.showError(error.message);
         }
     }
-    
-    startBatchPolling() {
-        this.batchPollInterval = setInterval(() => this.pollBatchStatus(), 2000);
+
+    startBatchUpdates() {
+        // Try WebSocket first if available
+        if (window.realtimeClient && !window.realtimeClient.shouldUsePollling()) {
+            console.log('Using WebSocket for batch updates');
+            this.startBatchWebSocket();
+        } else {
+            console.log('WebSocket unavailable, using polling for batch updates');
+            this.startBatchPolling();
+        }
     }
-    
-    async pollBatchStatus() {
-        if (!this.currentBatchId) return;
-        
+
+    startBatchWebSocket() {
+        // Subscribe to batch room
+        if (window.realtimeClient && window.realtimeClient.socket) {
+            const socket = window.realtimeClient.socket;
+
+            // Remove any existing batch listeners to prevent accumulation
+            socket.off('batch_progress');
+            socket.off('batch_complete');
+
+            socket.emit('subscribe_batch', { batch_id: this.currentBatchId });
+
+            // Listen for batch progress
+            socket.on('batch_progress', (data) => {
+                if (data.batch_id === this.currentBatchId) {
+                    this.updateBatchProgressFromWebSocket(data);
+                }
+            });
+
+            // Listen for batch completion
+            socket.on('batch_complete', (data) => {
+                if (data.batch_id === this.currentBatchId) {
+                    socket.emit('unsubscribe_batch', { batch_id: this.currentBatchId });
+                    socket.off('batch_progress');
+                    socket.off('batch_complete');
+                    // Fetch final status for complete data
+                    this.fetchFinalBatchStatus();
+                }
+            });
+        }
+
+        // Slow backup polling (every 5s) in case WebSocket misses events
+        this.batchPollInterval = setInterval(() => this.pollBatchStatus(), 5000);
+    }
+
+    updateBatchProgressFromWebSocket(data) {
+        // Update overall progress bar
+        const progressPercent = data.progress_percent || 0;
+        this.batchProgressBar.style.width = `${progressPercent}%`;
+        this.batchOverallProgress.textContent = `${data.completed} / ${data.total} files`;
+
+        // Update specific task if provided
+        if (data.current_task) {
+            const taskEl = document.getElementById(`batch-task-${data.current_task.task_id}`);
+            if (taskEl) {
+                const filenameEl = taskEl.querySelector('.task-filename');
+                const statusEl = taskEl.querySelector('.task-status');
+                const progressEl = taskEl.querySelector('.task-progress');
+
+                if (filenameEl && data.current_task.filename) filenameEl.textContent = data.current_task.filename;
+                if (progressEl) progressEl.style.width = '100%';
+
+                if (statusEl && data.current_task.status) {
+                    statusEl.textContent = data.current_task.status;
+                    statusEl.className = 'badge task-status';
+                    if (data.current_task.status === 'completed') {
+                        statusEl.classList.add('bg-success');
+                    } else if (data.current_task.status === 'failed') {
+                        statusEl.classList.add('bg-danger');
+                    }
+                }
+            }
+        }
+    }
+
+    async fetchFinalBatchStatus() {
         try {
             const response = await fetch(`/batch/${this.currentBatchId}/status`);
             const data = await response.json();
-            
+            if (response.ok) {
+                clearInterval(this.batchPollInterval);
+                this.showBatchResults(data);
+            }
+        } catch (error) {
+            console.error('Failed to fetch final batch status:', error);
+        }
+    }
+
+    startBatchPolling() {
+        this.batchPollInterval = setInterval(() => this.pollBatchStatus(), 2000);
+    }
+
+    async pollBatchStatus() {
+        if (!this.currentBatchId) return;
+
+        try {
+            const response = await fetch(`/batch/${this.currentBatchId}/status`);
+            const data = await response.json();
+
             if (!response.ok) {
                 throw new Error(data.error || 'Failed to get batch status');
             }
-            
+
             // Update overall progress
             const totalDone = data.completed_files + data.failed_files;
             const progressPercent = (totalDone / data.total_files) * 100;
             this.batchProgressBar.style.width = `${progressPercent}%`;
             this.batchOverallProgress.textContent = `${totalDone} / ${data.total_files} files`;
-            
+
             // Update individual tasks
             for (const task of data.tasks) {
                 const taskEl = document.getElementById(`batch-task-${task.task_id}`);
@@ -485,10 +573,10 @@ class GLBOptimizer {
                     const filenameEl = taskEl.querySelector('.task-filename');
                     const statusEl = taskEl.querySelector('.task-status');
                     const progressEl = taskEl.querySelector('.task-progress');
-                    
+
                     if (filenameEl) filenameEl.textContent = task.filename;
                     if (progressEl) progressEl.style.width = `${task.progress || 0}%`;
-                    
+
                     if (statusEl) {
                         statusEl.textContent = task.status;
                         statusEl.className = 'badge task-status';
@@ -504,46 +592,46 @@ class GLBOptimizer {
                     }
                 }
             }
-            
+
             // Check if batch is complete
             if (data.status === 'completed' || data.status === 'partial_failure' || data.status === 'failed') {
                 clearInterval(this.batchPollInterval);
                 this.showBatchResults(data);
             }
-            
+
         } catch (error) {
             console.error('Batch status polling error:', error);
         }
     }
-    
+
     showBatchResults(data) {
         // Remove progress bar animation
         this.batchProgressBar.classList.remove('progress-bar-animated');
-        
+
         // Show summary
         this.batchSummary.style.display = 'block';
         this.batchTotalOriginal.textContent = this.formatFileSize(data.total_original_size);
         this.batchTotalOptimized.textContent = this.formatFileSize(data.total_compressed_size);
-        
-        const savingsPercent = data.total_original_size > 0 
+
+        const savingsPercent = data.total_original_size > 0
             ? ((data.total_original_size - data.total_compressed_size) / data.total_original_size * 100).toFixed(1)
             : 0;
         this.batchSavings.textContent = `${savingsPercent}% smaller`;
-        
+
         // Show download section
         this.batchDownloadSection.style.display = 'block';
     }
-    
+
     async downloadBatchZip() {
         if (!this.currentBatchId) return;
-        
+
         try {
             const response = await fetch(`/batch/${this.currentBatchId}/download`);
             if (!response.ok) {
                 const data = await response.json();
                 throw new Error(data.error || 'Download failed');
             }
-            
+
             const blob = await response.blob();
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -558,12 +646,12 @@ class GLBOptimizer {
             alert('Failed to download: ' + error.message);
         }
     }
-    
+
     resetBatchUI() {
         this.currentBatchId = null;
         this.batchFiles = [];
         if (this.batchPollInterval) clearInterval(this.batchPollInterval);
-        
+
         this.batchProgressSection.style.display = 'none';
         this.uploadSection.style.display = 'block';
         this.toggleBatchMode(true);

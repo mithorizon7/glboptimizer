@@ -103,6 +103,43 @@ def optimize_glb_file(self, input_path, output_path, original_name, quality_leve
         start_time = time.time()
         result = optimizer.optimize(input_path, output_path, progress_callback)
         processing_time = time.time() - start_time
+            
+        # Finally, update batch progress regardless of success/failure
+        # This ensures the batch progress bar updates even if a task fails
+        try:
+            with db_session() as db:
+                task = db.query(OptimizationTask).filter(
+                    OptimizationTask.id == self.request.id
+                ).first()
+                
+                if task and task.batch_id:
+                    from models import BatchOptimization
+                    batch = db.query(BatchOptimization).filter_by(id=task.batch_id).first()
+                    if batch:
+                        batch.update_progress()
+                        db.commit()
+                        
+                        # Emit batch progress via WebSocket
+                        from services.realtime import emit_batch_progress, emit_batch_complete
+                        
+                        task_status = 'completed' if result['success'] else 'failed'
+                        emit_batch_progress(
+                            task.batch_id,
+                            batch.completed_files + batch.failed_files,
+                            batch.total_files,
+                            {'task_id': self.request.id, 'filename': task.original_filename, 'status': task_status}
+                        )
+                        
+                        # If batch is complete, emit batch completion
+                        if batch.status in ('completed', 'partial_failure', 'failed'):
+                            emit_batch_complete(task.batch_id, {
+                                'total_original_size': batch.total_original_size,
+                                'total_compressed_size': batch.total_compressed_size,
+                                'completed_files': batch.completed_files,
+                                'failed_files': batch.failed_files
+                            })
+        except Exception as batch_error:
+            logger.debug(f"Batch progress emit failed (non-critical): {batch_error}")
         
         if result['success']:
             # Get optimized file size
