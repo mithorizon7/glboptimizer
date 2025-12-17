@@ -1,21 +1,74 @@
 /* Custom styles for GLB Optimizer */
 
+/* ==========================================
+   Global Typography - Inter Font
+   ========================================== */
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    letter-spacing: -0.01em;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+.display-1,
+.display-2,
+.display-3 {
+    font-weight: 600;
+    letter-spacing: -0.02em;
+}
+
+.lead {
+    font-weight: 400;
+    letter-spacing: 0;
+}
+
+/* ==========================================
+   Primary Action Button Glow
+   ========================================== */
+.btn-info,
+.btn-primary {
+    box-shadow: 0 0 20px rgba(13, 202, 240, 0.25);
+    transition: all 0.3s ease;
+}
+
+.btn-info:hover,
+.btn-primary:hover {
+    box-shadow: 0 0 30px rgba(13, 202, 240, 0.4);
+    transform: translateY(-1px);
+}
+
+.btn-info:active,
+.btn-primary:active {
+    box-shadow: 0 0 15px rgba(13, 202, 240, 0.3);
+    transform: translateY(0);
+}
+
+/* ==========================================
+   Drop Zone Styling
+   ========================================== */
 .drop-zone {
     border: 2px dashed var(--bs-border-color);
-    border-radius: 0.375rem;
+    border-radius: 0.5rem;
     transition: all 0.3s ease;
     cursor: pointer;
+    background: linear-gradient(180deg, rgba(13, 202, 240, 0.03) 0%, transparent 100%);
 }
 
 .drop-zone:hover {
-    border-color: var(--bs-primary);
-    background-color: var(--bs-primary-bg-subtle);
+    border-color: var(--bs-info);
+    background: linear-gradient(180deg, rgba(13, 202, 240, 0.08) 0%, rgba(13, 202, 240, 0.02) 100%);
+    box-shadow: 0 0 30px rgba(13, 202, 240, 0.1);
 }
 
 .drop-zone.dragover {
     border-color: var(--bs-success);
-    background-color: var(--bs-success-bg-subtle);
+    background: linear-gradient(180deg, rgba(25, 135, 84, 0.15) 0%, rgba(25, 135, 84, 0.05) 100%);
     transform: scale(1.02);
+    box-shadow: 0 0 40px rgba(25, 135, 84, 0.2);
 }
 
 .drop-zone.dragging {
@@ -23,14 +76,51 @@
     background-color: var(--bs-primary-bg-subtle);
 }
 
-/* Progress animations */
+/* ==========================================
+   Enhanced Progress Animations
+   ========================================== */
 .progress-bar-animated {
-    animation: progress-bar-stripes 1s linear infinite;
+    animation: progress-bar-stripes 1s linear infinite, pulse-glow 2s ease-in-out infinite;
 }
 
 @keyframes progress-bar-stripes {
     0% {
         background-position-x: 1rem;
+    }
+}
+
+@keyframes pulse-glow {
+
+    0%,
+    100% {
+        box-shadow: 0 0 5px rgba(13, 202, 240, 0.5);
+    }
+
+    50% {
+        box-shadow: 0 0 20px rgba(13, 202, 240, 0.8), 0 0 30px rgba(13, 202, 240, 0.4);
+    }
+}
+
+.progress {
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 10px;
+    overflow: visible;
+}
+
+.progress-bar {
+    border-radius: 10px;
+    background: linear-gradient(90deg, #0dcaf0 0%, #20c997 50%, #0dcaf0 100%);
+    background-size: 200% 100%;
+    animation: shimmer 2s linear infinite;
+}
+
+@keyframes shimmer {
+    0% {
+        background-position: 200% 0;
+    }
+
+    100% {
+        background-position: -200% 0;
     }
 }
 
@@ -301,19 +391,160 @@
     background: #5a5a8a;
 }
 
-/* Gradient Backgrounds for Cards */
+/* ==========================================
+   Premium Card Styling
+   ========================================== */
 .card-body {
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.02) 0%, rgba(255, 255, 255, 0) 100%);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, transparent 100%);
 }
 
 .card {
-    background-color: #212529;
-    /* Ensure base color is dark */
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    background: linear-gradient(180deg, #2a2e33 0%, #1a1d21 100%);
+    box-shadow: 0 4px 25px rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
+}
+
+.card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 35px rgba(0, 0, 0, 0.35);
+    border-color: rgba(13, 202, 240, 0.2);
 }
 
 /* Success Animation Checkmark */
 .fa-check-circle.text-success {
     filter: drop-shadow(0 0 10px rgba(25, 135, 84, 0.4));
+}
+
+/* ==========================================
+   Info Disclosure Components
+   ========================================== */
+
+/* Privacy Badge */
+.privacy-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.35rem 0.75rem;
+    background: rgba(13, 202, 240, 0.1);
+    border: 1px solid rgba(13, 202, 240, 0.3);
+    border-radius: 2rem;
+    font-size: 0.75rem;
+    color: var(--bs-info);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.privacy-badge:hover {
+    background: rgba(13, 202, 240, 0.2);
+    border-color: rgba(13, 202, 240, 0.5);
+}
+
+/* Quality Comparison Table */
+.quality-comparison {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 0.5rem;
+    overflow: hidden;
+}
+
+.quality-comparison table {
+    margin: 0;
+    font-size: 0.85rem;
+}
+
+.quality-comparison th {
+    background: rgba(13, 202, 240, 0.15);
+    font-weight: 600;
+    padding: 0.75rem;
+    white-space: nowrap;
+}
+
+.quality-comparison td {
+    padding: 0.6rem 0.75rem;
+    vertical-align: middle;
+}
+
+.quality-comparison tr:hover td {
+    background: rgba(255, 255, 255, 0.03);
+}
+
+/* Technical Details Panel */
+.tech-details-panel {
+    background: linear-gradient(180deg, rgba(13, 202, 240, 0.05) 0%, transparent 100%);
+    border: 1px solid rgba(13, 202, 240, 0.2);
+    border-radius: 0.5rem;
+    padding: 1rem;
+}
+
+.tech-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.25rem 0.6rem;
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.tech-badge.mobile-safe {
+    background: rgba(25, 135, 84, 0.2);
+    color: #20c997;
+}
+
+.tech-badge.desktop-ready {
+    background: rgba(13, 110, 253, 0.2);
+    color: #6ea8fe;
+}
+
+.tech-badge.vram-savings {
+    background: rgba(255, 193, 7, 0.2);
+    color: #ffc107;
+}
+
+/* FAQ Accordion */
+.faq-accordion .accordion-button {
+    background: transparent;
+    color: var(--bs-body-color);
+    padding: 1rem 1.25rem;
+    font-weight: 500;
+}
+
+.faq-accordion .accordion-button:not(.collapsed) {
+    background: rgba(13, 202, 240, 0.1);
+    color: var(--bs-info);
+}
+
+.faq-accordion .accordion-button::after {
+    filter: invert(1);
+}
+
+.faq-accordion .accordion-body {
+    background: rgba(0, 0, 0, 0.2);
+    color: var(--bs-secondary-color);
+    font-size: 0.9rem;
+    line-height: 1.6;
+}
+
+/* Info Toggle Links */
+.info-toggle {
+    font-size: 0.8rem;
+    color: var(--bs-info);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    transition: color 0.2s ease;
+}
+
+.info-toggle:hover {
+    color: var(--bs-cyan);
+}
+
+.info-toggle i {
+    font-size: 0.7rem;
+    transition: transform 0.2s ease;
+}
+
+.info-toggle[aria-expanded="true"] i {
+    transform: rotate(180deg);
 }

@@ -1,13 +1,16 @@
 <!DOCTYPE html>
 <html lang="en" data-bs-theme="dark">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GLB Optimizer - From 50MB to 5MB Instantly | AI Model Compression</title>
     <link href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
 </head>
+
 <body>
     <div class="container">
         <!-- Header -->
@@ -18,7 +21,8 @@
                         From 50MB to 5MB. <span class="text-info">Instantly.</span>
                     </h1>
                     <p class="lead fs-4 mb-4">
-                        Your web-based game can't handle a 50MB model. Our optimizer uses the same pipeline as professional game studios to shrink your GLB files by up to 90% while keeping every detail.
+                        Your web-based game can't handle a 50MB model. Our optimizer uses the same pipeline as
+                        professional game studios to shrink your GLB files by up to 90% while keeping every detail.
                     </p>
                     <div class="row justify-content-center mb-4">
                         <div class="col-md-8">
@@ -50,15 +54,15 @@
                         <h3 class="card-title text-center mb-4">
                             <i class="fas fa-upload me-2"></i>
                             Upload GLB File
-                            <i class="fas fa-question-circle ms-1 text-info" 
-                               data-bs-toggle="tooltip" 
-                               data-bs-placement="top" 
-                               data-bs-title="GLB files are 3D models used in games and web apps. If you have a .gltf file, you can convert it to .glb using online tools."></i>
+                            <i class="fas fa-question-circle ms-1 text-info" data-bs-toggle="tooltip"
+                                data-bs-placement="top"
+                                data-bs-title="GLB files are 3D models used in games and web apps. If you have a .gltf file, you can convert it to .glb using online tools."></i>
                         </h3>
-                        
+
                         <!-- Upload Mode Toggle -->
                         <div class="btn-group w-100 mb-4" role="group" aria-label="Upload mode">
-                            <input type="radio" class="btn-check" name="uploadMode" id="singleMode" autocomplete="off" checked>
+                            <input type="radio" class="btn-check" name="uploadMode" id="singleMode" autocomplete="off"
+                                checked>
                             <label class="btn btn-outline-info" for="singleMode">
                                 <i class="fas fa-file me-2"></i>Single File
                             </label>
@@ -74,10 +78,12 @@
                             <div id="drop-zone-content">
                                 <i class="fas fa-cloud-upload-alt fa-3x mb-3 text-muted"></i>
                                 <h5 id="drop-zone-title">Drag & drop your GLB file here</h5>
-                                <p class="text-muted" id="drop-zone-subtitle">or click to select a file (up to 100MB)</p>
+                                <p class="text-muted" id="drop-zone-subtitle">or click to select a file (up to 100MB)
+                                </p>
                                 <small class="text-muted">
                                     <i class="fas fa-info-circle me-1"></i>
-                                    We'll automatically compress textures, reduce polygons, and optimize your model for web use
+                                    We'll automatically compress textures, reduce polygons, and optimize your model for
+                                    web use
                                 </small>
                                 <label for="file-input" class="btn btn-outline-secondary" style="cursor: pointer;">
                                     <i class="fas fa-folder-open me-2"></i>
@@ -87,10 +93,38 @@
                             <input type="file" id="file-input" accept=".glb" style="display: none;">
                         </div>
 
+                        <!-- Privacy Badge -->
+                        <div class="text-center mb-3">
+                            <span class="privacy-badge" data-bs-toggle="collapse" data-bs-target="#privacy-details"
+                                aria-expanded="false">
+                                <i class="fas fa-lock"></i>
+                                Files deleted after 1 hour • No human review
+                                <i class="fas fa-chevron-down" style="font-size: 0.6rem;"></i>
+                            </span>
+                            <div class="collapse mt-2" id="privacy-details">
+                                <div class="card card-body bg-dark border-info text-start" style="font-size: 0.85rem;">
+                                    <h6 class="text-info mb-2"><i class="fas fa-shield-alt me-2"></i>Your Privacy
+                                        Matters</h6>
+                                    <ul class="list-unstyled mb-0 text-muted">
+                                        <li class="mb-1"><i class="fas fa-check text-success me-2"></i>Files are
+                                            <strong>automatically deleted after 1 hour</strong>
+                                        </li>
+                                        <li class="mb-1"><i class="fas fa-check text-success me-2"></i>No human ever
+                                            reviews your uploads</li>
+                                        <li class="mb-1"><i class="fas fa-check text-success me-2"></i>Processing
+                                            happens on our secure servers only</li>
+                                        <li><i class="fas fa-check text-success me-2"></i>We never share or sell your
+                                            data</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- Batch File List -->
                         <div id="batch-file-list" class="mb-4" style="display: none;">
                             <div class="d-flex justify-content-between align-items-center mb-2">
-                                <h6 class="mb-0"><i class="fas fa-list me-2"></i>Selected Files (<span id="batch-file-count">0</span>)</h6>
+                                <h6 class="mb-0"><i class="fas fa-list me-2"></i>Selected Files (<span
+                                        id="batch-file-count">0</span>)</h6>
                                 <button type="button" class="btn btn-sm btn-outline-danger" id="clear-batch-btn">
                                     <i class="fas fa-trash me-1"></i>Clear All
                                 </button>
@@ -110,31 +144,78 @@
                             <div class="card-body">
                                 <h6 class="card-title">
                                     Optimization Settings
-                                    <i class="fas fa-info-circle ms-1 text-info" 
-                                       data-bs-toggle="tooltip" 
-                                       data-bs-placement="top" 
-                                       data-bs-title="These settings control how your 3D model is optimized. The defaults work great for most models, but you can adjust them based on your specific needs."></i>
+                                    <i class="fas fa-info-circle ms-1 text-info" data-bs-toggle="tooltip"
+                                        data-bs-placement="top"
+                                        data-bs-title="These settings control how your 3D model is optimized. The defaults work great for most models, but you can adjust them based on your specific needs."></i>
                                 </h6>
                                 <div class="alert alert-info mb-3">
                                     <i class="fas fa-lightbulb me-2"></i>
-                                    <small><strong>New to 3D optimization?</strong> Keep the default settings - they're chosen to give you the best balance of file size and quality for web use.</small>
+                                    <small><strong>New to 3D optimization?</strong> Keep the default settings - they're
+                                        chosen to give you the best balance of file size and quality for web
+                                        use.</small>
                                 </div>
                                 <div class="row">
                                     <div class="col-md-6">
                                         <label for="quality-level" class="form-label">
                                             Quality Level
-                                            <i class="fas fa-info-circle ms-1 text-info" 
-                                               data-bs-toggle="tooltip" 
-                                               data-bs-placement="top" 
-                                               data-bs-title="Choose how much to compress your model. High Quality keeps it looking perfect but larger file size. Maximum Compression makes it tiny but might lose some fine details."></i>
+                                            <i class="fas fa-info-circle ms-1 text-info" data-bs-toggle="tooltip"
+                                                data-bs-placement="top"
+                                                data-bs-title="Choose how much to compress your model. High Quality keeps it looking perfect but larger file size. Maximum Compression makes it tiny but might lose some fine details."></i>
                                         </label>
                                         <select id="quality-level" class="form-select">
-                                            <option value="high" selected data-description="Keeps your model looking exactly the same, reduces file size by 70-85%. Perfect for hero assets and close-up viewing.">High Quality (Recommended)</option>
-                                            <option value="balanced" data-description="Good balance between size and quality, reduces file size by 85-90%. Great for most game objects and web use.">Balanced</option>
-                                            <option value="maximum_compression" data-description="Smallest possible file size, reduces by 90-95%. Use when file size is critical and minor detail loss is acceptable.">Maximum Compression</option>
+                                            <option value="high" selected
+                                                data-description="Keeps your model looking exactly the same, reduces file size by 70-85%. Perfect for hero assets and close-up viewing.">
+                                                High Quality (Recommended)</option>
+                                            <option value="balanced"
+                                                data-description="Good balance between size and quality, reduces file size by 85-90%. Great for most game objects and web use.">
+                                                Balanced</option>
+                                            <option value="maximum_compression"
+                                                data-description="Smallest possible file size, reduces by 90-95%. Use when file size is critical and minor detail loss is acceptable.">
+                                                Maximum Compression</option>
                                         </select>
                                         <div class="form-text" id="quality-description">
-                                            Keeps your model looking exactly the same, reduces file size by 70-85%. Perfect for hero assets and close-up viewing.
+                                            Keeps your model looking exactly the same, reduces file size by 70-85%.
+                                            Perfect for hero assets and close-up viewing.
+                                        </div>
+                                        <!-- Quality Comparison Toggle -->
+                                        <a class="info-toggle mt-2 d-inline-block" data-bs-toggle="collapse"
+                                            href="#quality-comparison" role="button" aria-expanded="false"
+                                            aria-controls="quality-comparison">
+                                            <i class="fas fa-chevron-down"></i> What's the difference?
+                                        </a>
+                                        <div class="collapse mt-2" id="quality-comparison">
+                                            <div class="quality-comparison">
+                                                <table class="table table-dark table-sm mb-0">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>Profile</th>
+                                                            <th>Textures</th>
+                                                            <th>Animations</th>
+                                                            <th>Best For</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        <tr>
+                                                            <td><span class="badge bg-success">High</span></td>
+                                                            <td>Max 4K</td>
+                                                            <td>60 FPS</td>
+                                                            <td>Hero models, close-ups</td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td><span class="badge bg-info">Balanced</span></td>
+                                                            <td>Max 2K</td>
+                                                            <td>30 FPS</td>
+                                                            <td>Web, e-commerce, games</td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td><span class="badge bg-warning text-dark">Max</span></td>
+                                                            <td>Max 1K</td>
+                                                            <td>15 FPS</td>
+                                                            <td>Mobile, background assets</td>
+                                                        </tr>
+                                                    </tbody>
+                                                </table>
+                                            </div>
                                         </div>
                                     </div>
                                     <div class="col-md-6">
@@ -143,55 +224,68 @@
                                             <input class="form-check-input" type="checkbox" id="enable-lod" checked>
                                             <label class="form-check-label" for="enable-lod">
                                                 Generate LOD (Level of Detail)
-                                                <i class="fas fa-info-circle ms-1 text-info" 
-                                                   data-bs-toggle="tooltip" 
-                                                   data-bs-placement="top" 
-                                                   data-bs-title="Creates multiple versions of your model: detailed up-close, simpler when far away. Makes games run smoother by showing less detail when you won't notice it."></i>
+                                                <i class="fas fa-info-circle ms-1 text-info" data-bs-toggle="tooltip"
+                                                    data-bs-placement="top"
+                                                    data-bs-title="Creates multiple versions of your model: detailed up-close, simpler when far away. Makes games run smoother by showing less detail when you won't notice it."></i>
                                             </label>
-                                            <div class="form-text small">Creates 3 versions: full detail, medium detail (75%), low detail (50%)</div>
+                                            <div class="form-text small">Creates 3 versions: full detail, medium detail
+                                                (75%), low detail (50%)</div>
                                         </div>
                                         <div class="form-check">
-                                            <input class="form-check-input" type="checkbox" id="enable-simplification" checked>
+                                            <input class="form-check-input" type="checkbox" id="enable-simplification"
+                                                checked>
                                             <label class="form-check-label" for="enable-simplification">
                                                 Polygon Simplification
-                                                <i class="fas fa-info-circle ms-1 text-info" 
-                                                   data-bs-toggle="tooltip" 
-                                                   data-bs-placement="top" 
-                                                   data-bs-title="Reduces the number of triangles in your model while keeping the same shape. Like turning a 4K photo into HD - still looks great but much smaller file."></i>
+                                                <i class="fas fa-info-circle ms-1 text-info" data-bs-toggle="tooltip"
+                                                    data-bs-placement="top"
+                                                    data-bs-title="Reduces the number of triangles in your model while keeping the same shape. Like turning a 4K photo into HD - still looks great but much smaller file."></i>
                                             </label>
-                                            <div class="form-text small">Reduces triangle count by up to 50% while preserving the model's appearance</div>
+                                            <div class="form-text small">Reduces triangle count by up to 50% while
+                                                preserving the model's appearance</div>
                                         </div>
                                     </div>
                                 </div>
-                                
+
                                 <!-- Help Section -->
                                 <div class="mt-3">
-                                    <button class="btn btn-link p-0 text-info" type="button" data-bs-toggle="collapse" data-bs-target="#help-section" aria-expanded="false" aria-controls="help-section">
+                                    <button class="btn btn-link p-0 text-info" type="button" data-bs-toggle="collapse"
+                                        data-bs-target="#help-section" aria-expanded="false"
+                                        aria-controls="help-section">
                                         <i class="fas fa-question-circle me-1"></i>
                                         What do these optimizations actually do?
                                     </button>
                                     <div class="collapse mt-2" id="help-section">
                                         <div class="card card-body bg-dark border-info">
                                             <h6 class="text-info mb-3">Optimization Explained in Simple Terms:</h6>
-                                            
+
                                             <div class="mb-3">
                                                 <strong class="text-warning">Texture Compression:</strong>
-                                                <div class="small text-muted">Converts your model's images (textures) to a more efficient format. Like compressing a photo from PNG to JPEG, but for 3D models. Can reduce file size by 80-90%.</div>
+                                                <div class="small text-muted">Converts your model's images (textures) to
+                                                    a more efficient format. Like compressing a photo from PNG to JPEG,
+                                                    but for 3D models. Can reduce file size by 80-90%.</div>
                                             </div>
-                                            
+
                                             <div class="mb-3">
                                                 <strong class="text-warning">Geometry Compression:</strong>
-                                                <div class="small text-muted">Stores the 3D shape data more efficiently without changing how it looks. Similar to ZIP compression for files, but specialized for 3D geometry.</div>
+                                                <div class="small text-muted">Stores the 3D shape data more efficiently
+                                                    without changing how it looks. Similar to ZIP compression for files,
+                                                    but specialized for 3D geometry.</div>
                                             </div>
-                                            
+
                                             <div class="mb-3">
                                                 <strong class="text-warning">LOD Generation:</strong>
-                                                <div class="small text-muted">Creates simpler versions of your model for when it's viewed from far away. Like how Netflix shows lower quality video when your internet is slow - you get the right level of detail for the situation.</div>
+                                                <div class="small text-muted">Creates simpler versions of your model for
+                                                    when it's viewed from far away. Like how Netflix shows lower quality
+                                                    video when your internet is slow - you get the right level of detail
+                                                    for the situation.</div>
                                             </div>
-                                            
+
                                             <div class="mb-0">
                                                 <strong class="text-warning">Polygon Simplification:</strong>
-                                                <div class="small text-muted">Reduces the number of triangles that make up your 3D model while keeping the same overall shape. Think of it like reducing a 4K image to 1080p - still looks great but much smaller file.</div>
+                                                <div class="small text-muted">Reduces the number of triangles that make
+                                                    up your 3D model while keeping the same overall shape. Think of it
+                                                    like reducing a 4K image to 1080p - still looks great but much
+                                                    smaller file.</div>
                                             </div>
                                         </div>
                                     </div>
@@ -220,15 +314,15 @@
                             <i class="fas fa-cogs me-2"></i>
                             Optimization Progress
                         </h4>
-                        
+
                         <!-- Progress Bar -->
                         <div class="mb-3">
                             <div class="progress" style="height: 20px;">
-                                <div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" 
-                                     role="progressbar" style="width: 0%"></div>
+                                <div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated"
+                                    role="progressbar" style="width: 0%"></div>
                             </div>
                         </div>
-                        
+
                         <!-- Progress Info -->
                         <div class="row">
                             <div class="col-md-6">
@@ -240,7 +334,7 @@
                                 <p id="progress-text" class="text-muted">0%</p>
                             </div>
                         </div>
-                        
+
                         <!-- File Size Info -->
                         <div class="row mt-3" id="size-info" style="display: none;">
                             <div class="col-md-4">
@@ -276,7 +370,7 @@
                             <i class="fas fa-check-circle text-success me-2"></i>
                             Optimization Complete
                         </h4>
-                        
+
                         <div class="row">
                             <div class="col-md-6">
                                 <h6>Optimization Statistics</h6>
@@ -290,16 +384,67 @@
                             <div class="col-md-6">
                                 <h6>Optimization Steps Applied</h6>
                                 <ul class="list-unstyled">
-                                    <li><i class="fas fa-check text-success me-2"></i>Cleanup & Deduplication (Prune, Weld, Join)</li>
-                                    <li><i class="fas fa-check text-success me-2"></i>Geometry Compression (Meshopt + Draco fallback)</li>
-                                    <li><i class="fas fa-check text-success me-2"></i>Texture Compression (KTX2/BasisU + Channel Packing)</li>
-                                    <li><i class="fas fa-check text-success me-2"></i>Animation Optimization (Resample + Quantize)</li>
-                                    <li><i class="fas fa-check text-success me-2"></i>LOD Generation & Progressive Delivery</li>
+                                    <li><i class="fas fa-check text-success me-2"></i>Cleanup & Deduplication (Prune,
+                                        Weld, Join)</li>
+                                    <li><i class="fas fa-check text-success me-2"></i>Geometry Compression (Meshopt +
+                                        Draco fallback)</li>
+                                    <li><i class="fas fa-check text-success me-2"></i>Texture Compression (KTX2/BasisU +
+                                        Channel Packing)</li>
+                                    <li><i class="fas fa-check text-success me-2"></i>Animation Optimization (Resample +
+                                        Quantize)</li>
+                                    <li><i class="fas fa-check text-success me-2"></i>LOD Generation & Progressive
+                                        Delivery</li>
                                     <li><i class="fas fa-check text-success me-2"></i>Final Bundle & Minify</li>
                                 </ul>
+                                <!-- Technical Details Toggle -->
+                                <a class="info-toggle mt-2 d-inline-block" data-bs-toggle="collapse"
+                                    href="#tech-details-panel" role="button" aria-expanded="false">
+                                    <i class="fas fa-chevron-down"></i> View Technical Details
+                                </a>
                             </div>
                         </div>
-                        
+
+                        <!-- Technical Details Panel (Expandable) -->
+                        <div class="collapse mt-3" id="tech-details-panel">
+                            <div class="tech-details-panel">
+                                <h6 class="text-info mb-3"><i class="fas fa-microchip me-2"></i>Performance Impact</h6>
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <strong class="text-muted d-block mb-2">Compatibility Badges</strong>
+                                            <div class="d-flex flex-wrap gap-2">
+                                                <span class="tech-badge mobile-safe" id="badge-mobile"
+                                                    style="display: none;">
+                                                    <i class="fas fa-mobile-alt"></i> Mobile Safe
+                                                </span>
+                                                <span class="tech-badge desktop-ready" id="badge-desktop"
+                                                    style="display: none;">
+                                                    <i class="fas fa-desktop"></i> Desktop Ready
+                                                </span>
+                                                <span class="tech-badge vram-savings" id="badge-vram">
+                                                    <i class="fas fa-memory"></i> <span
+                                                        id="vram-savings-value">--</span> VRAM Saved
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <strong class="text-muted d-block mb-2">What Was Applied</strong>
+                                            <ul class="list-unstyled small mb-0" id="applied-optimizations">
+                                                <li><i class="fas fa-image text-info me-1"></i> Textures: <span
+                                                        id="applied-textures">Resized & compressed</span></li>
+                                                <li><i class="fas fa-running text-info me-1"></i> Animations: <span
+                                                        id="applied-animations">Resampled</span></li>
+                                                <li><i class="fas fa-cubes text-info me-1"></i> Geometry: <span
+                                                        id="applied-geometry">Optimized</span></li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- 3D Viewer Section -->
                         <div class="row mt-4" id="model-viewer-section">
                             <div class="col-12">
@@ -319,7 +464,8 @@
                                                 <div class="viewer-controls p-2">
                                                     <small class="text-muted">
                                                         <i class="fas fa-mouse me-1"></i> Click & drag to rotate
-                                                        <i class="fas fa-expand-arrows-alt ms-2 me-1"></i> Scroll to zoom
+                                                        <i class="fas fa-expand-arrows-alt ms-2 me-1"></i> Scroll to
+                                                        zoom
                                                     </small>
                                                 </div>
                                             </div>
@@ -336,7 +482,8 @@
                                                 <div class="viewer-controls p-2">
                                                     <small class="text-muted">
                                                         <i class="fas fa-mouse me-1"></i> Click & drag to rotate
-                                                        <i class="fas fa-expand-arrows-alt ms-2 me-1"></i> Scroll to zoom
+                                                        <i class="fas fa-expand-arrows-alt ms-2 me-1"></i> Scroll to
+                                                        zoom
                                                     </small>
                                                 </div>
                                             </div>
@@ -344,8 +491,8 @@
                                     </div>
                                 </div>
                                 <div class="text-center mt-3">
-                                    <button id="sync-cameras-btn" class="btn btn-outline-secondary btn-sm me-2" 
-                                            title="Cameras sync automatically for easier comparison. Click to toggle.">
+                                    <button id="sync-cameras-btn" class="btn btn-outline-secondary btn-sm me-2"
+                                        title="Cameras sync automatically for easier comparison. Click to toggle.">
                                         <i class="fas fa-link me-1"></i>
                                         Sync Cameras
                                     </button>
@@ -384,8 +531,10 @@
                                 </div>
                             </div>
                             <small class="text-muted">
-                                Your optimized file uses industry-standard compression (WebP textures, mesh quantization, meshopt compression) 
-                                that dramatically reduces file size while maintaining full compatibility with modern 3D applications.
+                                Your optimized file uses industry-standard compression (WebP textures, mesh
+                                quantization, meshopt compression)
+                                that dramatically reduces file size while maintaining full compatibility with modern 3D
+                                applications.
                             </small>
                         </div>
 
@@ -413,7 +562,7 @@
                             <i class="fas fa-layer-group me-2"></i>
                             Batch Optimization Progress
                         </h4>
-                        
+
                         <!-- Overall Progress -->
                         <div class="mb-4">
                             <div class="d-flex justify-content-between mb-2">
@@ -421,14 +570,15 @@
                                 <span id="batch-overall-progress">0 / 0 files</span>
                             </div>
                             <div class="progress" style="height: 20px;">
-                                <div id="batch-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated bg-info" 
-                                     role="progressbar" style="width: 0%"></div>
+                                <div id="batch-progress-bar"
+                                    class="progress-bar progress-bar-striped progress-bar-animated bg-info"
+                                    role="progressbar" style="width: 0%"></div>
                             </div>
                         </div>
-                        
+
                         <!-- Individual File Progress -->
                         <div id="batch-tasks-container" class="list-group mb-4"></div>
-                        
+
                         <!-- Batch Summary (shown when complete) -->
                         <div id="batch-summary" class="alert alert-success" style="display: none;">
                             <div class="row text-center">
@@ -446,7 +596,7 @@
                                 </div>
                             </div>
                         </div>
-                        
+
                         <!-- Download All Button -->
                         <div class="text-center" id="batch-download-section" style="display: none;">
                             <button id="download-all-btn" class="btn btn-success btn-lg">
@@ -472,17 +622,19 @@
                         Optimization Failed
                     </h5>
                     <p id="error-message" class="mb-3"></p>
-                    
+
                     <!-- Enhanced error details -->
                     <div id="error-details" class="mb-3" style="display: none;">
                         <h6>Error Details:</h6>
                         <div id="error-category" class="text-muted small mb-2"></div>
-                        <pre id="technical-details" class="bg-dark text-light p-2 rounded small" style="max-height: 200px; overflow-y: auto;"></pre>
+                        <pre id="technical-details" class="bg-dark text-light p-2 rounded small"
+                            style="max-height: 200px; overflow-y: auto;"></pre>
                     </div>
-                    
+
                     <!-- Action buttons -->
                     <div class="d-flex gap-2 flex-wrap">
-                        <button id="show-error-details-btn" class="btn btn-outline-danger btn-sm" style="display: none;">
+                        <button id="show-error-details-btn" class="btn btn-outline-danger btn-sm"
+                            style="display: none;">
                             <i class="fas fa-info-circle me-1"></i>
                             Show Technical Details
                         </button>
@@ -491,7 +643,7 @@
                             Download Error Log
                         </button>
                     </div>
-                    
+
                     <hr>
                     <button id="retry-btn" class="btn btn-outline-danger">
                         <i class="fas fa-redo me-2"></i>
@@ -509,9 +661,12 @@
                     <p class="text-muted small">
                         This tool implements the industry-standard 6-step GLB optimization workflow:
                         <br><strong>1.</strong> Cleanup & Deduplication (prune unused data, weld vertices, join meshes)
-                        <br><strong>2.</strong> Geometry Compression (EXT_meshopt_compression with quantization + Draco fallback)
-                        <br><strong>3.</strong> Texture Compression (KTX2/BasisU with channel packing, UASTC for normals)
-                        <br><strong>4.</strong> Animation Optimization (resample to 30fps, compress with 16-bit quantization)
+                        <br><strong>2.</strong> Geometry Compression (EXT_meshopt_compression with quantization + Draco
+                        fallback)
+                        <br><strong>3.</strong> Texture Compression (KTX2/BasisU with channel packing, UASTC for
+                        normals)
+                        <br><strong>4.</strong> Animation Optimization (resample to 30fps, compress with 16-bit
+                        quantization)
                         <br><strong>5.</strong> LOD Generation (3 levels of detail for progressive delivery)
                         <br><strong>6.</strong> Final Bundle (embed textures, apply final compression)
                     </p>
@@ -528,9 +683,10 @@
             <div class="col-lg-10">
                 <div class="text-center mb-5">
                     <h2 class="h1 mb-3">The Same Tools <span class="text-info">AAA Studios</span> Use</h2>
-                    <p class="lead text-muted">Industry-standard optimization pipeline used by professional game developers worldwide</p>
+                    <p class="lead text-muted">Industry-standard optimization pipeline used by professional game
+                        developers worldwide</p>
                 </div>
-                
+
                 <div class="row g-4">
                     <div class="col-md-6">
                         <div class="card h-100 border-0 bg-dark">
@@ -541,11 +697,14 @@
                                     </div>
                                     <h5 class="mb-0">Ultra-Efficient Geometry</h5>
                                 </div>
-                                <p class="text-muted">Adaptive compression engine using Meshoptimizer, Google's Draco, and hybrid optimization. Our AI analyzes your model complexity and automatically selects the optimal compression strategy, achieving up to 95% geometry reduction while preserving visual quality.</p>
+                                <p class="text-muted">Adaptive compression engine using Meshoptimizer, Google's Draco,
+                                    and hybrid optimization. Our AI analyzes your model complexity and automatically
+                                    selects the optimal compression strategy, achieving up to 95% geometry reduction
+                                    while preserving visual quality.</p>
                             </div>
                         </div>
                     </div>
-                    
+
                     <div class="col-md-6">
                         <div class="card h-100 border-0 bg-dark">
                             <div class="card-body p-4">
@@ -555,11 +714,14 @@
                                     </div>
                                     <h5 class="mb-0">GPU-Ready Textures</h5>
                                 </div>
-                                <p class="text-muted">Revolutionary texture compression using KTX2/Basis Universal and WebP formats. Our system automatically tests both UASTC (high quality) and ETC1S (maximum compression) modes, achieving 80-95% texture size reduction with intelligent quality preservation.</p>
+                                <p class="text-muted">Revolutionary texture compression using KTX2/Basis Universal and
+                                    WebP formats. Our system automatically tests both UASTC (high quality) and ETC1S
+                                    (maximum compression) modes, achieving 80-95% texture size reduction with
+                                    intelligent quality preservation.</p>
                             </div>
                         </div>
                     </div>
-                    
+
                     <div class="col-md-6">
                         <div class="card h-100 border-0 bg-dark">
                             <div class="card-body p-4">
@@ -569,11 +731,13 @@
                                     </div>
                                     <h5 class="mb-0">Mobile-Optimized</h5>
                                 </div>
-                                <p class="text-muted">Perfect for WebXR, mobile games, and VR headsets. Your optimized models load lightning-fast even on low-bandwidth connections and render smoothly on mobile GPUs.</p>
+                                <p class="text-muted">Perfect for WebXR, mobile games, and VR headsets. Your optimized
+                                    models load lightning-fast even on low-bandwidth connections and render smoothly on
+                                    mobile GPUs.</p>
                             </div>
                         </div>
                     </div>
-                    
+
                     <div class="col-md-6">
                         <div class="card h-100 border-0 bg-dark">
                             <div class="card-body p-4">
@@ -583,7 +747,9 @@
                                     </div>
                                     <h5 class="mb-0">AI-Model Ready</h5>
                                 </div>
-                                <p class="text-muted">Fix bloated AI-generated models from tools like Luma AI, Midjourney 3D, or Meshy. Transform millions of polygons into game-ready assets that actually work in your projects.</p>
+                                <p class="text-muted">Fix bloated AI-generated models from tools like Luma AI,
+                                    Midjourney 3D, or Meshy. Transform millions of polygons into game-ready assets that
+                                    actually work in your projects.</p>
                             </div>
                         </div>
                     </div>
@@ -600,10 +766,14 @@
                         <div class="row align-items-center">
                             <div class="col-md-8">
                                 <ul class="list-unstyled text-start mb-0">
-                                    <li class="mb-2"><i class="fas fa-check text-success me-2"></i> Up to 100MB file size</li>
-                                    <li class="mb-2"><i class="fas fa-check text-success me-2"></i> Full optimization pipeline</li>
-                                    <li class="mb-2"><i class="fas fa-check text-success me-2"></i> 3D comparison viewer</li>
-                                    <li class="mb-0"><i class="fas fa-check text-success me-2"></i> Professional-grade results</li>
+                                    <li class="mb-2"><i class="fas fa-check text-success me-2"></i> Up to 100MB file
+                                        size</li>
+                                    <li class="mb-2"><i class="fas fa-check text-success me-2"></i> Full optimization
+                                        pipeline</li>
+                                    <li class="mb-2"><i class="fas fa-check text-success me-2"></i> 3D comparison viewer
+                                    </li>
+                                    <li class="mb-0"><i class="fas fa-check text-success me-2"></i> Professional-grade
+                                        results</li>
                                 </ul>
                             </div>
                             <div class="col-md-4">
@@ -623,11 +793,100 @@
                     </div>
                 </div>
             </div>
-        </div>
-    </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-    <script type="importmap">
+            <!-- FAQ Section -->
+            <div class="row justify-content-center mt-5 pt-4">
+                <div class="col-lg-8">
+                    <h4 class="text-center mb-4">
+                        <i class="fas fa-question-circle text-info me-2"></i>Frequently Asked Questions
+                    </h4>
+                    <div class="accordion faq-accordion" id="faqAccordion">
+                        <div class="accordion-item bg-dark border-secondary">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+                                    data-bs-target="#faq1">
+                                    Will my textures look blurry after optimization?
+                                </button>
+                            </h2>
+                            <div id="faq1" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                                <div class="accordion-body">
+                                    <strong>Usually not noticeable.</strong> In "High Quality" mode, textures are capped
+                                    at 4K resolution—more than enough for most displays. Only if your source textures
+                                    were 8K+ and you chose "Maximum Compression" (1K limit) might you see a difference.
+                                    For web and mobile, 2K textures (Balanced mode) are industry-standard and look
+                                    sharp.
+                                </div>
+                            </div>
+                        </div>
+                        <div class="accordion-item bg-dark border-secondary">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+                                    data-bs-target="#faq2">
+                                    Why is my optimized file sometimes larger?
+                                </button>
+                            </h2>
+                            <div id="faq2" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                                <div class="accordion-body">
+                                    This is rare, but can happen if your source file was already heavily compressed with
+                                    a different method. Our pipeline adds metadata for GPU-ready formats (like KTX2)
+                                    that may add small overhead. Try a different quality level, or your file may already
+                                    be optimized!
+                                </div>
+                            </div>
+                        </div>
+                        <div class="accordion-item bg-dark border-secondary">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+                                    data-bs-target="#faq3">
+                                    What's the maximum file size I can upload?
+                                </button>
+                            </h2>
+                            <div id="faq3" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                                <div class="accordion-body">
+                                    <strong>100MB per file</strong> on the free tier, with up to <strong>15 files per
+                                        batch</strong>. Need larger files? Our Pro tier (coming soon) will support
+                                    250MB+ files and unlimited batch sizes.
+                                </div>
+                            </div>
+                        </div>
+                        <div class="accordion-item bg-dark border-secondary">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+                                    data-bs-target="#faq4">
+                                    What happens to my files after upload?
+                                </button>
+                            </h2>
+                            <div id="faq4" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                                <div class="accordion-body">
+                                    Your files are <strong>automatically deleted after 1 hour</strong>. We never
+                                    manually review uploads, never share your data with third parties, and processing
+                                    happens entirely on our secure servers. Your 3D assets stay private.
+                                </div>
+                            </div>
+                        </div>
+                        <div class="accordion-item bg-dark border-secondary">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+                                    data-bs-target="#faq5">
+                                    Will my animations look choppy?
+                                </button>
+                            </h2>
+                            <div id="faq5" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                                <div class="accordion-body">
+                                    Not in "High Quality" mode—animations are preserved at 60 FPS. In "Balanced" mode,
+                                    animations are resampled to 30 FPS (standard for web). Only in "Maximum Compression"
+                                    (15 FPS) might fast-action animations feel less smooth. Choose the right profile for
+                                    your use case!
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+        <script type="importmap">
     {
         "imports": {
             "three": "https://unpkg.com/three@0.178.0/build/three.module.js",
@@ -636,9 +895,10 @@
         }
     }
     </script>
-    <!-- Socket.IO for real-time updates (optional - falls back to polling) -->
-    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-    <script src="{{ url_for('static', filename='realtime.js') }}"></script>
-    <script type="module" src="{{ url_for('static', filename='script.js') }}"></script>
+        <!-- Socket.IO for real-time updates (optional - falls back to polling) -->
+        <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+        <script src="{{ url_for('static', filename='realtime.js') }}"></script>
+        <script type="module" src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
+
 </html>

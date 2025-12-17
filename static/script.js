@@ -945,6 +945,9 @@ class GLBOptimizer {
             resultsContainer.appendChild(metricsDiv);
         }
 
+        // Populate technical details panel
+        this.populateTechDetails(progress);
+
         // Initialize 3D model viewer with before/after comparison
         this.initialize3DViewer(progress);
     }
@@ -976,6 +979,51 @@ class GLBOptimizer {
 
         } catch (error) {
             this.showError(error.message);
+        }
+    }
+
+    populateTechDetails(progress) {
+        // Calculate VRAM savings (approximate: VRAM ≈ uncompressed texture size)
+        // Rough estimate: GLB size reduction correlates to ~2-4x texture VRAM savings
+        const originalSize = progress.original_size || 0;
+        const optimizedSize = progress.optimized_size || 0;
+        const savedBytes = originalSize - optimizedSize;
+
+        // Estimate VRAM savings (textures are typically 60-80% of GLB size, and compress to 1/4 in VRAM)
+        const estimatedVramSaved = savedBytes * 2.5; // Conservative multiplier
+        const vramSavingsEl = document.getElementById('vram-savings-value');
+        if (vramSavingsEl && savedBytes > 0) {
+            vramSavingsEl.textContent = this.formatFileSize(estimatedVramSaved);
+        }
+
+        // Show compatibility badges based on optimized size
+        const mobileBadge = document.getElementById('badge-mobile');
+        const desktopBadge = document.getElementById('badge-desktop');
+
+        if (mobileBadge && desktopBadge) {
+            // Mobile safe: < 5MB optimized
+            if (optimizedSize < 5 * 1024 * 1024) {
+                mobileBadge.style.display = 'inline-flex';
+            }
+            // Desktop ready: < 20MB optimized
+            if (optimizedSize < 20 * 1024 * 1024) {
+                desktopBadge.style.display = 'inline-flex';
+            }
+        }
+
+        // Update applied optimizations based on quality level
+        const qualityLevel = document.getElementById('quality-level')?.value || 'high';
+        const texturesEl = document.getElementById('applied-textures');
+        const animationsEl = document.getElementById('applied-animations');
+
+        if (texturesEl) {
+            const textureLimit = { 'high': '4K', 'balanced': '2K', 'maximum_compression': '1K' }[qualityLevel] || '2K';
+            texturesEl.textContent = `Capped at ${textureLimit}, KTX2/WebP compressed`;
+        }
+
+        if (animationsEl) {
+            const fpsTarget = { 'high': '60', 'balanced': '30', 'maximum_compression': '15' }[qualityLevel] || '30';
+            animationsEl.textContent = `Resampled to ${fpsTarget} FPS`;
         }
     }
 
