@@ -70,7 +70,6 @@
     border-radius: 0.5rem;
     padding: 1rem;
 }
-}
 
 /* Upload button states */
 #upload-btn:disabled {
@@ -79,12 +78,12 @@
 }
 
 /* Smooth transitions for section visibility */
-.container > .row {
+.container>.row {
     opacity: 1;
     transition: opacity 0.3s ease;
 }
 
-.container > .row[style*="display: none"] {
+.container>.row[style*="display: none"] {
     opacity: 0;
 }
 
@@ -108,11 +107,11 @@
     .display-4 {
         font-size: 2rem;
     }
-    
+
     .drop-zone {
         padding: 2rem !important;
     }
-    
+
     .btn-lg {
         padding: 0.75rem 1.5rem;
         font-size: 1rem;
@@ -140,6 +139,7 @@
     0% {
         left: -100%;
     }
+
     100% {
         left: 100%;
     }
@@ -237,8 +237,83 @@
     .model-viewer {
         height: 250px;
     }
-    
+
     #model-viewer-section .col-md-6 {
         margin-bottom: 1rem;
     }
+}
+
+
+/* =========================================
+   Premium UI Enhancements
+   ========================================= */
+
+/* Batch File List Items - Card Style */
+.list-group-item {
+    background-color: var(--bs-dark-bg-subtle);
+    border: 1px solid var(--bs-border-color);
+    margin-bottom: 0.5rem;
+    border-radius: 0.5rem !important;
+    transition: all 0.2s ease;
+}
+
+.list-group-item:hover {
+    transform: translateX(5px);
+    border-color: var(--bs-info);
+    background-color: var(--bs-dark);
+}
+
+/* Processing Pulse Animation */
+@keyframes pulse-info {
+    0% {
+        box-shadow: 0 0 0 0 rgba(13, 202, 240, 0.4);
+    }
+
+    70% {
+        box-shadow: 0 0 0 10px rgba(13, 202, 240, 0);
+    }
+
+    100% {
+        box-shadow: 0 0 0 0 rgba(13, 202, 240, 0);
+    }
+}
+
+.badge.bg-info.task-status {
+    animation: pulse-info 2s infinite;
+}
+
+/* Custom Scrollbar for Details Panel */
+#technical-details::-webkit-scrollbar {
+    width: 8px;
+}
+
+#technical-details::-webkit-scrollbar-track {
+    background: #1a1a2e;
+    border-radius: 4px;
+}
+
+#technical-details::-webkit-scrollbar-thumb {
+    background: #4a4a6a;
+    border-radius: 4px;
+}
+
+#technical-details::-webkit-scrollbar-thumb:hover {
+    background: #5a5a8a;
+}
+
+/* Gradient Backgrounds for Cards */
+.card-body {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.02) 0%, rgba(255, 255, 255, 0) 100%);
+}
+
+.card {
+    background-color: #212529;
+    /* Ensure base color is dark */
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Success Animation Checkmark */
+.fa-check-circle.text-success {
+    filter: drop-shadow(0 0 10px rgba(25, 135, 84, 0.4));
 }
