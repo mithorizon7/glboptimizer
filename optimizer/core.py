@@ -1052,16 +1052,26 @@ class GLBOptimizer:
                     self.logger.warning("Geometry compression failed, continuing with step 2 result")
                     step3_output = step2_output
                 
+                # Step 3.5: Smart Texture Resizing (VRAM Protection)
+                if progress_callback:
+                    progress_callback("Step 3: Texture Processing", 55, "Resizing textures for GPU safety...")
+                
+                step3_5_output = self._validate_path(str(path_join(temp_dir, "step3_5_resized.glb")), allow_temp=True)
+                result = self._run_gltf_transform_resize(step3_output, step3_5_output)
+                if not result['success']:
+                    self.logger.warning("Texture resizing failed, continuing with step 3 result")
+                    step3_5_output = step3_output
+                
                 # Step 4: Advanced texture compression (MOST IMPORTANT for 50MB→5MB reduction)
                 if progress_callback:
                     progress_callback("Step 3: Texture Compression", 60, "Applying advanced texture compression...")
                 
                 step4_output = self._validate_path(str(path_join(temp_dir, "step4_textures.glb")), allow_temp=True)
-                result = self._run_gltf_transform_textures(step3_output, step4_output)
+                result = self._run_gltf_transform_textures(step3_5_output, step4_output)
                 if not result['success']:
-                    # Continue with step3 result if texture compression fails
-                    self.logger.warning("Texture compression failed, continuing with step 3 result")
-                    step4_output = step3_output
+                    # Continue with step3.5 result if texture compression fails (preserves resizing)
+                    self.logger.warning("Texture compression failed, continuing with resized result")
+                    step4_output = step3_5_output
                 
                 # Step 5: Optimize animations (if any)
                 if progress_callback:
@@ -1093,7 +1103,7 @@ class GLBOptimizer:
                     best_file = None
                     best_size = 0
                     
-                    for temp_file in [step5_output, step4_output, step3_output, step2_output, step1_output]:
+                    for temp_file in [step5_output, step4_output, step3_5_output, step3_output, step2_output, step1_output]:
                         if self._safe_file_operation(temp_file, 'exists') and self._safe_file_operation(temp_file, 'size') > best_size:
                             best_file = temp_file
                             best_size = self._safe_file_operation(temp_file, 'size')
@@ -1597,6 +1607,38 @@ class GLBOptimizer:
         self.logger.info(f"Selected compression methods based on analysis: {selected_methods}")
         return selected_methods
     
+    def _run_gltf_transform_resize(self, input_path, output_path):
+        """Step 3.5: Resize textures to prevent VRAM exhaustion"""
+        # Smart resolution caps based on quality
+        max_resolution = {
+            'high': 4096,               # 4K limit for high quality (Desktop/iPad Pro)
+            'balanced': 2048,           # 2K limit for standard web (Most common)
+            'maximum_compression': 1024 # 1K limit for mobile/fast loading
+        }.get(self.quality_level, 2048)
+        
+        try:
+            # Check for resize tool availability (part of gltf-transform)
+            # Using basic resize command: npx gltf-transform resize --width X --height X input output
+            # gltf-transform resize typically maintains aspect ratio and fits within the bounds.
+            
+            cmd = [
+                'npx', 'gltf-transform', 'resize',
+                input_path, output_path,
+                '--width', str(max_resolution),
+                '--height', str(max_resolution)
+            ]
+            
+            result = self._run_subprocess(cmd, "Texture Resizing", f"Capping textures at {max_resolution}x{max_resolution}")
+            
+            if result['success'] and self._safe_file_operation(output_path, 'exists') and self._safe_file_operation(output_path, 'size') > 0:
+                return {'success': True}
+            
+            return {'success': False, 'error': result.get('error', 'Resizing failed')}
+            
+        except Exception as e:
+            self.logger.warning(f"Texture resizing failed: {e}")
+            return {'success': False, 'error': str(e)}
+
     def _compress_with_ktx2(self, input_path, output_path):
         """Compress textures using KTX2/Basis Universal compression"""
         settings = self.quality_settings
@@ -1759,13 +1801,33 @@ class GLBOptimizer:
     def _run_gltf_transform_animations(self, input_path, output_path):
         """Step 5: Optimize animations"""
         try:
+            # Smart FPS selection based on quality
+            target_fps = {
+                'high': '60',               # Maintain smoothness
+                'balanced': '30',           # Standard web
+                'maximum_compression': '15' # Heavy size reduction
+            }.get(self.quality_level, '30')
+            
             # First try to resample animations
             temp_resampled = input_path + '.resampled.glb'
-            cmd = ['npx', 'gltf-transform', 'resample', '--fps', '30', input_path, temp_resampled]
+            self._temp_files.add(temp_resampled)  # Ensure cleanup
+            
+            cmd = ['npx', 'gltf-transform', 'resample', '--fps', target_fps, input_path, temp_resampled]
             result = self._run_subprocess(cmd, "Animation Resampling", "Resampling animation frames", timeout=300)
             
+            # Smart fallback: If resampling failed OR increased file size significantly (>10%), skip it
+            skip_resampling = False
             if not result['success']:
                 self.logger.warning(f"Animation resampling failed, skipping: {result.get('detailed_error', 'Unknown error')}")
+                skip_resampling = True
+            elif self._safe_file_operation(temp_resampled, 'exists'):
+                input_size = self._safe_file_operation(input_path, 'size')
+                resampled_size = self._safe_file_operation(temp_resampled, 'size')
+                if resampled_size > input_size * 1.1: # 10% growth buffer
+                    self.logger.warning(f"Animation resampling bloated file ({input_size} -> {resampled_size}), skipping.")
+                    skip_resampling = True
+
+            if skip_resampling:
                 ensure_path(output_path).write_bytes(ensure_path(input_path).read_bytes())
                 return {'success': True}
             
@@ -1773,16 +1835,17 @@ class GLBOptimizer:
             cmd = ['npx', 'gltf-transform', 'compress-animation', '--quantize', '16', temp_resampled, output_path]
             result = self._run_subprocess(cmd, "Animation Compression", "Compressing animation data", timeout=300)
             
-            # Clean up temp file
-            try:
-                ensure_path(temp_resampled).unlink()
-            except Exception:
-                pass
-            
             if not result['success']:
                 self.logger.warning(f"Animation compression failed, using resampled version: {result.get('detailed_error', 'Unknown error')}")
                 ensure_path(output_path).write_bytes(ensure_path(temp_resampled).read_bytes())
-                return {'success': True}
+            
+            # Clean up temp file AFTER we've used it for any fallback
+            try:
+                if self._safe_file_operation(temp_resampled, 'exists'):
+                    ensure_path(temp_resampled).unlink()
+                    self._temp_files.discard(temp_resampled)
+            except Exception:
+                pass
             
             return {'success': True}
         

@@ -38,7 +38,7 @@ class BatchOptimization(Base):
     completed_at = Column(DateTime, nullable=True)
     
     # Relationship to tasks
-    tasks = relationship("OptimizationTask", back_populates="batch", lazy="dynamic")
+    tasks = relationship("OptimizationTask", back_populates="batch", lazy="dynamic", cascade="all, delete-orphan")
     
     def __repr__(self):
         return f'<BatchOptimization {self.id}: {self.completed_files}/{self.total_files} ({self.status})>'

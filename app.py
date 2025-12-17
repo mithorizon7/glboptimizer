@@ -1193,6 +1193,102 @@ def create_app():
 # Create the app instance for imports
 app = create_app()
 
+# ==========================================
+# CLI Commands
+# ==========================================
+
+@main_routes.cli.command("cleanup")
+def cleanup_files():
+    """
+    Cleanup old files from uploads and optimized directories.
+    
+    Also cleans up old database records for completed/failed tasks.
+    Run this periodically via cron: 0 * * * * cd /app && flask main_routes cleanup
+    """
+    import click
+    from datetime import datetime, timedelta
+    
+    # Configuration
+    MAX_AGE_HOURS = 1
+    cutoff_time = datetime.now() - timedelta(hours=MAX_AGE_HOURS)
+    
+    upload_dir = Path(config.UPLOAD_FOLDER)
+    optimized_dir = Path(config.OPTIMIZED_FOLDER)
+    
+    dirs_to_clean = [upload_dir, optimized_dir]
+    deleted_count = 0
+    reclaimed_bytes = 0
+    
+    click.echo(f"Starting cleanup of files older than {MAX_AGE_HOURS} hour(s)...")
+    
+    # --- File Cleanup ---
+    import shutil
+    
+    for directory in dirs_to_clean:
+        if not directory.exists():
+            click.echo(f"  Directory {directory} does not exist, skipping.")
+            continue
+            
+        for path in directory.glob('*'):
+            if path.name == '.gitkeep':
+                continue
+                
+            try:
+                # Check modification time
+                mtime = datetime.fromtimestamp(path.stat().st_mtime)
+                if mtime < cutoff_time:
+                    size = 0
+                    if path.is_file():
+                        size = path.stat().st_size
+                        path.unlink()
+                    elif path.is_dir():
+                        # Calculate directory size for reporting
+                        size = sum(f.stat().st_size for f in path.glob('**/*') if f.is_file())
+                        shutil.rmtree(path)
+                    
+                    deleted_count += 1
+                    reclaimed_bytes += size
+            except PermissionError:
+                click.echo(f"  Permission denied: {path}", err=True)
+            except Exception as e:
+                click.echo(f"  Error deleting {path}: {e}", err=True)
+    
+    mb_reclaimed = reclaimed_bytes / (1024 * 1024)
+    click.echo(f"File cleanup: Deleted {deleted_count} items (files/dirs), reclaiming {mb_reclaimed:.2f} MB.")
+    
+    # --- Database Cleanup ---
+    try:
+        from database import SessionLocal
+        from models import OptimizationTask, BatchOptimization
+        from datetime import timezone
+        
+        db = SessionLocal()
+        cutoff_utc = datetime.now(timezone.utc) - timedelta(hours=MAX_AGE_HOURS)
+        
+        # 1. Delete old batches (Cascades to tasks due to delete-orphan)
+        deleted_batches = db.query(BatchOptimization).filter(
+            BatchOptimization.created_at < cutoff_utc,
+            BatchOptimization.status.in_(['completed', 'failed', 'partial_failure'])
+        ).delete(synchronize_session=False)
+        
+        # 2. Delete old orphan tasks (single file uploads not in a batch)
+        deleted_tasks = db.query(OptimizationTask).filter(
+            OptimizationTask.created_at < cutoff_utc,
+            OptimizationTask.batch_id.is_(None),
+            OptimizationTask.status.in_(['completed', 'failed'])
+        ).delete(synchronize_session=False)
+        
+        db.commit()
+        db.close()
+        
+        click.echo(f"Database cleanup: Removed {deleted_batches} batches and {deleted_tasks} single file tasks.")
+    except Exception as e:
+        click.echo(f"Database cleanup failed (non-critical): {e}", err=True)
+    
+    click.echo("Cleanup complete.")
+
+
 if __name__ == '__main__':
     # Run the app
     app.run(host='0.0.0.0', port=5000, debug=config.DEBUG)
+
