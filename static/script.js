@@ -918,6 +918,9 @@ class GLBOptimizer {
     }
 
     showResults(progress) {
+        // Trigger the particle burst explosion!
+        this.triggerParticleBurst();
+
         // Hide progress section, show results and viewer
         this.progressSection.style.display = 'none';
         this.resultsSection.style.display = 'block';
@@ -1025,6 +1028,173 @@ class GLBOptimizer {
             const fpsTarget = { 'high': '60', 'balanced': '30', 'maximum_compression': '15' }[qualityLevel] || '30';
             animationsEl.textContent = `Resampled to ${fpsTarget} FPS`;
         }
+    }
+
+    triggerParticleBurst() {
+        const container = document.getElementById('particle-container');
+        if (!container) return;
+
+        // Get the morph loader element to use as the burst source
+        // This ensures the explosion comes from exactly where the user was looking
+        const sourceElement = document.querySelector('.morph-loader') || document.getElementById('progress-section');
+        if (!sourceElement) return;
+
+        const rect = sourceElement.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+
+        // Store coordinates for delayed particle creation
+        const origin = { x: centerX, y: centerY };
+
+        // Brand palette for particles
+        const colors = ['#0dcaf0', '#20c997', '#0d6efd', '#ffffff'];
+
+        // Track if burst was cancelled (user navigated away)
+        let cancelled = false;
+        const checkContainer = () => document.getElementById('particle-container') && !cancelled;
+
+        // First: Create the expanding ring shockwaves
+        for (let i = 0; i < 3; i++) {
+            setTimeout(() => {
+                if (!checkContainer()) return;
+                const ring = document.createElement('div');
+                ring.className = 'particle particle-ring';
+                ring.style.left = `${origin.x - 10}px`; // Center 20px ring
+                ring.style.top = `${origin.y - 10}px`;
+                container.appendChild(ring);
+
+                // Remove after animation completes
+                setTimeout(() => ring.remove(), 1000);
+            }, i * 100);
+        }
+
+        // Create radial burst of core particles with size variations and colors
+        const coreCount = 40;
+        for (let i = 0; i < coreCount; i++) {
+            const angle = (i / coreCount) * Math.PI * 2 + (Math.random() - 0.5) * 0.3;
+            const velocity = 200 + Math.random() * 350;
+            const vx = Math.cos(angle) * velocity;
+            const vy = Math.sin(angle) * velocity;
+            const size = 0.5 + Math.random() * 1;
+            const color = colors[Math.floor(Math.random() * colors.length)];
+
+            setTimeout(() => {
+                if (!checkContainer()) return;
+                this.createParticle(container, origin.x, origin.y, 'core', vx, vy, 0, size, color);
+            }, Math.random() * 100);
+        }
+
+        // Create streaks radiating outward
+        const streakCount = 20;
+        for (let i = 0; i < streakCount; i++) {
+            const angle = (i / streakCount) * Math.PI * 2;
+            const velocity = 150 + Math.random() * 250;
+            const vx = Math.cos(angle) * velocity;
+            const vy = Math.sin(angle) * velocity;
+            const color = colors[Math.floor(Math.random() * 3)]; // limit streaks to non-white
+
+            setTimeout(() => {
+                if (!checkContainer()) return;
+                this.createParticle(container, origin.x, origin.y, 'streak', vx, vy, angle, 1, color);
+            }, 50 + Math.random() * 150);
+        }
+
+        // Create hex particles with spin
+        const hexCount = 15;
+        for (let i = 0; i < hexCount; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const velocity = 100 + Math.random() * 200;
+            const vx = Math.cos(angle) * velocity;
+            const vy = Math.sin(angle) * velocity;
+            const color = colors[Math.floor(Math.random() * 3)];
+
+            setTimeout(() => {
+                if (!checkContainer()) return;
+                this.createParticle(container, origin.x, origin.y, 'hex', vx, vy, 0, 1, color);
+            }, 100 + Math.random() * 200);
+        }
+
+        // Clean up container after animations complete
+        setTimeout(() => {
+            cancelled = true;
+            if (container) container.innerHTML = '';
+        }, 2500);
+    }
+
+    createParticle(container, x, y, type, vx, vy, rotation = 0, sizeMultiplier = 1, color = null) {
+        const particle = document.createElement('div');
+        particle.className = `particle particle-${type}`;
+
+        // Offset by half size to center precisely (sizes are approx: core=8, streak=3, hex=12)
+        const offsets = { 'core': 4, 'streak': 1.5, 'hex': 6, 'ring': 10 };
+        const offset = offsets[type] || 0;
+
+        particle.style.left = `${x - offset}px`;
+        particle.style.top = `${y - offset}px`;
+
+        if (color) {
+            particle.style.setProperty('--p-color', color);
+        }
+
+        // Apply size variation for core particles
+        if (type === 'core' && sizeMultiplier !== 1) {
+            particle.style.transform = `scale(${sizeMultiplier})`;
+        }
+
+        // Set initial rotation for streaks (points outward from center)
+        const rotationDeg = rotation * (180 / Math.PI) + 90;
+        if (type === 'streak') {
+            particle.style.transform = `rotate(${rotationDeg}deg)`;
+        }
+
+        container.appendChild(particle);
+
+        // Animate the particle outward with physics
+        const duration = 1000 + Math.random() * 500;
+        const startTime = performance.now();
+
+        const animate = (currentTime) => {
+            // Stop if particle was removed from DOM (e.g. by container cleanup)
+            if (!particle.isConnected) return;
+
+            const elapsed = currentTime - startTime;
+            const progress = elapsed / duration;
+
+            if (progress >= 1) {
+                particle.remove();
+                return;
+            }
+
+            // Apply easing (ease-out cubic)
+            const eased = 1 - Math.pow(1 - progress, 3);
+
+            // Fade out as particle travels
+            const opacity = 1 - Math.pow(progress, 2);
+
+            // Calculate position with gravity effect
+            const gravity = type === 'hex' ? 80 : 0;
+            const newX = (x - offset) + vx * eased;
+            const newY = (y - offset) + vy * eased + gravity * eased * eased;
+
+            particle.style.left = `${newX}px`;
+            particle.style.top = `${newY}px`;
+            particle.style.opacity = opacity;
+
+            // Keep rotation for streaks while moving
+            if (type === 'streak') {
+                particle.style.transform = `rotate(${rotationDeg}deg) scaleY(${1 + eased * 2})`;
+            }
+
+            // Shrink core particles as they travel
+            if (type === 'core') {
+                const shrink = sizeMultiplier * (1 - progress * 0.5);
+                particle.style.transform = `scale(${shrink})`;
+            }
+
+            requestAnimationFrame(animate);
+        };
+
+        requestAnimationFrame(animate);
     }
 
     showError(error) {
