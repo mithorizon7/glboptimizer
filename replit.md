@@ -15,12 +15,10 @@ The frontend uses Vanilla JavaScript with Bootstrap 5 (dark theme) to provide a 
 The backend is built with Flask and uses Celery (backed by Redis or PostgreSQL) for asynchronous background task processing. It employs a modular design with separated concerns for routing, optimization logic, and task management. The core optimization engine utilizes a 7-stage modular pipeline (inspect, prune, weld, geometry, textures, animations, finalize) with intelligent model analysis for conditional stage execution and per-stage error recovery. Security is a priority, with multi-layer file validation, secure filename handling, file size limits (up to 100MB), and comprehensive protection against command injection and TOCTOU attacks. Atomic file operations and robust temporary file management ensure data integrity and cleanup.
 
 ### Key Architectural Patterns (Dec 2025)
-- **Single Celery Factory**: `celery_factory.py` is the sole source of truth for Celery initialization with graceful degradation (Redis → Synchronous execution)
+- **Single Celery Factory**: `celery_factory.py` is the sole source of truth for Celery initialization with graceful degradation (Redis → PostgreSQL → Synchronous execution)
 - **Centralized Configuration**: `config.py` contains all configuration defaults; no `os.environ.get()` with defaults elsewhere
 - **Database Session Management**: `database.py` provides `db_session()` context manager for automatic session cleanup and rollback on errors
-- **Synchronous Fallback**: When Redis is unavailable, tasks execute synchronously instead of queuing to Celery. This ensures file uploads always work regardless of message broker availability.
-- **Database-Based Task Tracking**: Task progress is tracked via the OptimizationTask database model, avoiding dependency on Celery's result backend. The `/progress/<task_id>` endpoint queries the database directly.
-- **No Celery Result Backend Dependency**: When using database broker mode, the result backend is disabled (`result_backend=None`) to avoid Redis fallback issues. All task state is stored in PostgreSQL.
+- **Synchronous Fallback**: When Celery is unavailable, tasks execute synchronously instead of failing
 
 ### UI/UX Decisions
 The application prioritizes a clean, dark-themed interface with clear navigation and visual feedback. User guidance is provided through interactive tooltips and expandable help sections explaining optimization techniques in simple language. The 3D viewer is designed for intuitive comparison, with default camera syncing and enhanced lighting. Marketing-focused design elements highlight the tool's benefits and encourage pro-tier conversions.

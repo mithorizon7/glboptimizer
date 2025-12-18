@@ -30,25 +30,14 @@ engine = create_engine(
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def create_tables():
-    """Create all database tables with retry logic for transient SSL errors"""
-    import time
-    max_retries = 3
-    retry_delay = 1
-    
-    for attempt in range(max_retries):
-        try:
-            logger.info("Creating database tables...")
-            Base.metadata.create_all(bind=engine)
-            logger.info("Database tables created successfully")
-            return
-        except Exception as e:
-            if attempt < max_retries - 1 and "SSL" in str(e):
-                logger.warning(f"Database connection attempt {attempt + 1} failed (SSL error), retrying in {retry_delay}s...")
-                time.sleep(retry_delay)
-                retry_delay *= 2
-            else:
-                logger.error(f"Failed to create database tables: {e}")
-                raise
+    """Create all database tables"""
+    try:
+        logger.info("Creating database tables...")
+        Base.metadata.create_all(bind=engine)
+        logger.info("Database tables created successfully")
+    except Exception as e:
+        logger.error(f"Failed to create database tables: {e}")
+        raise
 
 def get_db():
     """Get database session (for Flask dependency injection)"""

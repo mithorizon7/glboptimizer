@@ -281,8 +281,7 @@ class Config:
     # Celery/Redis Configuration
     REDIS_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
     CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', REDIS_URL)
-    # Result backend is managed by celery_factory.py which handles database fallback
-    CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND')
+    CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', REDIS_URL)
     
     # Task Queue Configuration
     MAX_CONCURRENT_TASKS = int(os.environ.get('MAX_CONCURRENT_TASKS', '1'))

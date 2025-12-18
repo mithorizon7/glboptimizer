@@ -16,37 +16,15 @@ import os
 import logging
 from celery import Celery
 from celery.schedules import crontab
+from dotenv import load_dotenv
 from config import Config
+
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
 _celery_instance = None
 _broker_type = None
-
-# Clear legacy Redis backend settings if Redis is not available
-# This must happen before Celery is configured
-def _clear_legacy_redis_env():
-    """Clear Redis env vars if Redis is not actually available"""
-    redis_url = os.environ.get('REPLIT_REDIS_URL') or os.environ.get('REDIS_URL')
-    # Only clear if using default localhost Redis (which is typically unavailable in Replit)
-    if not redis_url or redis_url == 'redis://localhost:6379/0':
-        try:
-            import subprocess
-            result = subprocess.run(['redis-cli', 'ping'], capture_output=True, text=True, timeout=2)
-            if result.returncode != 0 or 'PONG' not in result.stdout:
-                # Redis not available, clear the env vars that would cause Celery to try Redis
-                for key in ['CELERY_BROKER_URL', 'CELERY_RESULT_BACKEND']:
-                    if key in os.environ and 'redis' in os.environ[key].lower():
-                        logger.info(f"Clearing unavailable Redis setting: {key}")
-                        del os.environ[key]
-        except Exception:
-            # Redis CLI not available, clear Redis settings
-            for key in ['CELERY_BROKER_URL', 'CELERY_RESULT_BACKEND']:
-                if key in os.environ and 'redis' in os.environ[key].lower():
-                    logger.info(f"Clearing unavailable Redis setting: {key}")
-                    del os.environ[key]
-
-_clear_legacy_redis_env()
 
 
 def check_redis_availability():
@@ -81,12 +59,8 @@ def get_broker_config():
     
     if database_url:
         db_broker = f"db+{database_url}"
-        db_backend = f"db+{database_url}"
         logger.info("Redis unavailable, using database as broker")
-        # Clear any legacy Redis backend settings from environment
-        if 'CELERY_RESULT_BACKEND' in os.environ:
-            del os.environ['CELERY_RESULT_BACKEND']
-        return db_broker, db_backend, 'database'
+        return db_broker, db_broker, 'database'
     
     logger.warning("No broker available - Celery tasks will fail")
     return None, None, 'none'
@@ -160,14 +134,13 @@ def make_celery(app_name='glb_optimizer'):
     )
     
     if broker_type == 'database':
-        # Disable result backend to avoid Redis fallback issues
-        # Task status is tracked in our own OptimizationTask database table
         celery_app.conf.update(
-            result_backend=None,  # Disable result backend
-            task_ignore_result=True,  # Don't store results
             database_short_lived_sessions=True,
+            database_table_names={
+                'task': 'celery_taskmeta',
+                'group': 'celery_groupmeta',
+            }
         )
-        logger.info("Database broker mode: result backend disabled, using ORM for task tracking")
     
     logger.info(f"Celery initialized with {broker_type} broker: {broker_url[:50]}...")
     return celery_app
