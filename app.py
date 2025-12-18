@@ -359,11 +359,12 @@ def upload_file():
             'name': original_name
         }
         
-        # Use async processing when Celery is available, sync fallback otherwise
-        if celery and broker_type != 'none':
+        # Use async processing only when Celery has Redis broker (database broker has issues)
+        # When Redis is unavailable, fall back to synchronous processing
+        if celery and broker_type == 'redis':
             # Queue the optimization task asynchronously
             from tasks import optimize_glb_file
-            logger.info("Queuing async optimization task via Celery")
+            logger.info("Queuing async optimization task via Celery (Redis broker)")
             
             celery_task = optimize_glb_file.delay(
                 input_path, output_path, original_name,
@@ -522,8 +523,8 @@ def upload_batch():
             except Exception as e:
                 logger.warning(f"Failed to upload to object storage: {e}")
             
-            # Queue optimization task
-            if celery and broker_type != 'none':
+            # Queue optimization task (only use Celery with Redis broker)
+            if celery and broker_type == 'redis':
                 from tasks import optimize_glb_file
                 celery_task = optimize_glb_file.delay(
                     input_path, output_path, original_name,
@@ -558,7 +559,7 @@ def upload_batch():
                 compressed_size = None
                 compression_ratio = None
                 
-                if not (celery and broker_type != 'none'):
+                if not (celery and broker_type == 'redis'):
                     # Sync mode - check if output exists
                     if Path(output_path).exists():
                         task_status = 'completed'
@@ -729,46 +730,59 @@ def download_batch(batch_id):
 @catch_all_errors('progress')
 def get_progress(task_id):
     try:
-        # Get task result from Celery
-        celery_task = celery.AsyncResult(task_id)
-        
-        if celery_task.state == 'PENDING':
-            response = {
-                'status': 'pending',
-                'progress': 0,
-                'step': 'Task is queued...',
-                'completed': False
-            }
-        elif celery_task.state == 'PROGRESS':
-            response = celery_task.info
-            response['completed'] = False
-        elif celery_task.state == 'SUCCESS':
-            result = celery_task.result
-            response = result
-            response['completed'] = True
-        elif celery_task.state == 'FAILURE':
-            error_info = celery_task.info
-            if isinstance(error_info, dict):
-                # Enhanced error response with details
+        # Get task status from database (avoids Redis dependency)
+        db = get_db()
+        try:
+            task = db.query(OptimizationTask).filter_by(id=task_id).first()
+            
+            if not task:
+                return jsonify({
+                    'status': 'not_found',
+                    'error': 'Task not found',
+                    'completed': True
+                }), 404
+            
+            if task.status == 'pending':
                 response = {
-                    'status': 'error',
-                    'completed': True,
-                    **error_info  # Include all error details
+                    'status': 'pending',
+                    'progress': 0,
+                    'step': 'Task is queued...',
+                    'completed': False
                 }
-            else:
-                # Simple error string
+            elif task.status == 'processing':
+                response = {
+                    'status': 'processing',
+                    'progress': task.progress or 0,
+                    'step': task.current_step or 'Processing...',
+                    'completed': False
+                }
+            elif task.status == 'completed':
+                response = {
+                    'status': 'success',
+                    'progress': 100,
+                    'completed': True,
+                    'original_size': task.original_size,
+                    'optimized_size': task.compressed_size,
+                    'compression_ratio': task.compression_ratio,
+                    'download_url': f'/download/{task_id}'
+                }
+            elif task.status == 'failed':
                 response = {
                     'status': 'error',
-                    'error': str(error_info),
+                    'error': task.error_message or 'Optimization failed',
+                    'error_category': task.error_category,
                     'completed': True
                 }
-        else:
-            response = {
-                'status': celery_task.state.lower(),
-                'completed': False
-            }
-        
-        return jsonify(response)
+            else:
+                response = {
+                    'status': task.status,
+                    'progress': task.progress or 0,
+                    'completed': False
+                }
+            
+            return jsonify(response)
+        finally:
+            db.close()
     
     except Exception as e:
         return jsonify({'error': f'Failed to get task status: {str(e)}'}), 500
@@ -826,11 +840,7 @@ def download_file(task_id):
 def cleanup_task(task_id):
     """Clean up task files and result data"""
     try:
-        # Get task result from Celery
-        celery_task = celery.AsyncResult(task_id)
-        
         # Clean up both files using direct path construction (no directory scanning needed)
-        # This is more efficient than the previous approach of scanning directories
         original_filename = f"{task_id}.glb"
         original_path = str(Path(config.UPLOAD_FOLDER) / original_filename)
         
@@ -861,15 +871,6 @@ def cleanup_task(task_id):
             logging.info(f"Cleaned up original file from object storage: {task_id}")
         except Exception as storage_error:
             logging.warning(f"Object storage cleanup failed: {storage_error}")
-        
-        # IMPROVEMENT: Safe Celery cleanup with Redis fallback handling
-        try:
-            celery_task.forget()
-            logging.info(f"Successfully cleaned up Celery task: {task_id}")
-        except Exception as celery_error:
-            # If Redis is unavailable, this will fail - but that's okay, the task data will expire naturally
-            logging.warning(f"Celery task cleanup failed (Redis unavailable): {celery_error}")
-            # Don't raise error since file cleanup was successful
         
         return jsonify({'message': 'Task cleaned up successfully'})
     
@@ -984,38 +985,54 @@ def download_error_logs(task_id):
         import time
         from io import BytesIO
         
-        # Get task result from Celery
-        celery_task = celery.AsyncResult(task_id)
-        
-        if celery_task.state == 'FAILURE':
-            error_info = celery_task.info
-            log_content = f"""GLB Optimization Error Report
+        # Get task from database instead of Celery (avoids Redis dependency)
+        db = get_db()
+        try:
+            task = db.query(OptimizationTask).filter_by(id=task_id).first()
+            
+            if not task:
+                log_content = f"""GLB Optimization Error Report
+Generated: {time.strftime('%Y-%m-%d %H:%M:%S')}
+Task ID: {task_id}
+Status: NOT FOUND
+
+Task not found in database.
+"""
+            elif task.status == 'failed':
+                log_content = f"""GLB Optimization Error Report
 Generated: {time.strftime('%Y-%m-%d %H:%M:%S')}
 Task ID: {task_id}
 Status: FAILED
 
-Error Details:
-{error_info.get('detailed_error', 'No detailed error information available') if isinstance(error_info, dict) else str(error_info)}
+Error Category: {task.error_category or 'Unknown'}
 
-User Message:
-{error_info.get('error', 'No user message available') if isinstance(error_info, dict) else 'See error details above'}
+Error Details:
+{task.error_message or 'No detailed error information available'}
 """
-        elif celery_task.state == 'SUCCESS':
-            log_content = f"""GLB Optimization Log
+            elif task.status == 'completed':
+                log_content = f"""GLB Optimization Log
 Generated: {time.strftime('%Y-%m-%d %H:%M:%S')}
 Task ID: {task_id}
 Status: SUCCESS
 
+Original Size: {task.original_size or 'N/A'} bytes
+Optimized Size: {task.compressed_size or 'N/A'} bytes
+Compression Ratio: {task.compression_ratio or 'N/A'}%
+
 No errors occurred during optimization.
 """
-        else:
-            log_content = f"""GLB Optimization Log
+            else:
+                log_content = f"""GLB Optimization Log
 Generated: {time.strftime('%Y-%m-%d %H:%M:%S')}
 Task ID: {task_id}
-Status: {celery_task.state}
+Status: {task.status.upper()}
+Progress: {task.progress or 0}%
+Current Step: {task.current_step or 'N/A'}
 
-Task is still in progress or in an unknown state.
+Task is still in progress.
 """
+        finally:
+            db.close()
         
         # Convert to BytesIO for proper file serving
         log_bytes = BytesIO(log_content.encode('utf-8'))

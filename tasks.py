@@ -43,16 +43,7 @@ def optimize_glb_file(self, input_path, output_path, original_name, quality_leve
     """
     
     def progress_callback(step, progress, message):
-        """Update task progress"""
-        self.update_state(
-            state='PROGRESS',
-            meta={
-                'step': step,
-                'progress': progress,
-                'message': message,
-                'status': 'processing'
-            }
-        )
+        """Update task progress via database (no Redis dependency)"""
         logger.info(f"Task {self.request.id}: {step} - {progress}% - {message}")
         
         # Emit real-time WebSocket update
@@ -62,7 +53,7 @@ def optimize_glb_file(self, input_path, output_path, original_name, quality_leve
         except Exception as ws_error:
             logger.debug(f"WebSocket emit failed (non-critical): {ws_error}")
         
-        # Update database record using ORM
+        # Update database record using ORM (primary source of truth)
         try:
             with db_session() as db:
                 task = db.query(OptimizationTask).filter(
@@ -82,16 +73,19 @@ def optimize_glb_file(self, input_path, output_path, original_name, quality_leve
     try:
         logger.info(f"Starting optimization task {self.request.id} for file: {original_name}")
         
-        # Update initial state
-        self.update_state(
-            state='PROGRESS',
-            meta={
-                'step': 'Starting optimization...',
-                'progress': 0,
-                'message': 'Initializing optimization pipeline',
-                'status': 'starting'
-            }
-        )
+        # Update initial state in database (no Redis dependency)
+        try:
+            with db_session() as db:
+                task = db.query(OptimizationTask).filter(
+                    OptimizationTask.id == self.request.id
+                ).first()
+                if task:
+                    task.status = 'processing'
+                    task.progress = 0
+                    task.current_step = 'Initializing optimization pipeline'
+                    db.commit()
+        except Exception as e:
+            logger.error(f"Failed to update initial task state: {e}")
         
         # Create optimizer instance
         optimizer = GLBOptimizer(quality_level=quality_level)
