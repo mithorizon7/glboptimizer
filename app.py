@@ -365,11 +365,14 @@ def upload_file():
             from tasks import optimize_glb_file
             logger.info("Queuing async optimization task via Celery")
             
-            celery_task = optimize_glb_file.delay(
-                input_path, output_path, original_name,
-                quality_level=quality_level,
-                enable_lod=enable_lod,
-                enable_simplification=enable_simplification
+            celery_task = optimize_glb_file.apply_async(
+                args=[input_path, output_path, original_name],
+                kwargs={
+                    'quality_level': quality_level,
+                    'enable_lod': enable_lod,
+                    'enable_simplification': enable_simplification
+                },
+                task_id=task_id  # Use the same task_id as the file paths
             )
             
             # Create database record for tracking
@@ -377,9 +380,9 @@ def upload_file():
                 db = get_db()
                 try:
                     optimization_task = OptimizationTask(
-                        id=celery_task.id,
+                        id=task_id,
                         original_filename=original_filename,
-                        secure_filename=f"{celery_task.id}.glb",
+                        secure_filename=f"{task_id}.glb",
                         original_size=original_size,
                         quality_level=quality_level,
                         enable_lod=enable_lod,
@@ -388,14 +391,14 @@ def upload_file():
                     )
                     db.add(optimization_task)
                     db.commit()
-                    logger.info(f"Created database record for async task {celery_task.id}")
+                    logger.info(f"Created database record for async task {task_id}")
                 finally:
                     db.close()
             except Exception as e:
                 logger.error(f"Failed to create database record: {e}")
             
             return jsonify({
-                'task_id': celery_task.id,
+                'task_id': task_id,
                 'status': 'queued',
                 'message': 'File uploaded successfully. Optimization queued.',
                 'original_size': original_size
@@ -525,13 +528,16 @@ def upload_batch():
             # Queue optimization task
             if celery and broker_type != 'none':
                 from tasks import optimize_glb_file
-                celery_task = optimize_glb_file.delay(
-                    input_path, output_path, original_name,
-                    quality_level=quality_level,
-                    enable_lod=enable_lod,
-                    enable_simplification=enable_simplification
+                celery_task = optimize_glb_file.apply_async(
+                    args=[input_path, output_path, original_name],
+                    kwargs={
+                        'quality_level': quality_level,
+                        'enable_lod': enable_lod,
+                        'enable_simplification': enable_simplification
+                    },
+                    task_id=task_id  # Use the same task_id as the file paths
                 )
-                actual_task_id = celery_task.id
+                actual_task_id = task_id
             else:
                 # Sync fallback - run optimization directly
                 actual_task_id = task_id
