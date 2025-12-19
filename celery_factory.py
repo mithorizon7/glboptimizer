@@ -58,9 +58,12 @@ def get_broker_config():
         return local_redis, local_redis, 'redis'
     
     if database_url:
-        db_broker = f"db+{database_url}"
+        # Broker uses 'sqla+' prefix for SQLAlchemy transport
+        # Result backend uses 'db+' prefix for database backend
+        db_broker = f"sqla+{database_url}"
+        db_backend = f"db+{database_url}"
         logger.info("Redis unavailable, using database as broker")
-        return db_broker, db_broker, 'database'
+        return db_broker, db_backend, 'database'
     
     logger.warning("No broker available - Celery tasks will fail")
     return None, None, 'none'
@@ -90,6 +93,9 @@ def make_celery(app_name='glb_optimizer'):
     )
     
     celery_app.conf.update(
+        broker_url=broker_url,
+        result_backend=result_backend,
+        
         task_serializer='json',
         accept_content=['json'],
         result_serializer='json',
@@ -112,10 +118,11 @@ def make_celery(app_name='glb_optimizer'):
         broker_connection_retry_on_startup=True,
         broker_connection_retry=True,
         
+        # Use default 'celery' queue for all tasks (worker listens on default queue)
         task_routes={
-            'tasks.optimize_glb_file': {'queue': 'optimization'},
-            'cleanup.cleanup_old_files': {'queue': 'cleanup'},
-            'cleanup.cleanup_orphaned_tasks': {'queue': 'cleanup'},
+            'tasks.optimize_glb_file': {'queue': 'celery'},
+            'cleanup.cleanup_old_files': {'queue': 'celery'},
+            'cleanup.cleanup_orphaned_tasks': {'queue': 'celery'},
         },
         
         beat_schedule={
